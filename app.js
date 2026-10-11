@@ -77,30 +77,42 @@ function recalc(){
 ids.forEach(id=>el[id].addEventListener('input',recalc));
 recalc();
 
-const sample=`Замовник вимагає забезпечення тендерної пропозиції у розмірі 3% від очікуваної вартості. Учасник повинен підтвердити виконання щонайменше одного аналогічного договору на постачання пального. Поставка здійснюється протягом 2 робочих днів після заявки. Оплата — протягом 30 календарних днів. Мінімальна кількість АЗС або обмеження радіусу не встановлені.`;
-document.getElementById('sampleBtn').addEventListener('click',()=>{document.getElementById('tenderText').value=sample;});
+const tenderIdInput=document.getElementById('tenderId');
+const analyzeBtn=document.getElementById('analyzeBtn');
+const sampleBtn=document.getElementById('sampleBtn');
 
-document.getElementById('analyzeBtn').addEventListener('click', async()=>{
+sampleBtn.addEventListener('click',()=>{
+  tenderIdInput.value='UA-2026-09-08-002654-a';
+  tenderIdInput.focus();
+});
+
+analyzeBtn.addEventListener('click', async()=>{
   const status=document.getElementById('aiStatus');
-  const text=document.getElementById('tenderText').value.trim();
-  const tenderUrl=document.getElementById('tenderUrl').value.trim();
-  if(!text && !tenderUrl){status.textContent='Додайте текст або URL тендера.';return;}
+  const tenderId=tenderIdInput.value.trim();
+  if(!tenderId){status.textContent='Введіть ID тендера Prozorro.';return;}
+
   const api=(window.EURO5_CONFIG?.apiUrl||'').replace(/\/$/,'');
-  if(!api){
-    status.textContent='Demo mode: Worker URL ще не налаштований.';
-    renderAi({
-      competition_friction:'Medium',
-      conditions:['3% забезпечення тендерної пропозиції','Аналогічний договір обов’язковий','Поставка протягом 2 робочих днів','Оплата протягом 30 календарних днів'],
-      actions:['Підтвердити можливість надати банківську гарантію/забезпечення','Перевірити відповідність аналогічного договору вимогам документації','Підтвердити логістичну спроможність виконати 2-денний строк']
-    });
-    return;
-  }
-  status.textContent='Аналізую…';
+  if(!api){status.textContent='Worker URL не налаштований у config.js.';return;}
+
+  analyzeBtn.disabled=true;
+  status.textContent='Завантажую тендер з Prozorro та аналізую…';
+  document.getElementById('aiOutput').classList.add('hidden');
+
   try{
-    const res=await fetch(`${api}/tender-check`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenderUrl,text})});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data=await res.json(); renderAi(data); status.textContent='Готово.';
-  }catch(e){status.textContent=`Помилка AI-перевірки: ${e.message}`;}
+    const res=await fetch(`${api}/tender-check`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tenderId})
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    renderAi(data);
+    status.textContent='Готово.';
+  }catch(e){
+    status.textContent=`Помилка: ${e.message}`;
+  }finally{
+    analyzeBtn.disabled=false;
+  }
 });
 
 function renderAi(data){
@@ -108,8 +120,41 @@ function renderAi(data){
   const badge=document.getElementById('frictionBadge');
   const level=(data.competition_friction||'Medium').toLowerCase();
   badge.className=`friction ${level}`; badge.textContent=(data.competition_friction||'Medium');
+
+  document.getElementById('aiTenderTitle').textContent=data.tender_title || '—';
+  document.getElementById('aiExpectedValue').textContent=Number.isFinite(Number(data.expected_value_uah))
+    ? `${money.format(Number(data.expected_value_uah))} грн`
+    : '—';
+  document.getElementById('aiVatBasis').textContent=data.vat_basis || 'unknown';
+  document.getElementById('aiFuelType').textContent=({gasoline:'Бензин',diesel:'Дизельне паливо',mixed:'Бензин + дизель',other:'Інше'})[data.fuel_type] || '—';
+
   const c=document.getElementById('conditionsList');c.innerHTML='';
-  (data.conditions||data.critical_flags||[]).forEach(x=>{const li=document.createElement('li');li.textContent=x;c.appendChild(li)});
+  const conditions=(data.conditions||[]);
+  if(!conditions.length){
+    const li=document.createElement('li');li.textContent='На публічній сторінці істотні обмеження не виявлені.';c.appendChild(li);
+  } else {
+    conditions.forEach(x=>{const li=document.createElement('li');li.textContent=x;c.appendChild(li)});
+  }
+
   const a=document.getElementById('actionsList');a.innerHTML='';
-  (data.actions||[]).forEach(x=>{const li=document.createElement('li');li.textContent=x;a.appendChild(li)});
+  const actions=(data.actions||[]);
+  if(!actions.length){
+    const li=document.createElement('li');li.textContent='Перевірте вкладені документи перед поданням пропозиції.';a.appendChild(li);
+  } else {
+    actions.forEach(x=>{const li=document.createElement('li');li.textContent=x;a.appendChild(li)});
+  }
+
+  const source=document.getElementById('aiSource');
+  source.innerHTML='';
+  if(data.source_url){
+    const link=document.createElement('a');
+    link.href=data.source_url;
+    link.target='_blank';
+    link.rel='noopener noreferrer';
+    link.textContent=`Відкрити ${data.tender_id || 'тендер'} у Prozorro`;
+    source.appendChild(link);
+  }
+  const note=document.createElement('span');
+  note.textContent=` ${data.source_scope || ''}`;
+  source.appendChild(note);
 }

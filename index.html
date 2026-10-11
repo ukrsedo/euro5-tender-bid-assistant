@@ -14,9 +14,7 @@
   <main class="shell">
     <header class="hero">
       <div class="brand-lockup">
-        <div class="brand-mark-wrap">
-          <img class="brand-mark" src="euro5-logo.png" alt="ЄВРО5" />
-        </div>
+        <div class="brand-mark-wrap"><img class="brand-mark" src="euro5-logo.png" alt="ЄВРО5" /></div>
         <div class="hero-copy">
           <div class="eyebrow">ЄВРО5 · PROCUREMENT ANALYTICS</div>
           <h1>Tender Bid Assistant <span>V10</span></h1>
@@ -32,66 +30,24 @@
     <section class="grid top-grid">
       <article class="card">
         <h2>1. Дані тендера</h2>
-        <div class="field">
-          <label for="fuelType">Тип закупівлі</label>
-          <select id="fuelType">
-            <option value="diesel">Дизельне паливо</option>
-            <option value="gasoline">Бензин</option>
-            <option value="mixed">Бензин + дизель</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="expectedValue">Очікувана вартість, грн без ПДВ</label>
-          <input id="expectedValue" type="number" min="1000000" step="1000" value="2322500" />
-          <div id="scopeWarning" class="hint error hidden">V10 валідована для тендерів від 1 млн грн.</div>
-        </div>
-
+        <div class="field"><label for="fuelType">Тип закупівлі</label><select id="fuelType"><option value="diesel">Дизельне паливо</option><option value="gasoline">Бензин</option><option value="mixed">Бензин + дизель</option></select></div>
+        <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="number" min="1000000" step="1000" value="2322500" /><div id="scopeWarning" class="hint error hidden">V10 валідована для тендерів від 1 млн грн.</div></div>
         <div class="two-col">
-          <div class="field">
-            <label for="gasolineVolume">Обсяг бензину, л</label>
-            <input id="gasolineVolume" type="number" min="0" step="1" value="0" />
-          </div>
-          <div class="field">
-            <label for="gasolineCost">Собівартість бензину, грн/л</label>
-            <input id="gasolineCost" type="number" min="0" step="0.01" value="0" />
-          </div>
+          <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="number" min="0" step="1" value="0" /></div>
+          <div class="field"><label for="gasolineCost">Собівартість бензину, грн/л</label><input id="gasolineCost" type="number" min="0" step="0.01" value="0" /></div>
         </div>
-
         <div class="two-col">
-          <div class="field">
-            <label for="dieselVolume">Обсяг дизеля, л</label>
-            <input id="dieselVolume" type="number" min="0" step="1" value="30000" />
-          </div>
-          <div class="field">
-            <label for="dieselCost">Собівартість дизеля, грн/л</label>
-            <input id="dieselCost" type="number" min="0" step="0.01" value="72" />
-          </div>
+          <div class="field"><label for="dieselVolume">Обсяг дизеля, л</label><input id="dieselVolume" type="number" min="0" step="1" value="30000" /></div>
+          <div class="field"><label for="dieselCost">Собівартість дизеля, грн/л</label><input id="dieselCost" type="number" min="0" step="0.01" value="72" /></div>
         </div>
-
-        <div class="field">
-          <label for="competitionMode">Формат конкуренції</label>
-          <select id="competitionMode">
-            <option value="market">Ринок</option>
-            <option value="n1">Очікується 1 учасник</option>
-          </select>
-        </div>
+        <div class="field"><label for="competitionMode">Формат конкуренції</label><select id="competitionMode"><option value="market">Ринок</option><option value="n1">Очікується 1 учасник</option></select></div>
       </article>
 
       <article class="card">
         <h2>2. Економіка ЄВРО5</h2>
-        <div class="field">
-          <label for="logistics">Логістика, грн/л</label>
-          <input id="logistics" type="number" min="0" step="0.01" value="1.20" />
-        </div>
-        <div class="field">
-          <label for="riskReserve">Резерв на ризики, %</label>
-          <input id="riskReserve" type="number" min="0" step="0.1" value="1" />
-        </div>
-        <div class="field">
-          <label for="minMargin">Мінімальна маржа, %</label>
-          <input id="minMargin" type="number" min="0" max="99" step="0.1" value="2" />
-        </div>
-
+        <div class="field"><label for="logistics">Логістика, грн/л</label><input id="logistics" type="number" min="0" step="0.01" value="1.20" /></div>
+        <div class="field"><label for="riskReserve">Резерв на ризики, %</label><input id="riskReserve" type="number" min="0" step="0.1" value="1" /></div>
+        <div class="field"><label for="minMargin">Мінімальна маржа, %</label><input id="minMargin" type="number" min="0" max="99" step="0.1" value="2" /></div>
         <div class="metrics">
           <div class="metric"><span>Всього літрів</span><strong id="totalLitres">—</strong></div>
           <div class="metric"><span>Вартість пального</span><strong id="fuelCostTotal">—</strong></div>
@@ -112,78 +68,52 @@
     </section>
 
     <section class="card results-card">
-      <div class="section-head">
-        <div>
-          <h2>3. Варіанти ставки</h2>
-          <p>V10 не вибирає одну «правильну» ставку — він показує компроміс між абсолютним прибутком та історичною конкурентністю.</p>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Варіант</th>
-              <th>Історична конкурентність</th>
-              <th>Знижка</th>
-              <th>Пропозиція, грн</th>
-              <th>Прибуток, грн</th>
-              <th>Маржа</th>
-              <th>Мін. маржа?</th>
-              <th>Зміна прибутку</th>
-            </tr>
-          </thead>
-          <tbody id="resultsBody"></tbody>
-        </table>
-      </div>
+      <div class="section-head"><div><h2>3. Варіанти ставки</h2><p>V10 не вибирає одну «правильну» ставку — він показує компроміс між абсолютним прибутком та історичною конкурентністю.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th><th>Зміна прибутку</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
     </section>
 
     <section class="card ai-card">
       <div class="section-head">
         <div>
           <div class="eyebrow ai-eyebrow">ЄВРО5 · AI TENDER CHECK</div>
-          <h2>4. Аналіз умов тендера</h2>
-          <p>AI лише витягує та структурує умови документації. Він не змінює V10 і не рекомендує ціну.</p>
+          <h2>4. Аналіз тендера за ID Prozorro</h2>
+          <p>Введіть ID закупівлі. Система сама відкриє публічну сторінку Prozorro та передасть її зміст AI для структурованої перевірки. AI не змінює V10 і не рекомендує ціну.</p>
         </div>
         <span class="beta">BETA</span>
       </div>
 
       <div class="ai-input-grid">
         <div class="field">
-          <label for="tenderUrl">Посилання на тендер (необов'язково)</label>
-          <input id="tenderUrl" type="url" placeholder="https://prozorro.gov.ua/..." />
-        </div>
-        <div class="field full">
-          <label for="tenderText">Текст умов / витяг з документації</label>
-          <textarea id="tenderText" rows="8" placeholder="Вставте сюди ключові умови тендера або текст документації для AI-перевірки..."></textarea>
+          <label for="tenderId">ID тендера Prozorro</label>
+          <input id="tenderId" type="text" placeholder="UA-2026-09-08-002654-a" autocomplete="off" />
+          <div class="hint">Можна вставити ID лота з суфіксом -L1 — система використає ID закупівлі.</div>
         </div>
       </div>
       <div class="actions">
-        <button id="analyzeBtn" class="btn primary-btn">Перевірити умови</button>
-        <button id="sampleBtn" class="btn secondary-btn">Вставити приклад</button>
+        <button id="analyzeBtn" class="btn primary-btn">Завантажити та проаналізувати</button>
+        <button id="sampleBtn" class="btn secondary-btn">Тестовий ID</button>
         <span id="aiStatus" class="status"></span>
       </div>
 
       <div id="aiOutput" class="ai-output hidden">
-        <div class="friction-line">
-          <span>Competition friction</span>
-          <strong id="frictionBadge" class="friction medium">—</strong>
+        <div class="ai-summary-grid">
+          <div class="metric"><span>Назва</span><strong id="aiTenderTitle">—</strong></div>
+          <div class="metric"><span>Очікувана вартість</span><strong id="aiExpectedValue">—</strong></div>
+          <div class="metric"><span>ПДВ</span><strong id="aiVatBasis">—</strong></div>
+          <div class="metric"><span>Тип пального</span><strong id="aiFuelType">—</strong></div>
         </div>
+        <div class="friction-line"><span>Competition friction</span><strong id="frictionBadge" class="friction medium">—</strong></div>
         <div class="flag-columns">
-          <div>
-            <h3>Виявлені умови</h3>
-            <ul id="conditionsList"></ul>
-          </div>
-          <div>
-            <h3>Що перевірити перед ставкою</h3>
-            <ul id="actionsList"></ul>
-          </div>
+          <div><h3>Виявлені умови</h3><ul id="conditionsList"></ul></div>
+          <div><h3>Що перевірити перед ставкою</h3><ul id="actionsList"></ul></div>
         </div>
+        <div id="aiSource" class="source-note"></div>
       </div>
     </section>
 
     <footer>
       <div class="footer-brand"><img src="euro5-logo.png" alt="ЄВРО5" /><span>ЄВРО5 Tender Bid Assistant</span></div>
-      <div><strong>Model:</strong> V10 · <strong>Data:</strong> 11,858 completed Prozorro fuel tenders, 2022–05 Oct 2026 · <strong>Scope:</strong> Ukraine, ≥ UAH 1m · <strong>AI:</strong> document analysis only</div>
+      <div><strong>Model:</strong> V10 · <strong>Data:</strong> 11,858 completed Prozorro fuel tenders, 2022–05 Oct 2026 · <strong>Scope:</strong> Ukraine, ≥ UAH 1m · <strong>AI:</strong> public tender-page analysis only</div>
       <div class="footer-credit">Solution by Good Spending</div>
     </footer>
   </main>
