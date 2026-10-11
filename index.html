@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ЄВРО5 | Tender Bid Assistant V10</title>
+  <title>ЄВРО5 | Асистент тендерної пропозиції V10</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -16,14 +16,14 @@
       <div class="brand-lockup">
         <div class="brand-mark-wrap"><img class="brand-mark" src="euro5-logo.png" alt="ЄВРО5" /></div>
         <div class="hero-copy">
-          <div class="eyebrow">ЄВРО5 · PROCUREMENT ANALYTICS</div>
-          <h1>Tender Bid Assistant <span>V10</span></h1>
-          <p>AI-витяг даних тендера з обов'язковою перевіркою користувачем та V10-калькулятор тендерної пропозиції.</p>
+          <div class="eyebrow">ЄВРО5 · АНАЛІТИКА ЗАКУПІВЕЛЬ</div>
+          <h1>Асистент тендерної пропозиції <span>V10</span></h1>
+          <p>Автоматична перевірка сфери V10, витяг даних тендера за допомогою ШІ з обов'язковим підтвердженням користувача та калькулятор тендерної пропозиції V10.</p>
         </div>
       </div>
       <div class="hero-meta">
         <div class="scope-badge">Україна · ≥ 1 млн грн · без ПДВ</div>
-        <div class="powered">Solution by Good Spending</div>
+        <div class="powered">Рішення від Good Spending</div>
       </div>
     </header>
 
@@ -32,19 +32,18 @@
         <div>
           <div class="eyebrow ai-eyebrow">КРОК 1 · PROZORRO</div>
           <h2>Завантажте тендер за ID</h2>
-          <p>Введіть ID закупівлі. Система завантажить публічну сторінку Prozorro та витягне доступні дані для подальшої перевірки.</p>
+          <p>Введіть ID закупівлі. Система спочатку перевірить CPV та очікувану вартість, а потім виконає витяг доступних даних за допомогою ШІ.</p>
         </div>
-        <span class="beta">BETA</span>
+        <span class="beta">БЕТА</span>
       </div>
       <div class="load-row">
         <div class="field grow">
           <label for="tenderId">ID тендера Prozorro</label>
           <input id="tenderId" type="text" placeholder="UA-2026-09-08-002654-a" autocomplete="off" />
-          <div class="hint">Можна вставити ID лота з суфіксом -L1 — буде використано ID закупівлі.</div>
+          <div class="hint">V10 застосовується лише до валідованих паливних CPV та очікуваної вартості від 1 млн грн без ПДВ.</div>
         </div>
         <div class="load-actions">
           <button id="analyzeBtn" class="btn primary-btn">Завантажити тендер</button>
-          <button id="sampleBtn" class="btn secondary-btn">Тестовий ID</button>
         </div>
       </div>
       <div id="aiStatus" class="status"></div>
@@ -55,7 +54,7 @@
         <div>
           <div class="eyebrow ai-eyebrow">КРОК 2 · ПЕРЕВІРКА</div>
           <h2>Перевірте витягнуті дані</h2>
-          <p>AI-дані не потрапляють у V10 автоматично. Перевірте поля нижче, виправте їх за потреби або прийміть як є.</p>
+          <p>CPV і вартість вже пройшли автоматичну перевірку сфери V10. Перевірте витягнуті поля, виправте їх за потреби або прийміть як є.</p>
         </div>
         <span id="reviewState" class="review-state">ПОТРІБНЕ ПІДТВЕРДЖЕННЯ</span>
       </div>
@@ -64,6 +63,12 @@
         <div><strong id="reviewTenderId">—</strong></div>
         <div id="reviewTenderTitle" class="source-title">—</div>
         <a id="sourceLink" href="#" target="_blank" rel="noopener noreferrer">Відкрити у Prozorro</a>
+      </div>
+
+      <div class="notice eligibility-ok">
+        <strong>Сфера V10 підтверджена.</strong>
+        CPV: <strong id="reviewCpv">—</strong>.
+        <span id="reviewNormalization">—</span>
       </div>
 
       <div class="review-grid">
@@ -75,29 +80,29 @@
             <option value="gasoline">Бензин</option>
             <option value="mixed">Бензин + дизель</option>
           </select>
-          <div class="field-source">AI extraction · editable</div>
+          <div class="field-source">Витяг ШІ · можна редагувати</div>
         </div>
         <div class="field">
-          <label for="reviewExpectedValue">Очікувана вартість, грн</label>
+          <label for="reviewExpectedValue">Очікувана вартість для V10, грн без ПДВ</label>
           <input id="reviewExpectedValue" type="number" min="0" step="1000" />
-          <div class="field-source">AI extraction · перевірте базу ПДВ: <strong id="reviewVatBasis">unknown</strong></div>
+          <div class="field-source">Prozorro: <strong id="reviewRawExpectedValue">—</strong> · база: <strong id="reviewVatBasis">не визначено</strong>. Значення для V10 можна виправити.</div>
         </div>
         <div class="field">
           <label for="reviewGasolineVolume">Обсяг бензину, л</label>
           <input id="reviewGasolineVolume" type="number" min="0" step="1" />
-          <div class="field-source">AI extraction · editable</div>
+          <div class="field-source">Витяг ШІ · можна редагувати</div>
         </div>
         <div class="field">
           <label for="reviewDieselVolume">Обсяг дизеля, л</label>
           <input id="reviewDieselVolume" type="number" min="0" step="1" />
-          <div class="field-source">AI extraction · editable</div>
+          <div class="field-source">Витяг ШІ · можна редагувати</div>
         </div>
       </div>
 
       <div id="volumeNote" class="notice hidden"></div>
 
       <div class="ai-review-details">
-        <div class="friction-line"><span>Competition friction</span><strong id="frictionBadge" class="friction medium">—</strong></div>
+        <div class="friction-line"><span>Рівень бар’єрів участі</span><strong id="frictionBadge" class="friction medium">—</strong></div>
         <div class="flag-columns">
           <div><h3>Виявлені умови</h3><ul id="conditionsList"></ul></div>
           <div><h3>Що перевірити перед ставкою</h3><ul id="actionsList"></ul></div>
@@ -150,7 +155,7 @@
           <p>Для кожної ставки модель показує знижку, тендерну пропозицію, абсолютний прибуток, фактичну маржу та історичну конкурентність.</p>
           <p><strong>Ринок:</strong> 90-денна історія того самого типу пального.</p>
           <p><strong>Очікується 1 учасник:</strong> 730-денна історія завершених тендерів з одним учасником.</p>
-          <p class="muted">AI не змінює цінові криві V10 і не рекомендує ставку.</p>
+          <p class="muted">ШІ не змінює цінові криві V10 і не рекомендує ставку.</p>
         </article>
       </section>
 
@@ -162,9 +167,9 @@
     </section>
 
     <footer>
-      <div class="footer-brand"><img src="euro5-logo.png" alt="ЄВРО5" /><span>ЄВРО5 Tender Bid Assistant</span></div>
-      <div><strong>Model:</strong> V10 · <strong>Data:</strong> 11,858 completed Prozorro fuel tenders, 2022–05 Oct 2026 · <strong>Scope:</strong> Ukraine, ≥ UAH 1m</div>
-      <div class="footer-credit">Solution by Good Spending</div>
+      <div class="footer-brand"><img src="euro5-logo.png" alt="ЄВРО5" /><span>ЄВРО5 · Асистент тендерної пропозиції</span></div>
+      <div><strong>Модель:</strong> V10 · <strong>Процес:</strong> перевірка сфери + перевірка даних ШІ · <strong>Дані:</strong> 11 858 завершених паливних тендерів Prozorro, 2022–05.10.2026 · <strong>Сфера:</strong> Україна, ≥ 1 млн грн</div>
+      <div class="footer-credit">Рішення від Good Spending</div>
     </footer>
   </main>
   <script src="config.js"></script>

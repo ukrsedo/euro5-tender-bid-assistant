@@ -22,19 +22,45 @@ const money = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0});
 const num = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2});
 const tenderIdInput=document.getElementById('tenderId');
 const analyzeBtn=document.getElementById('analyzeBtn');
-const sampleBtn=document.getElementById('sampleBtn');
 const reviewSection=document.getElementById('reviewSection');
 const calculatorSection=document.getElementById('calculatorSection');
 const acceptBtn=document.getElementById('acceptBtn');
 let lastExtraction=null;
 
 function pct(v){ return `${num.format(v)}%`; }
+
+function vatBasisLabel(value){
+  const map={
+    'without VAT':'без ПДВ',
+    'with VAT':'з ПДВ',
+    'unknown':'не визначено',
+    'без ПДВ':'без ПДВ',
+    'з ПДВ':'з ПДВ'
+  };
+  return map[value] || 'не визначено';
+}
+function volumeSourceLabel(value){
+  const map={
+    'public tender page':'публічна сторінка тендера',
+    'not found':'не знайдено',
+    'публічна сторінка тендера':'публічна сторінка тендера',
+    'не знайдено':'не знайдено'
+  };
+  return map[value] || value;
+}
+function frictionLabel(value){
+  const map={
+    'Low':'Низький','Medium':'Середній','High':'Високий',
+    'Низький':'Низький','Середній':'Середній','Високий':'Високий'
+  };
+  return map[value] || 'Середній';
+}
+function frictionClass(value){
+  const label=frictionLabel(value);
+  return label==='Низький'?'low':label==='Високий'?'high':'medium';
+}
 function setNullableNumber(input, value){ input.value=Number.isFinite(Number(value)) ? Number(value) : ''; }
 
-sampleBtn.addEventListener('click',()=>{
-  tenderIdInput.value='UA-2026-09-08-002654-a';
-  tenderIdInput.focus();
-});
 
 analyzeBtn.addEventListener('click', async()=>{
   const status=document.getElementById('aiStatus');
@@ -42,10 +68,10 @@ analyzeBtn.addEventListener('click', async()=>{
   if(!tenderId){status.textContent='Введіть ID тендера Prozorro.';return;}
 
   const api=(window.EURO5_CONFIG?.apiUrl||'').replace(/\/$/,'');
-  if(!api){status.textContent='Worker URL не налаштований у config.js.';return;}
+  if(!api){status.textContent='Адресу сервера не налаштовано у config.js.';return;}
 
   analyzeBtn.disabled=true;
-  status.textContent='Завантажую тендер з Prozorro та виконую AI extraction…';
+  status.textContent='Перевіряю CPV і вартість, потім виконую витяг даних за допомогою ШІ…';
   reviewSection.classList.add('hidden');
   calculatorSection.classList.add('hidden');
 
@@ -56,7 +82,10 @@ analyzeBtn.addEventListener('click', async()=>{
       body:JSON.stringify({tenderId})
     });
     const data=await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    if(!res.ok){
+      const prefix=res.status===422?'Поза сферою V10: ':'';
+      throw new Error(prefix + (data.detail || data.error || `HTTP ${res.status}`));
+    }
     lastExtraction=data;
     renderReview(data);
     status.textContent='Дані завантажено. Перевірте Крок 2.';
@@ -74,7 +103,10 @@ function renderReview(data){
   document.getElementById('reviewState').classList.remove('accepted');
   document.getElementById('reviewTenderId').textContent=data.tender_id || '—';
   document.getElementById('reviewTenderTitle').textContent=data.tender_title || 'Назву не знайдено';
-  document.getElementById('reviewVatBasis').textContent=data.vat_basis || 'unknown';
+  document.getElementById('reviewVatBasis').textContent=vatBasisLabel(data.vat_basis);
+  document.getElementById('reviewCpv').textContent=data.cpv_code || '—';
+  document.getElementById('reviewRawExpectedValue').textContent=Number.isFinite(Number(data.expected_value_raw_uah)) ? `${money.format(Number(data.expected_value_raw_uah))} грн` : '—';
+  document.getElementById('reviewNormalization').textContent=data.normalization_note || data.scope_note || '';
 
   const sourceLink=document.getElementById('sourceLink');
   sourceLink.href=data.source_url || '#';
@@ -87,15 +119,16 @@ function renderReview(data){
 
   const note=document.getElementById('volumeNote');
   const volumeParts=[];
-  if(data.volume_source) volumeParts.push(`Джерело обсягу: ${data.volume_source}.`);
+  if(data.volume_source) volumeParts.push(`Джерело обсягу: ${volumeSourceLabel(data.volume_source)}.`);
   if(data.volume_note) volumeParts.push(data.volume_note);
   note.textContent=volumeParts.join(' ');
   note.classList.toggle('hidden',!volumeParts.length);
 
   const badge=document.getElementById('frictionBadge');
-  const level=(data.competition_friction||'Medium').toLowerCase();
-  badge.className=`friction ${level}`;
-  badge.textContent=data.competition_friction||'Medium';
+  const rawLevel=data.competition_friction||'Середній';
+  const levelClass=frictionClass(rawLevel);
+  badge.className=`friction ${levelClass}`;
+  badge.textContent=frictionLabel(rawLevel);
 
   fillList('conditionsList',data.conditions,'На публічній сторінці істотні обмеження не виявлені.');
   fillList('actionsList',data.actions,'Перевірте тендерну документацію перед поданням пропозиції.');
