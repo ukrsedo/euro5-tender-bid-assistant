@@ -19,6 +19,7 @@ const POSITIONS = [
 ];
 
 const money = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0});
+const grouped = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2});
 const num = new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2});
 const tenderIdInput=document.getElementById('tenderId');
 const analyzeBtn=document.getElementById('analyzeBtn');
@@ -48,18 +49,20 @@ function volumeSourceLabel(value){
   };
   return map[value] || value;
 }
-function frictionLabel(value){
-  const map={
-    'Low':'Низький','Medium':'Середній','High':'Високий',
-    'Низький':'Низький','Середній':'Середній','Високий':'Високий'
-  };
-  return map[value] || 'Середній';
+function parseGroupedNumber(value){
+  const cleaned=String(value??'').replace(/[\s\u00A0\u202F]/g,'').replace(',', '.').replace(/[^0-9.\-]/g,'');
+  const n=Number(cleaned);
+  return Number.isFinite(n)?n:0;
 }
-function frictionClass(value){
-  const label=frictionLabel(value);
-  return label==='Низький'?'low':label==='Високий'?'high':'medium';
+function formatGrouped(value){
+  const n=typeof value==='number'?value:parseGroupedNumber(value);
+  return Number.isFinite(n)&&String(value??'').trim()!=='' ? grouped.format(n) : '';
 }
-function setNullableNumber(input, value){ input.value=Number.isFinite(Number(value)) ? Number(value) : ''; }
+function setGroupedNumber(input,value){ input.value=Number.isFinite(Number(value)) ? formatGrouped(Number(value)) : ''; }
+function installGroupedInput(input){
+  input.addEventListener('blur',()=>{ if(input.value.trim()!=='') input.value=formatGrouped(input.value); });
+}
+
 
 
 analyzeBtn.addEventListener('click', async()=>{
@@ -71,7 +74,7 @@ analyzeBtn.addEventListener('click', async()=>{
   if(!api){status.textContent='Адресу сервера не налаштовано у config.js.';return;}
 
   analyzeBtn.disabled=true;
-  status.textContent='Перевіряю CPV і вартість, потім виконую витяг даних за допомогою ШІ…';
+  status.textContent='Завантажую дані з Prozorro та перевіряю умови тендера…';
   reviewSection.classList.add('hidden');
   calculatorSection.classList.add('hidden');
 
@@ -83,7 +86,7 @@ analyzeBtn.addEventListener('click', async()=>{
     });
     const data=await res.json().catch(()=>({}));
     if(!res.ok){
-      const prefix=res.status===422?'Поза сферою V10: ':'';
+      const prefix=res.status===422?'Тендер не підходить для розрахунку: ':'';
       throw new Error(prefix + (data.detail || data.error || `HTTP ${res.status}`));
     }
     lastExtraction=data;
@@ -113,9 +116,9 @@ function renderReview(data){
   sourceLink.classList.toggle('disabled-link',!data.source_url);
 
   document.getElementById('reviewFuelType').value=['gasoline','diesel','mixed'].includes(data.fuel_type) ? data.fuel_type : '';
-  setNullableNumber(document.getElementById('reviewExpectedValue'),data.expected_value_uah);
-  setNullableNumber(document.getElementById('reviewGasolineVolume'),data.gasoline_volume_l);
-  setNullableNumber(document.getElementById('reviewDieselVolume'),data.diesel_volume_l);
+  setGroupedNumber(document.getElementById('reviewExpectedValue'),data.expected_value_uah);
+  setGroupedNumber(document.getElementById('reviewGasolineVolume'),data.gasoline_volume_l);
+  setGroupedNumber(document.getElementById('reviewDieselVolume'),data.diesel_volume_l);
 
   const note=document.getElementById('volumeNote');
   const volumeParts=[];
@@ -124,14 +127,8 @@ function renderReview(data){
   note.textContent=volumeParts.join(' ');
   note.classList.toggle('hidden',!volumeParts.length);
 
-  const badge=document.getElementById('frictionBadge');
-  const rawLevel=data.competition_friction||'Середній';
-  const levelClass=frictionClass(rawLevel);
-  badge.className=`friction ${levelClass}`;
-  badge.textContent=frictionLabel(rawLevel);
-
-  fillList('conditionsList',data.conditions,'На публічній сторінці істотні обмеження не виявлені.');
-  fillList('actionsList',data.actions,'Перевірте тендерну документацію перед поданням пропозиції.');
+  fillList('conditionsList',data.conditions,'Нетипових або суттєвих умов не виявлено.');
+  fillList('actionsList',data.actions,'Додаткових перевірок за завантаженими даними не потрібно.');
   document.getElementById('sourceScope').textContent=data.source_scope || '';
   document.getElementById('reviewValidation').textContent='';
 }
@@ -145,15 +142,15 @@ function fillList(id,items,fallback){
 function reviewValues(){
   return {
     fuelType:document.getElementById('reviewFuelType').value,
-    expectedValue:Number(document.getElementById('reviewExpectedValue').value||0),
-    gasolineVolume:Number(document.getElementById('reviewGasolineVolume').value||0),
-    dieselVolume:Number(document.getElementById('reviewDieselVolume').value||0)
+    expectedValue:parseGroupedNumber(document.getElementById('reviewExpectedValue').value),
+    gasolineVolume:parseGroupedNumber(document.getElementById('reviewGasolineVolume').value),
+    dieselVolume:parseGroupedNumber(document.getElementById('reviewDieselVolume').value)
   };
 }
 
 function validateReview(v){
   if(!['gasoline','diesel','mixed'].includes(v.fuelType)) return 'Оберіть тип пального.';
-  if(v.expectedValue<1000000) return 'V10 валідована для очікуваної вартості від 1 млн грн. Перевірте суму.';
+  if(v.expectedValue<1000000) return 'Очікувана вартість має бути не менше 1 млн грн без ПДВ.';
   if(v.fuelType==='gasoline' && v.gasolineVolume<=0) return 'Вкажіть обсяг бензину.';
   if(v.fuelType==='diesel' && v.dieselVolume<=0) return 'Вкажіть обсяг дизеля.';
   if(v.fuelType==='mixed' && (v.gasolineVolume<=0 || v.dieselVolume<=0)) return 'Для змішаного тендера потрібні окремі обсяги бензину та дизеля.';
@@ -170,9 +167,9 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('reviewState').classList.add('accepted');
 
   document.getElementById('fuelType').value=v.fuelType;
-  document.getElementById('expectedValue').value=v.expectedValue;
-  document.getElementById('gasolineVolume').value=v.gasolineVolume;
-  document.getElementById('dieselVolume').value=v.dieselVolume;
+  setGroupedNumber(document.getElementById('expectedValue'),v.expectedValue);
+  setGroupedNumber(document.getElementById('gasolineVolume'),v.gasolineVolume);
+  setGroupedNumber(document.getElementById('dieselVolume'),v.dieselVolume);
 
   calculatorSection.classList.remove('hidden');
   recalc();
@@ -184,7 +181,7 @@ const ids = [
   'competitionMode','logistics','riskReserve','minMargin'
 ];
 const el = Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
-function value(id){ return Number(el[id].value || 0); }
+function value(id){ return ['expectedValue','gasolineVolume','dieselVolume'].includes(id) ? parseGroupedNumber(el[id].value) : Number(el[id].value || 0); }
 
 function costsComplete(){
   const fuel=el.fuelType.value;
@@ -240,5 +237,9 @@ function recalc(){
     tbody.appendChild(tr);
   });
 }
+
+
+['reviewExpectedValue','reviewGasolineVolume','reviewDieselVolume','expectedValue','gasolineVolume','dieselVolume']
+  .forEach(id=>installGroupedInput(document.getElementById(id)));
 
 ids.forEach(id=>el[id].addEventListener('input',recalc));

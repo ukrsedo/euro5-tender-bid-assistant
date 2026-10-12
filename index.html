@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ЄВРО5 | Асистент тендерної пропозиції V10</title>
+  <title>ЄВРО5 | Асистент тендерної пропозиції</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,8 +17,8 @@
         <div class="brand-mark-wrap"><img class="brand-mark" src="euro5-logo.png" alt="ЄВРО5" /></div>
         <div class="hero-copy">
           <div class="eyebrow">ЄВРО5 · АНАЛІТИКА ЗАКУПІВЕЛЬ</div>
-          <h1>Асистент тендерної пропозиції <span>V10</span></h1>
-          <p>Автоматична перевірка сфери V10, витяг даних тендера за допомогою ШІ з обов'язковим підтвердженням користувача та калькулятор тендерної пропозиції V10.</p>
+          <h1>Асистент тендерної пропозиції</h1>
+          <p>Завантаження даних тендера з Prozorro, перевірка важливих умов за допомогою ШІ та розрахунок варіантів тендерної пропозиції.</p>
         </div>
       </div>
       <div class="hero-meta">
@@ -32,7 +32,7 @@
         <div>
           <div class="eyebrow ai-eyebrow">КРОК 1 · PROZORRO</div>
           <h2>Завантажте тендер за ID</h2>
-          <p>Введіть ID закупівлі. Система спочатку перевірить CPV та очікувану вартість, а потім виконає витяг доступних даних за допомогою ШІ.</p>
+          <p>Введіть ID закупівлі. Система перевірить, чи підходить тендер для розрахунку, завантажить дані з Prozorro та виділить важливі умови.</p>
         </div>
         <span class="beta">БЕТА</span>
       </div>
@@ -40,7 +40,7 @@
         <div class="field grow">
           <label for="tenderId">ID тендера Prozorro</label>
           <input id="tenderId" type="text" placeholder="UA-2026-09-08-002654-a" autocomplete="off" />
-          <div class="hint">V10 застосовується лише до валідованих паливних CPV та очікуваної вартості від 1 млн грн без ПДВ.</div>
+          <div class="hint">Розрахунок застосовується до тендерів на бензин і дизельне паливо з очікуваною вартістю від 1 млн грн без ПДВ.</div>
         </div>
         <div class="load-actions">
           <button id="analyzeBtn" class="btn primary-btn">Завантажити тендер</button>
@@ -54,7 +54,7 @@
         <div>
           <div class="eyebrow ai-eyebrow">КРОК 2 · ПЕРЕВІРКА</div>
           <h2>Перевірте витягнуті дані</h2>
-          <p>CPV і вартість вже пройшли автоматичну перевірку сфери V10. Перевірте витягнуті поля, виправте їх за потреби або прийміть як є.</p>
+          <p>CPV і очікувана вартість уже перевірені автоматично. Перегляньте завантажені дані, виправте їх за потреби або прийміть як є.</p>
         </div>
         <span id="reviewState" class="review-state">ПОТРІБНЕ ПІДТВЕРДЖЕННЯ</span>
       </div>
@@ -66,7 +66,7 @@
       </div>
 
       <div class="notice eligibility-ok">
-        <strong>Сфера V10 підтверджена.</strong>
+        <strong>Тендер підходить для розрахунку.</strong>
         CPV: <strong id="reviewCpv">—</strong>.
         <span id="reviewNormalization">—</span>
       </div>
@@ -80,32 +80,32 @@
             <option value="gasoline">Бензин</option>
             <option value="mixed">Бензин + дизель</option>
           </select>
-          <div class="field-source">Витяг ШІ · можна редагувати</div>
+          <div class="field-source">Завантажено автоматично · можна редагувати</div>
         </div>
         <div class="field">
-          <label for="reviewExpectedValue">Очікувана вартість для V10, грн без ПДВ</label>
-          <input id="reviewExpectedValue" type="number" min="0" step="1000" />
-          <div class="field-source">Prozorro: <strong id="reviewRawExpectedValue">—</strong> · база: <strong id="reviewVatBasis">не визначено</strong>. Значення для V10 можна виправити.</div>
+          <label for="reviewExpectedValue">Очікувана вартість, грн без ПДВ</label>
+          <input id="reviewExpectedValue" type="text" inputmode="numeric" />
+          <div class="field-source">Prozorro: <strong id="reviewRawExpectedValue">—</strong> · база: <strong id="reviewVatBasis">не визначено</strong>. За потреби значення можна виправити.</div>
         </div>
         <div class="field">
           <label for="reviewGasolineVolume">Обсяг бензину, л</label>
-          <input id="reviewGasolineVolume" type="number" min="0" step="1" />
-          <div class="field-source">Витяг ШІ · можна редагувати</div>
+          <input id="reviewGasolineVolume" type="text" inputmode="numeric" />
+          <div class="field-source">Завантажено автоматично · можна редагувати</div>
         </div>
         <div class="field">
           <label for="reviewDieselVolume">Обсяг дизеля, л</label>
-          <input id="reviewDieselVolume" type="number" min="0" step="1" />
-          <div class="field-source">Витяг ШІ · можна редагувати</div>
+          <input id="reviewDieselVolume" type="text" inputmode="numeric" />
+          <div class="field-source">Завантажено автоматично · можна редагувати</div>
         </div>
       </div>
 
       <div id="volumeNote" class="notice hidden"></div>
 
       <div class="ai-review-details">
-        <div class="friction-line"><span>Рівень бар’єрів участі</span><strong id="frictionBadge" class="friction medium">—</strong></div>
+        <h3>Умови, на які варто звернути увагу</h3>
         <div class="flag-columns">
-          <div><h3>Виявлені умови</h3><ul id="conditionsList"></ul></div>
-          <div><h3>Що перевірити перед ставкою</h3><ul id="actionsList"></ul></div>
+          <div><h3>Нетипові або суттєві умови</h3><ul id="conditionsList"></ul></div>
+          <div><h3>Що потрібно зробити перед участю</h3><ul id="actionsList"></ul></div>
         </div>
       </div>
 
@@ -121,15 +121,15 @@
         <article class="card">
           <div class="eyebrow ai-eyebrow">КРОК 3 · ЕКОНОМІКА</div>
           <h2>Дані тендера та ЄВРО5</h2>
-          <div class="accepted-note">Підтверджені дані з Кроку 2 можна додатково змінити тут. Результат V10 перераховується одразу.</div>
+          <div class="accepted-note">Підтверджені дані з Кроку 2 можна додатково змінити тут. Результат перераховується одразу.</div>
           <div class="field"><label for="fuelType">Тип закупівлі</label><select id="fuelType"><option value="diesel">Дизельне паливо</option><option value="gasoline">Бензин</option><option value="mixed">Бензин + дизель</option></select></div>
-          <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="number" min="1000000" step="1000" /><div id="scopeWarning" class="hint error hidden">V10 валідована для тендерів від 1 млн грн.</div></div>
+          <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="text" inputmode="numeric" /><div id="scopeWarning" class="hint error hidden">Розрахунок застосовується до тендерів від 1 млн грн без ПДВ.</div></div>
           <div class="two-col">
-            <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="number" min="0" step="1" /></div>
+            <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="text" inputmode="numeric" /></div>
             <div class="field"><label for="gasolineCost">Собівартість бензину, грн/л без ПДВ</label><input id="gasolineCost" type="number" min="0" step="0.01" placeholder="Введіть" /></div>
           </div>
           <div class="two-col">
-            <div class="field"><label for="dieselVolume">Обсяг дизеля, л</label><input id="dieselVolume" type="number" min="0" step="1" /></div>
+            <div class="field"><label for="dieselVolume">Обсяг дизеля, л</label><input id="dieselVolume" type="text" inputmode="numeric" /></div>
             <div class="field"><label for="dieselCost">Собівартість дизеля, грн/л без ПДВ</label><input id="dieselCost" type="number" min="0" step="0.01" placeholder="Введіть" /></div>
           </div>
           <div class="field"><label for="competitionMode">Формат конкуренції</label><select id="competitionMode"><option value="market">Ринок</option><option value="n1">Очікується 1 учасник</option></select></div>
@@ -151,16 +151,16 @@
         </article>
 
         <article class="card explainer">
-          <h2>Що показує V10</h2>
-          <p>Для кожної ставки модель показує знижку, тендерну пропозицію, абсолютний прибуток, фактичну маржу та історичну конкурентність.</p>
+          <h2>Що показує розрахунок</h2>
+          <p>Для кожного варіанта система показує знижку, тендерну пропозицію, абсолютний прибуток, фактичну маржу та історичну конкурентність.</p>
           <p><strong>Ринок:</strong> 90-денна історія того самого типу пального.</p>
           <p><strong>Очікується 1 учасник:</strong> 730-денна історія завершених тендерів з одним учасником.</p>
-          <p class="muted">ШІ не змінює цінові криві V10 і не рекомендує ставку.</p>
+          <p class="muted">ШІ не змінює розрахунок ціни та не рекомендує, яку ставку обрати.</p>
         </article>
       </section>
 
       <section class="card results-card">
-        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 4 · V10</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div></div>
+        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 4 · РОЗРАХУНОК</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
         <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th><th>Зміна прибутку</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
       </section>
@@ -168,7 +168,7 @@
 
     <footer>
       <div class="footer-brand"><img src="euro5-logo.png" alt="ЄВРО5" /><span>ЄВРО5 · Асистент тендерної пропозиції</span></div>
-      <div><strong>Модель:</strong> V10 · <strong>Процес:</strong> перевірка сфери + перевірка даних ШІ · <strong>Дані:</strong> 11 858 завершених паливних тендерів Prozorro, 2022–05.10.2026 · <strong>Сфера:</strong> Україна, ≥ 1 млн грн</div>
+      <div><strong>Процес:</strong> перевірка тендера + перевірка даних ШІ · <strong>Дані:</strong> 11 858 завершених паливних тендерів Prozorro, 2022–05.10.2026 · <strong>Сфера:</strong> Україна, ≥ 1 млн грн</div>
       <div class="footer-credit">Рішення від Good Spending</div>
     </footer>
   </main>
