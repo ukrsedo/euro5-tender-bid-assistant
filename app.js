@@ -442,14 +442,12 @@ function conditionAdjustment(data){
     }
   }else if(Number.isFinite(days) && days>=0){
     let p=0;
-    if(days<=10) p=2;
-    else if(days<=30) p=0;
-    else if(days<=45) p=-1;
-    else if(days<=60) p=-2;
-    else p=-4;
+    if(days<=5) p=2;
+    else if(days<=10) p=0;
+    else p=-2;
     points+=p;
-    if(p!==0) reasons.push({points:p,text:`Післяплата ${money.format(days)} днів ${p>0?'краща':'гірша'} за стандартні 30 днів.`});
-    else reasons.push({points:0,text:`Післяплата ${money.format(days)} днів — стандартна умова, без коригування рейтингу.`});
+    if(p!==0) reasons.push({points:p,text:`Післяплата ${money.format(days)} днів ${p>0?'краща':'гірша'} за стандартні 6–10 днів.`});
+    else reasons.push({points:0,text:`Післяплата ${money.format(days)} днів — стандартна для паливних тендерів умова, без коригування рейтингу.`});
   }
 
   const bidSec=Number(data?.bid_security_pct);
