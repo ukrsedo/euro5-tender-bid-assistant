@@ -100,6 +100,11 @@
       </div>
 
       <div id="volumeNote" class="notice hidden"></div>
+      <div id="marketComparisonReview" class="market-comparison hidden">
+        <span>Бюджет замовника до ринку</span>
+        <strong id="marketComparisonReviewValue">—</strong>
+        <div id="marketComparisonReviewText" class="market-comparison-text"></div>
+      </div>
 
       <div class="ai-review-details">
         <h3>Умови, на які варто звернути увагу</h3>
@@ -145,6 +150,8 @@
             <div class="metric"><span>Вартість пального</span><strong id="fuelCostTotal">—</strong></div>
             <div class="metric"><span>Резерв на ризики</span><strong id="riskAmount">—</strong></div>
             <div class="metric"><span>Логістика</span><strong id="logisticsAmount">—</strong></div>
+            <div class="metric market-metric"><span>Бюджет замовника до ринку</span><strong id="budgetVsMarket">—</strong></div>
+            <div id="marketComparisonNote" class="market-note">Порівняння з ринковою вартістю такого самого обсягу на дату оголошення тендера.</div>
             <div class="metric primary"><span>Повна собівартість</span><strong id="fullCost">—</strong></div>
             <div class="metric"><span>Мін. пропозиція для маржі</span><strong id="minBid">—</strong></div>
           </div>
@@ -155,16 +162,38 @@
           <p>Для кожного варіанта система показує знижку, тендерну пропозицію, абсолютний прибуток, фактичну маржу та історичну конкурентність.</p>
           <p><strong>Ринок:</strong> 90-денна історія того самого типу пального.</p>
           <p><strong>Очікується 1 учасник:</strong> 730-денна історія завершених тендерів з одним учасником.</p>
+          <p><strong>Бюджет замовника до ринку:</strong> показує, на скільки очікувана вартість відрізняється від ринкової вартості такого самого обсягу пального на дату оголошення.</p>
           <p class="muted">ШІ не змінює розрахунок ціни та не рекомендує, яку ставку обрати.</p>
+          <div class="how-to-use">
+            <h3>Як користуватися</h3>
+            <ol>
+              <li>Завантажте тендер за ID Prozorro.</li>
+              <li>Перевірте автоматично завантажені дані та виправте їх, якщо потрібно.</li>
+              <li>Введіть собівартість пального, логістику, резерв на ризики та мінімальну маржу.</li>
+              <li>Оберіть формат конкуренції та порівняйте чотири варіанти ставки.</li>
+              <li>Після остаточної перевірки вивантажте звіт у PDF.</li>
+            </ol>
+          </div>
         </article>
       </section>
 
       <section class="card results-card">
-        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 4 · РОЗРАХУНОК</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div></div>
+        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 4 · РОЗРАХУНОК</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
-        <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th><th>Зміна прибутку</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+      </section>
+
+      <section class="methodology-footnotes">
+        <h3>Методологія</h3>
+        <p><sup>1</sup> Розрахунок побудовано на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026. Для звичайного ринку використовується свіжа 90-денна історія того самого типу пального; для сценарію одного учасника — 730-денна історія тендерів з одним учасником.</p>
+        <p><sup>2</sup> «Історична конкурентність» показує, у якій частці контрольних завершених тендерів така ціна була б не вищою за фактичну ціну переможця. Це не ймовірність перемоги конкретного тендера.</p>
+        <p><sup>3</sup> «Бюджет замовника до ринку» порівнює очікувану вартість без ПДВ із ринковою вартістю такого самого обсягу на дату оголошення. Для ринкового орієнтира використовуються середні ціни Minfin / Консалтингової групи А-95; ціни джерела з ПДВ перераховуються на базу без ПДВ. Показник не є собівартістю ЄВРО5.</p>
+        <p><sup>4</sup> Змішані тендери розраховуються як окрема група. Обсяги бензину та дизельного пального користувач підтверджує до розрахунку.</p>
+        <p><sup>5</sup> Автоматичний аналіз умов тендера є допоміжним. Остаточні дані та рішення щодо участі підтверджує користувач.</p>
       </section>
     </section>
+
+    <section id="pdfReport" class="pdf-report" aria-hidden="true"></section>
 
     <footer>
       <div class="footer-brand"><img src="euro5-logo.png" alt="ЄВРО5" /><span>ЄВРО5 · Асистент тендерної пропозиції</span></div>
