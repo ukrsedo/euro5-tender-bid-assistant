@@ -17,3 +17,21 @@ footer{font-size:11px;color:#7a8799;text-align:center;padding:14px 0 4px;display
 
 .recommendation-card{margin-bottom:18px;border-top:4px solid var(--blue)}
 .score-badge{display:flex;align-items:baseline;gap:3px;padding:10px 14px;border-radius:12px;background:#eef4ff;color:var(--blue-dark);white-space:nowrap}.score-badge strong{font-size:30px;line-height:1}.score-badge span{font-size:13px;font-weight:700}.recommendation-title{font-size:21px;font-weight:800;margin:5px 0 6px;color:var(--blue-dark)}.recommendation-title.good{color:var(--good)}.recommendation-title.warn{color:var(--warn)}.recommendation-title.bad{color:var(--bad)}.recommendation-summary{margin:0 0 16px;font-size:13px;line-height:1.5;color:#42516a}.rating-breakdown{border-top:1px solid var(--border)}.rating-row{display:grid;grid-template-columns:1fr auto;gap:18px;padding:13px 0;border-bottom:1px solid #edf1f6}.rating-label{display:flex;flex-direction:column;gap:4px}.rating-label strong{font-size:13px;color:#203756}.rating-label span{font-size:11.5px;color:var(--muted);line-height:1.45}.rating-points{font-size:16px;font-weight:800;color:var(--blue-dark);align-self:center;white-space:nowrap}.condition-row .rating-points{color:#42516a}.recommendation-warnings{margin-top:14px}.recommendation-warnings h3{margin:0 0 8px;color:#364b69}.recommendation-warnings ul{margin:0;padding-left:20px}.recommendation-warnings li{font-size:12px;line-height:1.45;margin:5px 0}.pdf-recommendation{margin:10px 0 14px;padding:10px;border:1px solid #dbe5f2;border-radius:6px}.pdf-score{display:flex;align-items:baseline;gap:10px;margin-bottom:5px}.pdf-score strong{font-size:20px;color:#173f72}.pdf-score span{font-size:13px;font-weight:700}.pdf-recommendation p{font-size:9.5px;margin:4px 0 8px}.pdf-recommendation ul{margin:6px 0 0;padding-left:17px}.pdf-recommendation li{font-size:8.5px;margin:2px 0}@media(max-width:600px){.rating-row{grid-template-columns:1fr}.rating-points{justify-self:start}.score-badge{align-self:flex-start}}
+
+.competition-forecast{margin:12px 0 18px;padding:15px 16px;border:1px solid #dce5f1;border-radius:10px;background:#fbfcfe}
+.competition-forecast-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.competition-kicker{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}.competition-forecast-head strong{font-size:14px;color:var(--blue-dark);line-height:1.4}
+.competition-bars{display:grid;gap:9px}.competition-bar-row{display:grid;grid-template-columns:120px 1fr 52px;gap:10px;align-items:center;font-size:12px}.competition-bar-row>span{color:#42516a}.competition-bar-row>strong{text-align:right;color:var(--blue-dark)}
+.competition-bar-track{height:8px;border-radius:999px;background:#e8eef6;overflow:hidden}.competition-bar-fill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--blue-bright));border-radius:999px;transition:width .25s ease}
+.competition-note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:9px}.pdf-competition{margin:8px 0 12px;padding:9px 10px;border:1px solid #dbe5f2;border-radius:6px}.pdf-competition h3{margin:0 0 7px}.pdf-competition p{font-size:8.5px;line-height:1.4;margin:4px 0}
+@media(max-width:600px){.competition-bar-row{grid-template-columns:95px 1fr 46px}}
+
+.review-terms{margin:18px 0;padding:16px;border:1px solid #dce5f1;border-radius:10px;background:#fbfcfe}
+.review-terms h3{margin:0 0 5px;color:var(--blue-dark)}
+.terms-intro{font-size:12px;line-height:1.5;margin:0 0 14px}
+.terms-grid{grid-template-columns:repeat(3,1fr)}
+.competition-mode-choice{margin-top:14px;padding-top:12px;border-top:1px solid #e4eaf2}
+.calculate-actions{display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.calculate-actions .btn{min-width:180px}
+input[readonly],select:disabled{background:#f2f5f9;color:#34445a;cursor:not-allowed}
+@media(max-width:1050px){.terms-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.terms-grid{grid-template-columns:1fr}.calculate-actions{align-items:stretch;flex-direction:column}.calculate-actions .btn{width:100%}}

@@ -27,7 +27,12 @@ const reviewSection=document.getElementById('reviewSection');
 const calculatorSection=document.getElementById('calculatorSection');
 const acceptBtn=document.getElementById('acceptBtn');
 const exportPdfBtn=document.getElementById('exportPdfBtn');
+const calculateBtn=document.getElementById('calculateBtn');
+const recommendationCard=document.getElementById('recommendationCard');
+const resultsCard=document.getElementById('resultsCard');
 let lastExtraction=null;
+let confirmedData=null;
+let calculationIsCurrent=false;
 
 function pct(v){ return `${num.format(v)}%`; }
 
@@ -62,6 +67,43 @@ function formatGrouped(value){
 function setGroupedNumber(input,value){ input.value=Number.isFinite(Number(value)) ? formatGrouped(Number(value)) : ''; }
 function installGroupedInput(input){
   input.addEventListener('blur',()=>{ if(input.value.trim()!=='') input.value=formatGrouped(input.value); });
+}
+
+function nullableNumber(id){
+  const raw=document.getElementById(id).value.trim();
+  if(raw==='') return null;
+  const n=Number(raw.replace(',', '.'));
+  return Number.isFinite(n)?n:null;
+}
+function nullableBoolean(id){
+  const raw=document.getElementById(id).value;
+  if(raw==='true') return true;
+  if(raw==='false') return false;
+  return null;
+}
+function setNullableNumber(id,value){
+  document.getElementById(id).value=Number.isFinite(Number(value))?String(Number(value)):'';
+}
+function setNullableBoolean(id,value){
+  document.getElementById(id).value=value===true?'true':value===false?'false':'';
+}
+function recommendedCompetitionMode(data){
+  const fc=data?.competition_forecast;
+  const one=Number(fc?.one_participant_pct);
+  const two=Number(fc?.two_plus_participants_pct);
+  if(Number.isFinite(one) && Number.isFinite(two)) return one>two?'n1':'market';
+  return 'market';
+}
+function activeTenderData(){
+  return confirmedData || lastExtraction;
+}
+function invalidateCalculation(){
+  calculationIsCurrent=false;
+  recommendationCard.classList.add('hidden');
+  resultsCard.classList.add('hidden');
+  exportPdfBtn.disabled=true;
+  const status=document.getElementById('calculateStatus');
+  if(status) status.textContent='Дані змінено. Натисніть «Розрахувати», щоб оновити результат.';
 }
 
 function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType){
@@ -104,6 +146,31 @@ function renderReviewMarket(){
 }
 
 
+function renderCompetitionForecast(data){
+  const box=document.getElementById('competitionForecast');
+  const fc=data?.competition_forecast;
+  if(!fc || !Number.isFinite(Number(fc.one_participant_pct)) || !Number.isFinite(Number(fc.two_plus_participants_pct))){
+    box.classList.add('hidden');
+    return;
+  }
+  const one=Number(fc.one_participant_pct);
+  const two=Number(fc.two_plus_participants_pct);
+  box.classList.remove('hidden');
+  document.getElementById('competitionConclusion').textContent=fc.conclusion || '—';
+  document.getElementById('competitionOnePct').textContent=`${num.format(one)}%`;
+  document.getElementById('competitionTwoPct').textContent=`${num.format(two)}%`;
+  document.getElementById('competitionOneBar').style.width=`${Math.max(0,Math.min(100,one))}%`;
+  document.getElementById('competitionTwoBar').style.width=`${Math.max(0,Math.min(100,two))}%`;
+  document.getElementById('competitionHistoryNote').textContent=fc.history_note || '';
+  const mode=recommendedCompetitionMode(data);
+  document.getElementById('reviewCompetitionMode').value=mode;
+  document.getElementById('competitionModeReason').textContent=
+    mode==='n1'
+      ? `Рекомендація системи: «Очікується 1 учасник», оскільки цей сценарій має вищу прогнозовану ймовірність (${num.format(one)}%). За потреби змініть його вручну.`
+      : `Рекомендація системи: «Ринок», оскільки сценарій двох або більше учасників має вищу прогнозовану ймовірність (${num.format(two)}%). За потреби змініть його вручну.`;
+}
+
+
 analyzeBtn.addEventListener('click', async()=>{
   const status=document.getElementById('aiStatus');
   const tenderId=tenderIdInput.value.trim();
@@ -116,6 +183,10 @@ analyzeBtn.addEventListener('click', async()=>{
   status.textContent='Завантажую дані з Prozorro та перевіряю умови тендера…';
   reviewSection.classList.add('hidden');
   calculatorSection.classList.add('hidden');
+  recommendationCard.classList.add('hidden');
+  resultsCard.classList.add('hidden');
+  confirmedData=null;
+  calculationIsCurrent=false;
 
   try{
     const res=await fetch(`${api}/tender-check`,{
@@ -159,6 +230,17 @@ function renderReview(data){
   setGroupedNumber(document.getElementById('reviewGasolineVolume'),data.gasoline_volume_l);
   setGroupedNumber(document.getElementById('reviewDieselVolume'),data.diesel_volume_l);
 
+  setNullableNumber('reviewAdvancePaymentPct',data.advance_payment_pct);
+  setNullableNumber('reviewPaymentDays',data.payment_days);
+  setNullableNumber('reviewBidSecurityPct',data.bid_security_pct);
+  setNullableNumber('reviewPerformanceSecurityPct',data.performance_security_pct);
+  setNullableNumber('reviewDeliveryDays',data.delivery_days);
+  setNullableNumber('reviewMinStations',data.min_stations);
+  setNullableNumber('reviewMaxRadiusKm',data.max_radius_km);
+  setNullableBoolean('reviewNationwideCoverage',data.nationwide_coverage);
+  setNullableBoolean('reviewAdvancePaymentGuarantee',data.advance_payment_guarantee);
+  document.getElementById('reviewNamedNetwork').value=data.named_network || '';
+
   const note=document.getElementById('volumeNote');
   const volumeParts=[];
   if(data.volume_source) volumeParts.push(`Джерело обсягу: ${volumeSourceLabel(data.volume_source)}.`);
@@ -171,6 +253,7 @@ function renderReview(data){
   document.getElementById('sourceScope').textContent=data.source_scope || '';
   document.getElementById('reviewValidation').textContent='';
   renderReviewMarket();
+  renderCompetitionForecast(data);
 }
 
 function fillList(id,items,fallback){
@@ -184,12 +267,24 @@ function reviewValues(){
     fuelType:document.getElementById('reviewFuelType').value,
     expectedValue:parseGroupedNumber(document.getElementById('reviewExpectedValue').value),
     gasolineVolume:parseGroupedNumber(document.getElementById('reviewGasolineVolume').value),
-    dieselVolume:parseGroupedNumber(document.getElementById('reviewDieselVolume').value)
+    dieselVolume:parseGroupedNumber(document.getElementById('reviewDieselVolume').value),
+    competitionMode:document.getElementById('reviewCompetitionMode').value,
+    advance_payment_pct:nullableNumber('reviewAdvancePaymentPct'),
+    payment_days:nullableNumber('reviewPaymentDays'),
+    bid_security_pct:nullableNumber('reviewBidSecurityPct'),
+    performance_security_pct:nullableNumber('reviewPerformanceSecurityPct'),
+    delivery_days:nullableNumber('reviewDeliveryDays'),
+    min_stations:nullableNumber('reviewMinStations'),
+    max_radius_km:nullableNumber('reviewMaxRadiusKm'),
+    nationwide_coverage:nullableBoolean('reviewNationwideCoverage'),
+    advance_payment_guarantee:nullableBoolean('reviewAdvancePaymentGuarantee'),
+    named_network:document.getElementById('reviewNamedNetwork').value.trim() || null
   };
 }
 
 function validateReview(v){
   if(!['gasoline','diesel','mixed'].includes(v.fuelType)) return 'Оберіть тип пального.';
+  if(!['market','n1'].includes(v.competitionMode)) return 'Оберіть режим конкуренції для калькулятора.';
   if(v.expectedValue<1000000) return 'Очікувана вартість має бути не менше 1 млн грн без ПДВ.';
   if(v.fuelType==='gasoline' && v.gasolineVolume<=0) return 'Вкажіть обсяг бензину.';
   if(v.fuelType==='diesel' && v.dieselVolume<=0) return 'Вкажіть обсяг дизеля.';
@@ -202,7 +297,28 @@ acceptBtn.addEventListener('click',()=>{
   const error=validateReview(v);
   const validation=document.getElementById('reviewValidation');
   if(error){validation.textContent=error;validation.classList.add('error-text');return;}
-  validation.textContent='Дані підтверджено.'; validation.classList.remove('error-text');
+
+  confirmedData={
+    ...lastExtraction,
+    fuel_type:v.fuelType,
+    expected_value_uah:v.expectedValue,
+    gasoline_volume_l:v.gasolineVolume,
+    diesel_volume_l:v.dieselVolume,
+    competition_mode:v.competitionMode,
+    advance_payment_pct:v.advance_payment_pct,
+    payment_days:v.payment_days,
+    bid_security_pct:v.bid_security_pct,
+    performance_security_pct:v.performance_security_pct,
+    delivery_days:v.delivery_days,
+    min_stations:v.min_stations,
+    max_radius_km:v.max_radius_km,
+    nationwide_coverage:v.nationwide_coverage,
+    advance_payment_guarantee:v.advance_payment_guarantee,
+    named_network:v.named_network
+  };
+
+  validation.textContent='Показники підтверджено і передано в калькулятор.';
+  validation.classList.remove('error-text');
   document.getElementById('reviewState').textContent='ПІДТВЕРДЖЕНО';
   document.getElementById('reviewState').classList.add('accepted');
 
@@ -210,9 +326,26 @@ acceptBtn.addEventListener('click',()=>{
   setGroupedNumber(document.getElementById('expectedValue'),v.expectedValue);
   setGroupedNumber(document.getElementById('gasolineVolume'),v.gasolineVolume);
   setGroupedNumber(document.getElementById('dieselVolume'),v.dieselVolume);
+  document.getElementById('competitionMode').value=v.competitionMode;
 
+  document.getElementById('gasolineCost').value='';
+  document.getElementById('dieselCost').value='';
+  document.getElementById('totalLitres').textContent=money.format(v.gasolineVolume+v.dieselVolume);
+  document.getElementById('fuelCostTotal').textContent='—';
+  document.getElementById('riskAmount').textContent='—';
+  document.getElementById('logisticsAmount').textContent='—';
+  document.getElementById('fullCost').textContent='—';
+  document.getElementById('minBid').textContent='—';
+  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType);
+  document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
+  document.getElementById('marketComparisonNote').textContent=cmp?marketGapText(cmp.gap):'Ринкове порівняння недоступне.';
+  document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
+
+  recommendationCard.classList.add('hidden');
+  resultsCard.classList.add('hidden');
+  exportPdfBtn.disabled=true;
+  calculationIsCurrent=false;
   calculatorSection.classList.remove('hidden');
-  recalc();
   calculatorSection.scrollIntoView({behavior:'smooth',block:'start'});
 });
 
@@ -346,7 +479,7 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
   const fxKnown=Number.isFinite(fxTrend);
   const fxScore=fxKnown?clamp(2.5-0.5*fxTrend,0,5):2.5;
 
-  const conditions=conditionAdjustment(lastExtraction);
+  const conditions=conditionAdjustment(activeTenderData());
   const base=marginScore+budgetScore+sizeScore+fuelTrendScore+fxScore;
   const total=clamp(base+conditions.points,0,100);
 
@@ -411,6 +544,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
 }
 
 function recalc(){
+  const status=document.getElementById('calculateStatus');
   const expected=value('expectedValue');
   const gasVol=value('gasolineVolume'), gasCost=value('gasolineCost');
   const dieVol=value('dieselVolume'), dieCost=value('dieselCost');
@@ -445,7 +579,23 @@ function recalc(){
 
   document.getElementById('scopeWarning').classList.toggle('hidden', expected>=1000000);
   document.getElementById('costWarning').classList.toggle('hidden',complete);
-  exportPdfBtn.disabled=!complete || expected<1000000;
+
+  if(!complete){
+    status.textContent='Введіть закупівельну собівартість потрібного виду пального.';
+    recommendationCard.classList.add('hidden');
+    resultsCard.classList.add('hidden');
+    exportPdfBtn.disabled=true;
+    calculationIsCurrent=false;
+    return false;
+  }
+  if(expected<1000000){
+    status.textContent='Очікувана вартість менша за 1 млн грн без ПДВ.';
+    recommendationCard.classList.add('hidden');
+    resultsCard.classList.add('hidden');
+    exportPdfBtn.disabled=true;
+    calculationIsCurrent=false;
+    return false;
+  }
 
   const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin')});
@@ -468,6 +618,13 @@ function recalc(){
     tr.title=POSITIONS[i][1];
     tbody.appendChild(tr);
   });
+  recommendationCard.classList.remove('hidden');
+  resultsCard.classList.remove('hidden');
+  exportPdfBtn.disabled=false;
+  calculationIsCurrent=true;
+  status.textContent='Розрахунок виконано.';
+  recommendationCard.scrollIntoView({behavior:'smooth',block:'start'});
+  return true;
 }
 
 function escapeHtml(value){
@@ -479,6 +636,14 @@ function listHtml(items,fallback){
   return `<ul>${arr.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
 }
 
+
+
+function competitionPdfHtml(){
+  const fc=lastExtraction?.competition_forecast;
+  if(!fc) return '';
+  const confirmedMode=activeTenderData()?.competition_mode==='n1'?'Очікується 1 учасник':'Ринок';
+  return `<section class="pdf-competition"><h3>Очікувана конкуренція</h3><div class="pdf-grid"><div><span>Один учасник</span><strong>${num.format(fc.one_participant_pct)}%</strong></div><div><span>Два або більше</span><strong>${num.format(fc.two_plus_participants_pct)}%</strong></div><div><span>Підтверджений режим</span><strong>${escapeHtml(confirmedMode)}</strong></div></div><p>${escapeHtml(fc.conclusion||'')}</p><p>${escapeHtml(fc.history_note||'')}</p></section>`;
+}
 
 function ratingPdfHtml(rating,cmp,expected,minMargin){
   if(!rating) return '';
@@ -519,6 +684,7 @@ function buildPdfReport(){
   report.innerHTML=`
     <div class="pdf-head"><img src="euro5-logo.png" alt="ЄВРО5"><div><h1>Асистент тендерної пропозиції</h1><div>${escapeHtml(lastExtraction?.tender_id||'')}</div></div></div>
     <h2>${escapeHtml(lastExtraction?.tender_title||'Тендер')}</h2>
+    ${competitionPdfHtml()}
     ${ratingPdfHtml(rating,cmp,expected,value('minMargin'))}
     <div class="pdf-grid">
       <div><span>Тип пального</span><strong>${escapeHtml(fuelLabel)}</strong></div>
@@ -541,11 +707,11 @@ function buildPdfReport(){
     </div>
     <h3>Варіанти ставки</h3>
     <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, 30-денний тренд пального, USD/UAH та підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, 30-денний тренд пального, USD/UAH та підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
-  if(exportPdfBtn.disabled) return;
+  if(exportPdfBtn.disabled || !calculationIsCurrent) return;
   buildPdfReport();
   document.body.classList.add('printing-report');
   setTimeout(()=>window.print(),60);
@@ -559,5 +725,8 @@ window.addEventListener('afterprint',()=>document.body.classList.remove('printin
 ['reviewExpectedValue','reviewGasolineVolume','reviewDieselVolume','reviewFuelType']
   .forEach(id=>document.getElementById(id).addEventListener('input',renderReviewMarket));
 
-ids.forEach(id=>el[id].addEventListener('input',recalc));
+['gasolineCost','dieselCost','logistics','riskReserve','minMargin']
+  .forEach(id=>document.getElementById(id).addEventListener('input',invalidateCalculation));
+
+calculateBtn.addEventListener('click',()=>recalc());
 exportPdfBtn.disabled=true;

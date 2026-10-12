@@ -52,9 +52,9 @@
     <section id="reviewSection" class="card review-card hidden">
       <div class="section-head">
         <div>
-          <div class="eyebrow ai-eyebrow">КРОК 2 · ПЕРЕВІРКА</div>
-          <h2>Перевірте витягнуті дані</h2>
-          <p>CPV і очікувана вартість уже перевірені автоматично. Перегляньте завантажені дані, виправте їх за потреби або прийміть як є.</p>
+          <div class="eyebrow ai-eyebrow">КРОК 2 · АВТОМАТИЧНИЙ АНАЛІЗ</div>
+          <h2>Перевірте рекомендовані показники</h2>
+          <p>Prozorro, ШІ та статистичний прогноз сформували попередні значення. Перевірте їх, за потреби виправте і лише потім підтвердьте для передачі в калькулятор.</p>
         </div>
         <span id="reviewState" class="review-state">ПОТРІБНЕ ПІДТВЕРДЖЕННЯ</span>
       </div>
@@ -106,6 +106,94 @@
         <div id="marketComparisonReviewText" class="market-comparison-text"></div>
       </div>
 
+      <div id="competitionForecast" class="competition-forecast hidden">
+        <div class="competition-forecast-head">
+          <div>
+            <span class="competition-kicker">Очікувана конкуренція</span>
+            <strong id="competitionConclusion">—</strong>
+          </div>
+        </div>
+        <div class="competition-bars">
+          <div class="competition-bar-row">
+            <span>Один учасник</span>
+            <div class="competition-bar-track"><div id="competitionOneBar" class="competition-bar-fill"></div></div>
+            <strong id="competitionOnePct">—</strong>
+          </div>
+          <div class="competition-bar-row">
+            <span>Два або більше</span>
+            <div class="competition-bar-track"><div id="competitionTwoBar" class="competition-bar-fill"></div></div>
+            <strong id="competitionTwoPct">—</strong>
+          </div>
+        </div>
+        <div id="competitionHistoryNote" class="competition-note"></div>
+        <div class="competition-mode-choice">
+          <div class="field">
+            <label for="reviewCompetitionMode">Рекомендований режим конкуренції для калькулятора</label>
+            <select id="reviewCompetitionMode">
+              <option value="market">Ринок</option>
+              <option value="n1">Очікується 1 учасник</option>
+            </select>
+            <div id="competitionModeReason" class="field-source">Система підставляє найбільш імовірний сценарій. Його можна змінити перед підтвердженням.</div>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="review-terms">
+        <h3>Комерційні та операційні умови</h3>
+        <p class="muted terms-intro">Ці показники витягнуті автоматично. Виправте їх, якщо документація або ваша перевірка дають інше значення. Підтверджені значення будуть використані в рейтингу участі.</p>
+        <div class="review-grid terms-grid">
+          <div class="field">
+            <label for="reviewAdvancePaymentPct">Передоплата, %</label>
+            <input id="reviewAdvancePaymentPct" type="number" min="0" max="100" step="0.1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="reviewPaymentDays">Післяплата, днів</label>
+            <input id="reviewPaymentDays" type="number" min="0" step="1" placeholder="30" />
+          </div>
+          <div class="field">
+            <label for="reviewBidSecurityPct">Забезпечення пропозиції, %</label>
+            <input id="reviewBidSecurityPct" type="number" min="0" step="0.1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="reviewPerformanceSecurityPct">Забезпечення договору, %</label>
+            <input id="reviewPerformanceSecurityPct" type="number" min="0" step="0.1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="reviewDeliveryDays">Строк поставки, днів</label>
+            <input id="reviewDeliveryDays" type="number" min="0" step="1" placeholder="Не визначено" />
+          </div>
+          <div class="field">
+            <label for="reviewMinStations">Мінімальна кількість АЗС</label>
+            <input id="reviewMinStations" type="number" min="0" step="1" placeholder="Не визначено" />
+          </div>
+          <div class="field">
+            <label for="reviewMaxRadiusKm">Максимальний радіус, км</label>
+            <input id="reviewMaxRadiusKm" type="number" min="0" step="0.1" placeholder="Не визначено" />
+          </div>
+          <div class="field">
+            <label for="reviewNationwideCoverage">Всеукраїнське покриття</label>
+            <select id="reviewNationwideCoverage">
+              <option value="">Не визначено</option>
+              <option value="false">Ні</option>
+              <option value="true">Так</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reviewAdvancePaymentGuarantee">Гарантія на передоплату</label>
+            <select id="reviewAdvancePaymentGuarantee">
+              <option value="">Не визначено</option>
+              <option value="false">Ні</option>
+              <option value="true">Так</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reviewNamedNetwork">Вимога до конкретної мережі / бренду</label>
+            <input id="reviewNamedNetwork" type="text" placeholder="Не визначено" />
+          </div>
+        </div>
+      </div>
+
       <div class="ai-review-details">
         <h3>Умови, на які варто звернути увагу</h3>
         <div class="flag-columns">
@@ -115,7 +203,7 @@
       </div>
 
       <div class="review-actions">
-        <button id="acceptBtn" class="btn primary-btn">Прийняти дані та продовжити</button>
+        <button id="acceptBtn" class="btn primary-btn">Підтвердити показники та перейти до калькулятора</button>
         <span id="reviewValidation" class="status"></span>
       </div>
       <div id="sourceScope" class="source-note"></div>
@@ -124,20 +212,20 @@
     <section id="calculatorSection" class="hidden">
       <section class="grid top-grid">
         <article class="card">
-          <div class="eyebrow ai-eyebrow">КРОК 3 · ЕКОНОМІКА</div>
-          <h2>Дані тендера та ЄВРО5</h2>
-          <div class="accepted-note">Підтверджені дані з Кроку 2 можна додатково змінити тут. Результат перераховується одразу.</div>
-          <div class="field"><label for="fuelType">Тип закупівлі</label><select id="fuelType"><option value="diesel">Дизельне паливо</option><option value="gasoline">Бензин</option><option value="mixed">Бензин + дизель</option></select></div>
-          <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="text" inputmode="numeric" /><div id="scopeWarning" class="hint error hidden">Розрахунок застосовується до тендерів від 1 млн грн без ПДВ.</div></div>
+          <div class="eyebrow ai-eyebrow">КРОК 3 · КАЛЬКУЛЯТОР</div>
+          <h2>Підтверджені дані та собівартість ЄВРО5</h2>
+          <div class="accepted-note">Нижче вже стоять показники, підтверджені на Кроці 2. У калькуляторі ви додаєте лише внутрішню економіку ЄВРО5.</div>
+          <div class="field"><label for="fuelType">Тип закупівлі</label><select id="fuelType" disabled><option value="diesel">Дизельне паливо</option><option value="gasoline">Бензин</option><option value="mixed">Бензин + дизель</option></select></div>
+          <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="text" inputmode="numeric" readonly /><div id="scopeWarning" class="hint error hidden">Розрахунок застосовується до тендерів від 1 млн грн без ПДВ.</div></div>
           <div class="two-col">
-            <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="text" inputmode="numeric" /></div>
+            <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="text" inputmode="numeric" readonly /></div>
             <div class="field"><label for="gasolineCost">Собівартість бензину, грн/л без ПДВ</label><input id="gasolineCost" type="number" min="0" step="0.01" placeholder="Введіть" /></div>
           </div>
           <div class="two-col">
-            <div class="field"><label for="dieselVolume">Обсяг дизеля, л</label><input id="dieselVolume" type="text" inputmode="numeric" /></div>
+            <div class="field"><label for="dieselVolume">Обсяг дизеля, л</label><input id="dieselVolume" type="text" inputmode="numeric" readonly /></div>
             <div class="field"><label for="dieselCost">Собівартість дизеля, грн/л без ПДВ</label><input id="dieselCost" type="number" min="0" step="0.01" placeholder="Введіть" /></div>
           </div>
-          <div class="field"><label for="competitionMode">Формат конкуренції</label><select id="competitionMode"><option value="market">Ринок</option><option value="n1">Очікується 1 учасник</option></select></div>
+          <div class="field"><label for="competitionMode">Підтверджений режим конкуренції</label><select id="competitionMode" disabled><option value="market">Ринок</option><option value="n1">Очікується 1 учасник</option></select></div>
         </article>
 
         <article class="card">
@@ -155,6 +243,10 @@
             <div class="metric primary"><span>Повна собівартість</span><strong id="fullCost">—</strong></div>
             <div class="metric"><span>Мін. пропозиція для маржі</span><strong id="minBid">—</strong></div>
           </div>
+          <div class="calculate-actions">
+            <button id="calculateBtn" class="btn primary-btn">Розрахувати</button>
+            <span id="calculateStatus" class="status">Введіть внутрішні параметри ЄВРО5 і натисніть «Розрахувати».</span>
+          </div>
         </article>
 
         <article class="card explainer">
@@ -163,22 +255,23 @@
           <p><strong>Ринок:</strong> 90-денна історія того самого типу пального.</p>
           <p><strong>Очікується 1 учасник:</strong> 730-денна історія завершених тендерів з одним учасником.</p>
           <p><strong>Бюджет замовника до ринку:</strong> показує, на скільки очікувана вартість відрізняється від ринкової вартості такого самого обсягу пального на дату оголошення.</p>
+          <p><strong>Очікувана конкуренція:</strong> статистична оцінка ймовірності одного учасника або двох і більше. На її основі система рекомендує режим конкуренції, але до калькулятора переходить лише значення, підтверджене користувачем.</p>
           <p><strong>Рекомендація щодо участі:</strong> формується детерміністично з економіки тендера, бюджету відносно ринку, розміру закупівлі, 30-денного тренду пального, USD/UAH та підтверджених умов оплати/участі.</p>
           <p class="muted">ШІ лише витягує факти з тендера. Бали та рекомендація розраховуються за фіксованими правилами.</p>
           <div class="how-to-use">
             <h3>Як користуватися</h3>
             <ol>
               <li>Завантажте тендер за ID Prozorro.</li>
-              <li>Перевірте автоматично завантажені дані та виправте їх, якщо потрібно.</li>
-              <li>Введіть собівартість пального, логістику, резерв на ризики та мінімальну маржу.</li>
-              <li>Оберіть формат конкуренції та порівняйте чотири варіанти ставки.</li>
-              <li>Після остаточної перевірки вивантажте звіт у PDF.</li>
+              <li>Перевірте рекомендовані системою показники, включно з режимом конкуренції та умовами тендера.</li>
+              <li>Підтвердьте або виправте ці показники. Лише підтверджені значення переходять у калькулятор.</li>
+              <li>Додайте собівартість пального, логістику, резерв на ризики та мінімальну маржу.</li>
+              <li>Натисніть «Розрахувати», перегляньте рекомендацію та варіанти ставки, після чого за потреби вивантажте звіт у PDF.</li>
             </ol>
           </div>
         </article>
       </section>
 
-      <section id="recommendationCard" class="card recommendation-card">
+      <section id="recommendationCard" class="card recommendation-card hidden">
         <div class="section-head">
           <div>
             <div class="eyebrow ai-eyebrow">КРОК 4 · РЕКОМЕНДАЦІЯ</div>
@@ -193,7 +286,7 @@
         <div id="recommendationWarnings" class="recommendation-warnings"></div>
       </section>
 
-      <section class="card results-card">
+      <section id="resultsCard" class="card results-card hidden">
         <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 5 · ВАРІАНТИ СТАВКИ</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
         <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
@@ -209,7 +302,8 @@
         <p><sup>6</sup> Рейтинг: маржа при 50% історичної конкурентності — до 40 балів; бюджет замовника проти ринку — до 20; розмір тендера — до 15; 30-денний тренд ціни пального — до 10; зміна USD/UAH за 30 днів — до 5. Умови тендера коригують результат у межах від −10 до +10 балів. Передоплата може додавати бали; довга післяплата, значні гарантії та інші підтверджені обмеження — зменшувати.</p>
         <p><sup>7</sup> Шкала розміру тендера: 1–2 млн грн = 3/15; 2–5 млн = 6/15; 5–10 млн = 9/15; 10–20 млн = 12/15; від 20 млн = 15/15. Для бюджету проти ринку нейтральний рівень — 10/20 при різниці 0%; кожен 1 п.п. різниці додає або віднімає 1 бал у межах 0–20.</p>
         <p><sup>8</sup> Тренд пального оцінюється за зміною ринкової вартості відповідного обсягу за 30 днів до дати оголошення: 0% = 5/10, падіння додає бали, зростання віднімає, у межах 0–10. Валютний фактор так само використовує 30-денну зміну офіційного USD/UAH НБУ: стабільний курс = 2,5/5, зміцнення гривні додає, послаблення віднімає.</p>
-        <p><sup>9</sup> Автоматичний аналіз умов тендера є допоміжним. ШІ витягує факти, але сам не визначає бали. Остаточні дані та рішення щодо участі підтверджує користувач.</p>
+        <p><sup>9</sup> Прогноз конкуренції побудовано окремо від цінової моделі на завершених паливних тендерах тієї самої сфери. Він враховує історію замовника, тип процедури, очікувану вартість, вид пального та формат відпуску. Прогноз формує рекомендований режим «Ринок» або «Очікується 1 учасник». До калькулятора переходить лише режим, який користувач підтвердив або змінив на Кроці 2.</p>
+        <p><sup>10</sup> Автоматичний аналіз умов тендера є допоміжним. ШІ витягує факти, але сам не визначає бали. Остаточні дані та рішення щодо участі підтверджує користувач.</p>
       </section>
     </section>
 
