@@ -55,11 +55,38 @@ function volumeSourceLabel(value){
   };
   return map[value] || value;
 }
-function parseGroupedNumber(value){
-  const cleaned=String(value??'').replace(/[\s\u00A0\u202F]/g,'').replace(',', '.').replace(/[^0-9.\-]/g,'');
-  const n=Number(cleaned);
+function parseFlexibleNumber(value){
+  let s=String(value??'').trim().replace(/[\s\u00A0\u202F]/g,'');
+  if(!s) return 0;
+  s=s.replace(/[^0-9,.-]/g,'');
+
+  const comma=s.lastIndexOf(',');
+  const dot=s.lastIndexOf('.');
+  if(comma>=0 && dot>=0){
+    const decimalSep=comma>dot ? ',' : '.';
+    const thousandSep=decimalSep===',' ? '.' : ',';
+    s=s.split(thousandSep).join('');
+    if(decimalSep===',') s=s.replace(',', '.');
+  }else if(comma>=0){
+    const parts=s.split(',');
+    if(parts.length>2){
+      const dec=parts.pop();
+      s=parts.join('')+'.'+dec;
+    }else{
+      s=s.replace(',', '.');
+    }
+  }else if(dot>=0){
+    const parts=s.split('.');
+    if(parts.length>2){
+      const dec=parts.pop();
+      s=parts.join('')+'.'+dec;
+    }
+  }
+
+  const n=Number(s);
   return Number.isFinite(n)?n:0;
 }
+function parseGroupedNumber(value){ return parseFlexibleNumber(value); }
 function formatGrouped(value){
   const n=typeof value==='number'?value:parseGroupedNumber(value);
   return Number.isFinite(n)&&String(value??'').trim()!=='' ? grouped.format(n) : '';
@@ -68,11 +95,23 @@ function setGroupedNumber(input,value){ input.value=Number.isFinite(Number(value
 function installGroupedInput(input){
   input.addEventListener('blur',()=>{ if(input.value.trim()!=='') input.value=formatGrouped(input.value); });
 }
+function formatDecimalInput(value,maxDecimals=2){
+  const raw=String(value??'').trim();
+  if(raw==='') return '';
+  const n=parseFlexibleNumber(raw);
+  if(!Number.isFinite(n)) return '';
+  return new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:maxDecimals}).format(n);
+}
+function installDecimalInput(input,maxDecimals=2){
+  input.addEventListener('blur',()=>{
+    if(input.value.trim()!=='') input.value=formatDecimalInput(input.value,maxDecimals);
+  });
+}
 
 function nullableNumber(id){
   const raw=document.getElementById(id).value.trim();
   if(raw==='') return null;
-  const n=Number(raw.replace(',', '.'));
+  const n=parseFlexibleNumber(raw);
   return Number.isFinite(n)?n:null;
 }
 function nullableBoolean(id){
@@ -354,7 +393,7 @@ const ids = [
   'competitionMode','logistics','riskReserve','minMargin'
 ];
 const el = Object.fromEntries(ids.map(id=>[id,document.getElementById(id)]));
-function value(id){ return ['expectedValue','gasolineVolume','dieselVolume'].includes(id) ? parseGroupedNumber(el[id].value) : Number(el[id].value || 0); }
+function value(id){ return parseFlexibleNumber(el[id].value); }
 
 function costsComplete(){
   const fuel=el.fuelType.value;
@@ -724,6 +763,11 @@ window.addEventListener('afterprint',()=>document.body.classList.remove('printin
 
 ['reviewExpectedValue','reviewGasolineVolume','reviewDieselVolume','reviewFuelType']
   .forEach(id=>document.getElementById(id).addEventListener('input',renderReviewMarket));
+
+['gasolineCost','dieselCost','logistics'].forEach(id=>installDecimalInput(document.getElementById(id),2));
+['riskReserve','minMargin'].forEach(id=>installDecimalInput(document.getElementById(id),1));
+['reviewAdvancePaymentPct','reviewBidSecurityPct','reviewPerformanceSecurityPct','reviewMaxRadiusKm']
+  .forEach(id=>installDecimalInput(document.getElementById(id),1));
 
 ['gasolineCost','dieselCost','logistics','riskReserve','minMargin']
   .forEach(id=>document.getElementById(id).addEventListener('input',invalidateCalculation));
