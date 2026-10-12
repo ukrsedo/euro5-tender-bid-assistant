@@ -136,6 +136,45 @@ function recommendedCompetitionMode(data){
 function activeTenderData(){
   return confirmedData || lastExtraction;
 }
+
+function supplyFormatLabel(format,gasFormat,dieselFormat){
+  if(format==='bulk') return 'Налив';
+  if(format==='retail') return 'Талони / паливні картки';
+  if(format==='split'){
+    const gl=gasFormat==='bulk'?'налив':gasFormat==='retail'?'талони / картки':'не визначено';
+    const dl=dieselFormat==='bulk'?'налив':dieselFormat==='retail'?'талони / картки':'не визначено';
+    return `Різний формат: бензин — ${gl}; дизель — ${dl}`;
+  }
+  return 'Не визначено';
+}
+function syncSplitSupplyVisibility(){
+  const split=document.getElementById('reviewSupplyFormat').value==='split';
+  document.getElementById('splitSupplyFormats').classList.toggle('hidden',!split);
+}
+function benchmarkFor(format,fuel){
+  if(!lastExtraction) return null;
+  if(format==='retail'){
+    return Number(lastExtraction[`market_retail_${fuel}_price_uah_l_without_vat`]);
+  }
+  if(format==='bulk'){
+    const usable=lastExtraction[`market_wholesale_${fuel}_usable`]===true;
+    if(!usable) return null;
+    return Number(lastExtraction[`market_wholesale_${fuel}_price_uah_l_without_vat`]);
+  }
+  return null;
+}
+function benchmarkDescription(format,gasFormat,dieselFormat){
+  if(format==='bulk'){
+    const d=lastExtraction?.market_wholesale_reference_date;
+    return `Ринковий орієнтир: опт Enkorr${d?` (${d})`:''}.`;
+  }
+  if(format==='retail'){
+    const d=lastExtraction?.market_retail_reference_date;
+    return `Ринковий орієнтир: роздріб Minfin${d?` (${d})`:''}.`;
+  }
+  if(format==='split') return 'Для кожної позиції використовується орієнтир відповідно до її підтвердженого формату постачання.';
+  return '';
+}
 function invalidateCalculation(){
   calculationIsCurrent=false;
   recommendationCard.classList.add('hidden');
@@ -145,10 +184,14 @@ function invalidateCalculation(){
   if(status) status.textContent='Дані змінено. Натисніть «Розрахувати», щоб оновити результат.';
 }
 
-function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType){
+function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType, supplyData=null){
   if(!lastExtraction) return null;
-  const gasPrice=Number(lastExtraction.market_gasoline_price_uah_l_without_vat);
-  const dieselPrice=Number(lastExtraction.market_diesel_price_uah_l_without_vat);
+  const d=supplyData || activeTenderData() || {};
+  const format=d.supplyFormat || d.supply_format || 'unknown';
+  const gasFormat=format==='split'?(d.gasolineSupplyFormat || d.gasoline_supply_format || 'unknown'):format;
+  const dieselFormat=format==='split'?(d.dieselSupplyFormat || d.diesel_supply_format || 'unknown'):format;
+  const gasPrice=benchmarkFor(gasFormat,'gasoline');
+  const dieselPrice=benchmarkFor(dieselFormat,'diesel');
   let marketValue=0;
   if(fuelType==='gasoline'){
     if(!(gasolineVolume>0) || !(gasPrice>0)) return null;
@@ -162,7 +205,7 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType)
   } else return null;
   if(!(expectedValue>0) || !(marketValue>0)) return null;
   const gap=(expectedValue/marketValue-1)*100;
-  return { gap, marketValue };
+  return {gap,marketValue,format,gasFormat,dieselFormat,source:benchmarkDescription(format,gasFormat,dieselFormat)};
 }
 
 function marketGapText(gap){
@@ -174,14 +217,18 @@ function marketGapText(gap){
 function renderReviewMarket(){
   const box=document.getElementById('marketComparisonReview');
   const v=reviewValues();
-  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType);
+  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   if(!cmp){
-    box.classList.add('hidden');
+    box.classList.remove('hidden');
+    document.getElementById('marketComparisonReviewValue').textContent='—';
+    document.getElementById('marketComparisonReviewText').textContent=lastExtraction?.market_comparison_note || (v.supplyFormat==='unknown'?'Оберіть формат постачання, щоб визначити правильний ринковий орієнтир.':'Ринкове порівняння для вибраного формату недоступне.');
+    document.getElementById('marketBenchmarkSource').textContent='';
     return;
   }
   box.classList.remove('hidden');
   document.getElementById('marketComparisonReviewValue').textContent=`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
   document.getElementById('marketComparisonReviewText').textContent=marketGapText(cmp.gap);
+  document.getElementById('marketBenchmarkSource').textContent=cmp.source || '';
 }
 
 
@@ -265,6 +312,11 @@ function renderReview(data){
   sourceLink.classList.toggle('disabled-link',!data.source_url);
 
   document.getElementById('reviewFuelType').value=['gasoline','diesel','mixed'].includes(data.fuel_type) ? data.fuel_type : '';
+  document.getElementById('reviewSupplyFormat').value=['bulk','retail','split'].includes(data.supply_format) ? data.supply_format : 'unknown';
+  document.getElementById('reviewGasolineSupplyFormat').value=['bulk','retail'].includes(data.gasoline_supply_format) ? data.gasoline_supply_format : 'unknown';
+  document.getElementById('reviewDieselSupplyFormat').value=['bulk','retail'].includes(data.diesel_supply_format) ? data.diesel_supply_format : 'unknown';
+  document.getElementById('reviewSupplyFormatSource').textContent=(data.supply_format_source || 'Визначено автоматично') + ' · можна редагувати';
+  syncSplitSupplyVisibility();
   setGroupedNumber(document.getElementById('reviewExpectedValue'),data.expected_value_uah);
   setGroupedNumber(document.getElementById('reviewGasolineVolume'),data.gasoline_volume_l);
   setGroupedNumber(document.getElementById('reviewDieselVolume'),data.diesel_volume_l);
@@ -307,6 +359,9 @@ function reviewValues(){
     expectedValue:parseGroupedNumber(document.getElementById('reviewExpectedValue').value),
     gasolineVolume:parseGroupedNumber(document.getElementById('reviewGasolineVolume').value),
     dieselVolume:parseGroupedNumber(document.getElementById('reviewDieselVolume').value),
+    supplyFormat:document.getElementById('reviewSupplyFormat').value,
+    gasolineSupplyFormat:document.getElementById('reviewGasolineSupplyFormat').value,
+    dieselSupplyFormat:document.getElementById('reviewDieselSupplyFormat').value,
     competitionMode:document.getElementById('reviewCompetitionMode').value,
     advance_payment_pct:nullableNumber('reviewAdvancePaymentPct'),
     payment_days:nullableNumber('reviewPaymentDays'),
@@ -324,6 +379,12 @@ function reviewValues(){
 function validateReview(v){
   if(!['gasoline','diesel','mixed'].includes(v.fuelType)) return 'Оберіть тип пального.';
   if(!['market','n1'].includes(v.competitionMode)) return 'Оберіть режим конкуренції для калькулятора.';
+  if(!['bulk','retail','split'].includes(v.supplyFormat)) return 'Оберіть формат постачання: налив або талони / паливні картки.';
+  if(v.supplyFormat==='split'){
+    if(v.fuelType==='gasoline' && !['bulk','retail'].includes(v.gasolineSupplyFormat)) return 'Оберіть формат постачання бензину.';
+    if(v.fuelType==='diesel' && !['bulk','retail'].includes(v.dieselSupplyFormat)) return 'Оберіть формат постачання дизеля.';
+    if(v.fuelType==='mixed' && (!['bulk','retail'].includes(v.gasolineSupplyFormat) || !['bulk','retail'].includes(v.dieselSupplyFormat))) return 'Для різного формату вкажіть окремо формат бензину та дизеля.';
+  }
   if(v.expectedValue<1000000) return 'Очікувана вартість має бути не менше 1 млн грн без ПДВ.';
   if(v.fuelType==='gasoline' && v.gasolineVolume<=0) return 'Вкажіть обсяг бензину.';
   if(v.fuelType==='diesel' && v.dieselVolume<=0) return 'Вкажіть обсяг дизеля.';
@@ -343,6 +404,9 @@ acceptBtn.addEventListener('click',()=>{
     expected_value_uah:v.expectedValue,
     gasoline_volume_l:v.gasolineVolume,
     diesel_volume_l:v.dieselVolume,
+    supply_format:v.supplyFormat,
+    gasoline_supply_format:v.gasolineSupplyFormat,
+    diesel_supply_format:v.dieselSupplyFormat,
     competition_mode:v.competitionMode,
     advance_payment_pct:v.advance_payment_pct,
     payment_days:v.payment_days,
@@ -366,6 +430,7 @@ acceptBtn.addEventListener('click',()=>{
   setGroupedNumber(document.getElementById('gasolineVolume'),v.gasolineVolume);
   setGroupedNumber(document.getElementById('dieselVolume'),v.dieselVolume);
   document.getElementById('competitionMode').value=v.competitionMode;
+  document.getElementById('confirmedSupplyFormat').value=supplyFormatLabel(v.supplyFormat,v.gasolineSupplyFormat,v.dieselSupplyFormat);
 
   document.getElementById('gasolineCost').value='';
   document.getElementById('dieselCost').value='';
@@ -375,7 +440,7 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('logisticsAmount').textContent='—';
   document.getElementById('fullCost').textContent='—';
   document.getElementById('minBid').textContent='—';
-  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType);
+  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
   document.getElementById('marketComparisonNote').textContent=cmp?marketGapText(cmp.gap):'Ринкове порівняння недоступне.';
   document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
@@ -601,13 +666,13 @@ function recalc(){
   document.getElementById('fullCost').textContent=complete?`${money.format(full)} грн`:'—';
   document.getElementById('minBid').textContent=complete&&Number.isFinite(minBid)?`${money.format(minBid)} грн`:'—';
 
-  const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value);
+  const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const budgetMarket=document.getElementById('budgetVsMarket');
   const marketNote=document.getElementById('marketComparisonNote');
   if(cmp){
     budgetMarket.textContent=`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
     budgetMarket.className=cmp.gap>=0?'market-positive':'market-negative';
-    marketNote.textContent=marketGapText(cmp.gap) + (lastExtraction?.market_reference_date ? ` Ринкова дата: ${lastExtraction.market_reference_date}.` : '');
+    marketNote.textContent=marketGapText(cmp.gap) + (cmp.source ? ` ${cmp.source}` : '');
   }else{
     budgetMarket.textContent='—';
     budgetMarket.className='';
@@ -705,7 +770,7 @@ function buildPdfReport(){
   const risk=fuelCost*(value('riskReserve')/100);
   const logistics=litres*value('logistics');
   const full=fuelCost+risk+logistics;
-  const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value);
+  const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin')});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
@@ -725,13 +790,14 @@ function buildPdfReport(){
     ${ratingPdfHtml(rating,cmp,expected,value('minMargin'))}
     <div class="pdf-grid">
       <div><span>Тип пального</span><strong>${escapeHtml(fuelLabel)}</strong></div>
+      <div><span>Формат постачання</span><strong>${escapeHtml(supplyFormatLabel(activeTenderData()?.supply_format,activeTenderData()?.gasoline_supply_format,activeTenderData()?.diesel_supply_format))}</strong></div>
       <div><span>Очікувана вартість без ПДВ</span><strong>${money.format(expected)} грн</strong></div>
       <div><span>Обсяг бензину</span><strong>${money.format(gasVol)} л</strong></div>
       <div><span>Обсяг дизеля</span><strong>${money.format(dieVol)} л</strong></div>
       <div><span>Формат конкуренції</span><strong>${escapeHtml(modeLabel)}</strong></div>
       <div><span>Бюджет замовника до ринку</span><strong>${cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—'}</strong></div>
     </div>
-    ${cmp?`<p class="pdf-market">${escapeHtml(marketGapText(cmp.gap))}${lastExtraction?.market_reference_date?` Ринкова дата: ${escapeHtml(lastExtraction.market_reference_date)}.`:''}</p>`:''}
+    ${cmp?`<p class="pdf-market">${escapeHtml(marketGapText(cmp.gap))} ${escapeHtml(cmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
     <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${listHtml(lastExtraction?.conditions,'Нетипових або суттєвих умов не виявлено.')}</div><div><h4>Що потрібно зробити перед участю</h4>${listHtml(lastExtraction?.actions,'Додаткових перевірок за завантаженими даними не потрібно.')}</div></div>
     <h3>Економіка ЄВРО5</h3>
@@ -761,6 +827,8 @@ window.addEventListener('afterprint',()=>document.body.classList.remove('printin
 
 ['reviewExpectedValue','reviewGasolineVolume','reviewDieselVolume','reviewFuelType']
   .forEach(id=>document.getElementById(id).addEventListener('input',renderReviewMarket));
+['reviewSupplyFormat','reviewGasolineSupplyFormat','reviewDieselSupplyFormat']
+  .forEach(id=>document.getElementById(id).addEventListener('change',()=>{syncSplitSupplyVisibility();renderReviewMarket();}));
 
 ['gasolineCost','dieselCost','logistics'].forEach(id=>installDecimalInput(document.getElementById(id),2));
 ['riskReserve','minMargin'].forEach(id=>installDecimalInput(document.getElementById(id),1));
