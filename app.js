@@ -253,7 +253,7 @@ function renderCompetitionForecast(data){
   document.getElementById('competitionModeReason').textContent=
     mode==='n1'
       ? `Рекомендація системи: «Очікується 1 учасник», оскільки цей сценарій має вищу прогнозовану ймовірність (${num.format(one)}%). За потреби змініть його вручну.`
-      : `Рекомендація системи: «Ринок», оскільки сценарій двох або більше учасників має вищу прогнозовану ймовірність (${num.format(two)}%). За потреби змініть його вручну.`;
+      : `Рекомендація системи: «Ринок (два або більше постачальників)», оскільки сценарій двох або більше учасників має вищу прогнозовану ймовірність (${num.format(two)}%). За потреби змініть його вручну.`;
 }
 
 
@@ -743,7 +743,7 @@ function listHtml(items,fallback){
 function competitionPdfHtml(){
   const fc=lastExtraction?.competition_forecast;
   if(!fc) return '';
-  const confirmedMode=activeTenderData()?.competition_mode==='n1'?'Очікується 1 учасник':'Ринок';
+  const confirmedMode=activeTenderData()?.competition_mode==='n1'?'Очікується 1 учасник':'Ринок (два або більше постачальників)';
   return `<section class="pdf-competition"><h3>Очікувана конкуренція</h3><div class="pdf-grid"><div><span>Один учасник</span><strong>${num.format(fc.one_participant_pct)}%</strong></div><div><span>Два або більше</span><strong>${num.format(fc.two_plus_participants_pct)}%</strong></div><div><span>Підтверджений режим</span><strong>${escapeHtml(confirmedMode)}</strong></div></div><p>${escapeHtml(fc.conclusion||'')}</p><p>${escapeHtml(fc.history_note||'')}</p></section>`;
 }
 
