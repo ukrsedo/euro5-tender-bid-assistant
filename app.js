@@ -642,7 +642,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
     : `Умови тендера коригують рейтинг на ${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)} балів.`;
 
   breakdown.innerHTML=[
-    scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,`Маржа ${num.format(rating.margin50)}% при мінімально допустимих ${num.format(minMargin)}%. Різниця: ${rating.marginDelta>=0?'+':''}${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа = 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(rating.marginScore)}, у межах 0–40. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`),
+    scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,`Маржа ${num.format(rating.margin50)}% при мінімально допустимих ${num.format(minMargin)}%. Різниця: ${rating.marginDelta>=0?'+':''}${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа, у межах 0–40. Розрахунок: 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(round1(20*rating.margin50/minMargin))}; після обмеження — ${num.format(rating.marginScore)} бала. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`),
     scoreRow('Бюджет замовника проти ринку',rating.budgetScore,20,budgetText),
     scoreRow('Розмір тендера',rating.sizeScore,15,`Очікувана вартість: ${money.format(expected)} грн без ПДВ.`),
     scoreRow('Ціновий ризик за 5 робочих діб',round1(rating.priceRisk.points),15,priceRiskDescription(rating.priceRisk)),
@@ -769,7 +769,7 @@ function competitionPdfHtml(){
 function ratingPdfHtml(rating,cmp,expected,minMargin){
   if(!rating) return '';
   const rows=[
-    ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,`Маржа ${num.format(rating.margin50)}% при мінімумі ${num.format(minMargin)}%. Різниця: ${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа = 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(rating.marginScore)}, у межах 0–40. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`],
+    ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,`Маржа ${num.format(rating.margin50)}% при мінімумі ${num.format(minMargin)}%. Різниця: ${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа, у межах 0–40. Розрахунок: 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(round1(20*rating.margin50/minMargin))}; після обмеження — ${num.format(rating.marginScore)} бала. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`],
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
     ['Ціновий ризик за 5 робочих діб',`${num.format(round1(rating.priceRisk.points))}/15`,priceRiskDescription(rating.priceRisk)],
