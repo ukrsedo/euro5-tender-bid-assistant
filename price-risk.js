@@ -28,7 +28,7 @@
   // Two alternative stress channels on the SAME fuel cost. Taking the larger
   // stress avoids adding FX growth to a UAH fuel price that already embeds FX.
   const safe=model.scenarios.filter(s=>Math.max(s.fuel,s.usd)<=buffer).length;
-  return {ready:true,points:15*safe/count,buffer_pct:buffer,safe_fraction:safe/count,safe_count:safe,total_count:count,model};
+  return {ready:true,points:15*safe/count,bid,total_cost:totalCost,fuel_cost:fuelCost,min_margin:minMargin,cost_buffer_uah:bid*(1-minMargin/100)-totalCost,buffer_pct:buffer,safe_fraction:safe/count,safe_count:safe,total_count:count,model};
  }
  root.Euro5PriceRisk={fit,assess,windows,businessDays};
 })(globalThis);
