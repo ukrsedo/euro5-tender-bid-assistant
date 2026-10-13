@@ -561,6 +561,17 @@ function recommendationFromScore(score,stop){
   return {title:'Не рекомендуємо участь за поточних умов',tone:'bad',summary:'Сукупний рейтинг низький: економічні або ринкові фактори не дають достатньої привабливості.'};
 }
 
+function fxAssessment(value){
+  const trend=value===null||value===undefined||String(value).trim()===''?null:Number(value);
+  if(trend===null||!Number.isFinite(trend))return {trend:null,score:2.5};
+  return {trend,score:clamp(5-0.5*Math.max(trend,0),0,5)};
+}
+function fxDescription(trend){
+  if(trend===null)return '30-денна зміна USD/UAH недоступна; використано нейтральні 2,5/5 бала.';
+  if(trend===0)return 'USD/UAH за 30 днів не змінився. Валютний фактор не знижує рейтинг: 5/5.';
+  return `USD/UAH за 30 днів ${trend<0?'знизився':'зріс'} на ${num.format(Math.abs(trend))}%. ${trend<0?'Зниження не погіршує гривневу вартість закупівлі за долари: 5/5.':'Зростання знижує оцінку на 0,5 бала за кожен 1%.'}`;
+}
+
 function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
   if(!complete || !(expected>=1000000) || !(full>0)) return null;
 
@@ -577,9 +588,8 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
   const fuelTrendKnown=Number.isFinite(fuelTrend);
   const fuelTrendScore=fuelTrendKnown?clamp(5-fuelTrend,0,10):5;
 
-  const fxTrend=Number(lastExtraction?.usd_uah_change_30d_pct);
-  const fxKnown=Number.isFinite(fxTrend);
-  const fxScore=fxKnown?clamp(2.5-0.5*fxTrend,0,5):2.5;
+  const fx=fxAssessment(lastExtraction?.usd_uah_change_30d_pct);
+  const fxTrend=fx.trend,fxKnown=fx.trend!==null,fxScore=fx.score;
 
   const conditions=conditionAdjustment(activeTenderData());
   const base=marginScore+budgetScore+sizeScore+fuelTrendScore+fxScore;
@@ -623,9 +633,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
   const fuelText=rating.fuelTrend===null
     ? '30-денний тренд пального недоступний; використано нейтральні 5/10 балів.'
     : `Ринкова вартість відповідного обсягу за 30 днів ${rating.fuelTrend<0?'знизилась':'зросла'} на ${num.format(Math.abs(rating.fuelTrend))}%.`;
-  const fxText=rating.fxTrend===null
-    ? '30-денна зміна USD/UAH недоступна; використано нейтральні 2,5/5 бала.'
-    : `USD/UAH за 30 днів ${rating.fxTrend<0?'знизився':'зріс'} на ${num.format(Math.abs(rating.fxTrend))}%.`;
+  const fxText=fxDescription(rating.fxTrend);
   const condText=rating.conditions.points===0
     ? 'Підтверджені умови тендера не змінюють рейтинг.'
     : `Умови тендера коригують рейтинг на ${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)} балів.`;
@@ -754,7 +762,7 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
     ['Тренд ціни пального за 30 днів',`${num.format(rating.fuelTrendScore)}/10`,rating.fuelTrend===null?'Дані недоступні; нейтральна оцінка.':`${rating.fuelTrend>=0?'+':''}${num.format(rating.fuelTrend)}%.`],
-    ['Зміна USD/UAH за 30 днів',`${num.format(rating.fxScore)}/5`,rating.fxTrend===null?'Дані недоступні; нейтральна оцінка.':`${rating.fxTrend>=0?'+':''}${num.format(rating.fxTrend)}%.`],
+    ['Зміна USD/UAH за 30 днів',`${num.format(rating.fxScore)}/5`,fxDescription(rating.fxTrend)],
     ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.']
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
   const cond=rating.conditions.reasons.length?`<ul>${rating.conditions.reasons.map(r=>`<li>${r.points>0?'+':''}${num.format(r.points)}: ${escapeHtml(r.text)}</li>`).join('')}</ul>`:'';
