@@ -170,7 +170,8 @@ function benchmarkDescription(format,gasFormat,dieselFormat){
   }
   if(format==='retail'){
     const d=lastExtraction?.market_retail_reference_date;
-    return `Ринковий орієнтир: роздріб Minfin${d?` (${d})`:''}.`;
+    const source=lastExtraction?.market_retail_source||'Minfin';
+    return `Роздрібний орієнтир: ${source}${d?` (${d})`:''}.`;
   }
   if(format==='split') return 'Для кожної позиції використовується орієнтир відповідно до її підтвердженого формату постачання.';
   return '';
@@ -640,7 +641,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
   const budgetText=cmp
     ? `Бюджет замовника ${cmp.gap>=0?'на '+num.format(Math.abs(cmp.gap))+'% вище':'на '+num.format(Math.abs(cmp.gap))+'% нижче'} ринкової вартості відповідного обсягу.`
     : 'Ринкове порівняння недоступне; використано нейтральні 10/20 балів.';
-  const fuelText=fuelTrendDescription(rating.fuelTrend);
+  const fuelText=fuelTrendDescription(rating.fuelTrend)+(lastExtraction?.fuel_market_trend_note?' '+lastExtraction.fuel_market_trend_note:'');
   const fxText=fxDescription(rating.fxTrend);
   const condText=rating.conditions.points===0
     ? 'Підтверджені умови тендера не змінюють рейтинг.'
@@ -769,7 +770,7 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,`Маржа ${num.format(rating.margin50)}% при мінімумі ${num.format(minMargin)}%.`],
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
-    ['Тренд ціни пального за 30 днів',`${num.format(rating.fuelTrendScore)}/10`,fuelTrendDescription(rating.fuelTrend)],
+    ['Тренд ціни пального за 30 днів',`${num.format(rating.fuelTrendScore)}/10`,fuelTrendDescription(rating.fuelTrend)+(lastExtraction?.fuel_market_trend_note?' '+lastExtraction.fuel_market_trend_note:'')],
     ['Зміна USD/UAH за 30 днів',`${num.format(rating.fxScore)}/5`,fxDescription(rating.fxTrend)],
     ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.']
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
@@ -826,7 +827,7 @@ function buildPdfReport(){
     </div>
     <h3>Варіанти ставки</h3>
     <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, 30-денний тренд пального, USD/UAH та підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, 30-денний тренд пального, USD/UAH та підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
