@@ -700,11 +700,13 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const needDiesel = fuelType === "diesel" || fuelType === "mixed";
 
   const retailContext=await loadEuro5RetailContext(recentTender);
-  const [retailGas, retailGasPast, retailDiesel, retailDieselPast, enkorr] = await Promise.all([
+  const [retailGas, retailDiesel, trendGas, trendGasPast, trendDiesel, trendDieselPast, enkorr] = await Promise.all([
     needGas ? fetchRetailPrice("a95", benchmarkDate, retailContext) : null,
-    needGas ? fetchRetailPrice("a95", pastDate, retailContext) : null,
     needDiesel ? fetchRetailPrice("dt", benchmarkDate, retailContext) : null,
-    needDiesel ? fetchRetailPrice("dt", pastDate, retailContext) : null,
+    needGas ? fetchMinfinPrice("a95", trendDate) : null,
+    needGas ? fetchMinfinPrice("a95", pastDate) : null,
+    needDiesel ? fetchMinfinPrice("dt", trendDate) : null,
+    needDiesel ? fetchMinfinPrice("dt", pastDate) : null,
     fetchEnkorrCurrentPrices()
   ]);
 
@@ -750,20 +752,20 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     marketValue = gasVol * gasSelected + dieselVol * dieselSelected;
   }
 
-  // Select each dated retail observation independently: EURO5 when available,
-  // otherwise historical Minfin. Preserve source provenance for mixed series.
+  // Trend uses Minfin at both dates. EURO5 is only the retail price level.
+  const trendGasNoVat=trendGas?.priceWithoutVat??null,trendDieselNoVat=trendDiesel?.priceWithoutVat??null;
   let currentTrendValue = null;
   let pastTrendValue = null;
-  if (fuelType === "gasoline" && gasVol > 0 && retailGasNoVat > 0) {
-    currentTrendValue = gasVol * retailGasNoVat;
-    if (retailGasPast?.priceWithoutVat > 0) pastTrendValue = gasVol * retailGasPast.priceWithoutVat;
-  } else if (fuelType === "diesel" && dieselVol > 0 && retailDieselNoVat > 0) {
-    currentTrendValue = dieselVol * retailDieselNoVat;
-    if (retailDieselPast?.priceWithoutVat > 0) pastTrendValue = dieselVol * retailDieselPast.priceWithoutVat;
-  } else if (fuelType === "mixed" && gasVol > 0 && dieselVol > 0 && retailGasNoVat > 0 && retailDieselNoVat > 0) {
-    currentTrendValue = gasVol * retailGasNoVat + dieselVol * retailDieselNoVat;
-    if (retailGasPast?.priceWithoutVat > 0 && retailDieselPast?.priceWithoutVat > 0) {
-      pastTrendValue = gasVol * retailGasPast.priceWithoutVat + dieselVol * retailDieselPast.priceWithoutVat;
+  if (fuelType === "gasoline" && gasVol > 0 && trendGasNoVat > 0) {
+    currentTrendValue = gasVol * trendGasNoVat;
+    if (trendGasPast?.priceWithoutVat > 0) pastTrendValue = gasVol * trendGasPast.priceWithoutVat;
+  } else if (fuelType === "diesel" && dieselVol > 0 && trendDieselNoVat > 0) {
+    currentTrendValue = dieselVol * trendDieselNoVat;
+    if (trendDieselPast?.priceWithoutVat > 0) pastTrendValue = dieselVol * trendDieselPast.priceWithoutVat;
+  } else if (fuelType === "mixed" && gasVol > 0 && dieselVol > 0 && trendGasNoVat > 0 && trendDieselNoVat > 0) {
+    currentTrendValue = gasVol * trendGasNoVat + dieselVol * trendDieselNoVat;
+    if (trendGasPast?.priceWithoutVat > 0 && trendDieselPast?.priceWithoutVat > 0) {
+      pastTrendValue = gasVol * trendGasPast.priceWithoutVat + dieselVol * trendDieselPast.priceWithoutVat;
     }
   }
 
@@ -793,7 +795,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     retailSource: [retailGas?.source,retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ') || null,
     retailGasolineSource: retailGas?.source || null,
     retailDieselSource: retailDiesel?.source || null,
-    fuelTrendNote: 'Поточний орієнтир: '+([retailGas?.source,retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ')||'немає даних')+'; попередня дата: '+([retailGasPast?.source,retailDieselPast?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ')||'немає даних')+'. За різних джерел це зіставлення цінових орієнтирів, а не однорідний ціновий ряд.',
+    fuelTrendNote: 'Тренд розраховано за роздрібними цінами Minfin / Консалтингової групи А-95 на обидві дати.',
+    trendEndDate: trendGas?.date || trendDiesel?.date || null,
 
     wholesaleReferenceDate: enkorr?.date ? formatUaDate(enkorr.date) : null,
     retailGasolinePriceWithoutVat: retailGasNoVat,
@@ -804,7 +807,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     wholesaleDieselUsable: dieselWholesaleUsable,
     wholesaleCrosscheckNote: crossNotes.join("; ") || null,
     fuelTrend30dPct,
-    trendStartDate: retailGasPast?.date || retailDieselPast?.date || formatUaDate(pastDate)
+    trendStartDate: trendGasPast?.date || trendDieselPast?.date || formatUaDate(pastDate)
   };
 
   if (!(marketValue > 0)) {
@@ -860,6 +863,16 @@ async function fetchNbuUsdRate(targetDate) {
     } catch (_) {}
   }
   return null;
+}
+
+async function fetchPriceRiskHistory(targetDate){
+  try{
+    const res=await fetch('https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/market-series.json',{signal:AbortSignal.timeout(15000)});
+    if(!res.ok)return {ready:false,reason:'Не вдалося отримати історичний ряд цін.'};
+    const data=await res.json(),asOf=euro5ObservationDate(targetDate);
+    if(data.schema_version!==1||!Array.isArray(data.records))return {ready:false,reason:'Некоректний ряд цін.'};
+    return {ready:true,as_of:asOf,updated_at:data.updated_at,sources:data.sources,records:data.records.filter(r=>r.date<=asOf)};
+  }catch(_){return {ready:false,reason:'Історичний ряд цін тимчасово недоступний.'}}
 }
 
 async function buildFxTrend(data) {
@@ -1088,7 +1101,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.13-euro5-retail-archive"
+        version: "2026.10.13-five-day-price-risk"
       }, 200, origin);
     }
 
@@ -1206,9 +1219,11 @@ response_format: { type: "json_object" }
       scope.normalizedWithoutVat
     );
 
-    const [market, fx] = await Promise.all([
+    const signalDate=tenderAnnouncementDate(source.data),recentSignal=signalDate&&(Date.now()-signalDate.getTime())/86400000<=30;
+    const [market, fx, priceRiskHistory] = await Promise.all([
       buildMarketReference(source.data, parsed, scope, supplyInfo),
-      buildFxTrend(source.data)
+      buildFxTrend(source.data),
+      fetchPriceRiskHistory(recentSignal?new Date():signalDate)
     ]);
 
     return json({
@@ -1251,8 +1266,10 @@ response_format: { type: "json_object" }
       budget_vs_market_pct: market.budgetVsMarketPct ?? null,
       budget_vs_market_text: market.text ?? null,
       market_comparison_note: market.note ?? null,
+      price_risk_history: priceRiskHistory,
       fuel_market_trend_30d_pct: market.fuelTrend30dPct ?? null,
       fuel_market_trend_start_date: market.trendStartDate ?? null,
+      fuel_market_trend_end_date: market.trendEndDate ?? null,
       usd_uah_change_30d_pct: fx.change30dPct ?? null,
       usd_uah_current_date: fx.currentDate ?? null,
       usd_uah_start_date: fx.pastDate ?? null,

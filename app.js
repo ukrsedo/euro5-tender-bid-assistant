@@ -562,29 +562,12 @@ function recommendationFromScore(score,stop){
   return {title:'Не рекомендуємо участь за поточних умов',tone:'bad',summary:'Сукупний рейтинг низький: економічні або ринкові фактори не дають достатньої привабливості.'};
 }
 
-function fuelTrendAssessment(value){
-  const trend=value===null||value===undefined||String(value).trim()===''?null:Number(value);
-  if(trend===null||!Number.isFinite(trend))return {trend:null,score:5};
-  return {trend,score:clamp(10-Math.max(trend,0),0,10)};
-}
-function fuelTrendDescription(trend){
-  if(trend===null)return '30-денний тренд пального недоступний; використано нейтральні 5/10 балів.';
-  if(trend===0)return 'Ринкова вартість відповідного обсягу за 30 днів не змінилася: 10/10.';
-  return `Ринкова вартість відповідного обсягу за 30 днів ${trend<0?'знизилась':'зросла'} на ${num.format(Math.abs(trend))}%. ${trend<0?'Падіння ціни не знижує оцінку: 10/10.':'Зростання знижує оцінку на 1 бал за кожен 1%.'}`;
+function budgetAssessment(gap){
+  if(gap===null||gap===undefined||String(gap).trim()===''||!Number.isFinite(Number(gap)))return 10;
+  return clamp(20+2*Math.min(Number(gap),0),0,20);
 }
 
-function fxAssessment(value){
-  const trend=value===null||value===undefined||String(value).trim()===''?null:Number(value);
-  if(trend===null||!Number.isFinite(trend))return {trend:null,score:2.5};
-  return {trend,score:clamp(5-0.5*Math.max(trend,0),0,5)};
-}
-function fxDescription(trend){
-  if(trend===null)return '30-денна зміна USD/UAH недоступна; використано нейтральні 2,5/5 бала.';
-  if(trend===0)return 'USD/UAH за 30 днів не змінився. Валютний фактор не знижує рейтинг: 5/5.';
-  return `USD/UAH за 30 днів ${trend<0?'знизився':'зріс'} на ${num.format(Math.abs(trend))}%. ${trend<0?'Зниження не погіршує гривневу вартість закупівлі за долари: 5/5.':'Зростання знижує оцінку на 0,5 бала за кожен 1%.'}`;
-}
-
-function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
+function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuelCost,gasCostAmount=0}){
   if(!complete || !(expected>=1000000) || !(full>0)) return null;
 
   const discount50=discountAtCompetitiveness(cfg,50);
@@ -593,17 +576,14 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
   const marginDelta=margin50-minMargin;
   const marginScore=clamp(20+10*marginDelta,0,40);
 
-  const budgetScore=cmp?clamp(10+cmp.gap,0,20):10;
+  const budgetScore=budgetAssessment(cmp?.gap);
   const sizeScore=tenderSizeScore(expected);
 
-  const fuel=fuelTrendAssessment(lastExtraction?.fuel_market_trend_30d_pct);
-  const fuelTrend=fuel.trend,fuelTrendKnown=fuel.trend!==null,fuelTrendScore=fuel.score;
-
-  const fx=fxAssessment(lastExtraction?.usd_uah_change_30d_pct);
-  const fxTrend=fx.trend,fxKnown=fx.trend!==null,fxScore=fx.score;
-
+  const history=lastExtraction?.price_risk_history;
+  const model=history?.ready?Euro5PriceRisk.fit(history.records,history.as_of,fuelCost>0?gasCostAmount/fuelCost:0):{ready:false,reason:history?.reason||'Оновіть дані тендера після підключення статистичного Worker.'};
+  const priceRisk=Euro5PriceRisk.assess(model,bid50,full,fuelCost,minMargin);
   const conditions=conditionAdjustment(activeTenderData());
-  const base=marginScore+budgetScore+sizeScore+fuelTrendScore+fxScore;
+  const base=marginScore+budgetScore+sizeScore+priceRisk.points;
   const total=clamp(base+conditions.points,0,100);
 
   const cautiousBid=expected*(1-cfg.discounts[0]/100);
@@ -614,9 +594,14 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin}){
   return {
     total:Math.round(total),base:round1(base),conditions,discount50,margin50,marginDelta,
     marginScore:round1(marginScore),budgetScore:round1(budgetScore),sizeScore,
-    fuelTrendScore:round1(fuelTrendScore),fuelTrend:fuelTrendKnown?fuelTrend:null,
-    fxScore:round1(fxScore),fxTrend:fxKnown?fxTrend:null,cautiousMargin,stop,recommendation
+    priceRisk,cautiousMargin,stop,recommendation
   };
+}
+
+function priceRiskDescription(risk){
+  if(!risk.ready)return risk.reason+' Використано нейтральні 7,5/15 балів.';
+  const m=risk.model,change=v=>(v>=0?'+':'')+num.format(v)+'%';
+  return `Горизонт: 5 робочих діб. Допустиме подорожчання паливної закупівлі до мінімальної маржі: ${num.format(risk.buffer_pct)}%. Частка модельних сценаріїв без перевищення: ${num.format(risk.safe_fraction*100)}% (${num.format(risk.safe_count)} з ${num.format(risk.total_count)}). За останні 30 днів: середня п’ятиденна зміна пального ${change(m.fuel.trend_pct)}, волатильність ${num.format(m.fuel.volatility_pct)}%; USD/UAH ${change(m.usd.trend_pct)}, волатильність ${num.format(m.usd.volatility_pct)}%. Остання дата ряду: ${m.last_observation.split('-').reverse().join('.')}.`;
 }
 
 function scoreRow(label,score,max,text,cls=''){
@@ -641,8 +626,6 @@ function renderRecommendation(rating,cmp,expected,minMargin){
   const budgetText=cmp
     ? `Бюджет замовника ${cmp.gap>=0?'на '+num.format(Math.abs(cmp.gap))+'% вище':'на '+num.format(Math.abs(cmp.gap))+'% нижче'} ринкової вартості відповідного обсягу.`
     : 'Ринкове порівняння недоступне; використано нейтральні 10/20 балів.';
-  const fuelText=fuelTrendDescription(rating.fuelTrend)+(lastExtraction?.fuel_market_trend_note?' '+lastExtraction.fuel_market_trend_note:'');
-  const fxText=fxDescription(rating.fxTrend);
   const condText=rating.conditions.points===0
     ? 'Підтверджені умови тендера не змінюють рейтинг.'
     : `Умови тендера коригують рейтинг на ${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)} балів.`;
@@ -651,8 +634,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
     scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,`Маржа ${num.format(rating.margin50)}% при мінімально допустимих ${num.format(minMargin)}%. Різниця: ${rating.marginDelta>=0?'+':''}${num.format(rating.marginDelta)} п.п.`),
     scoreRow('Бюджет замовника проти ринку',rating.budgetScore,20,budgetText),
     scoreRow('Розмір тендера',rating.sizeScore,15,`Очікувана вартість: ${money.format(expected)} грн без ПДВ.`),
-    scoreRow('Тренд ціни пального за 30 днів',rating.fuelTrendScore,10,fuelText),
-    scoreRow('Зміна USD/UAH за 30 днів',rating.fxScore,5,fxText),
+    scoreRow('Ціновий ризик за 5 робочих діб',round1(rating.priceRisk.points),15,priceRiskDescription(rating.priceRisk)),
     scoreRow('Умови тендера',rating.conditions.points,0,condText,'condition-row')
   ].join('');
 
@@ -717,7 +699,7 @@ function recalc(){
   }
 
   const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
-  const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin')});
+  const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   renderRecommendation(rating,cmp,expected,value('minMargin'));
   const tbody=document.getElementById('resultsBody'); tbody.innerHTML='';
   cfg.discounts.forEach((discount,i)=>{
@@ -770,8 +752,7 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,`Маржа ${num.format(rating.margin50)}% при мінімумі ${num.format(minMargin)}%.`],
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
-    ['Тренд ціни пального за 30 днів',`${num.format(rating.fuelTrendScore)}/10`,fuelTrendDescription(rating.fuelTrend)+(lastExtraction?.fuel_market_trend_note?' '+lastExtraction.fuel_market_trend_note:'')],
-    ['Зміна USD/UAH за 30 днів',`${num.format(rating.fxScore)}/5`,fxDescription(rating.fxTrend)],
+    ['Ціновий ризик за 5 робочих діб',`${num.format(round1(rating.priceRisk.points))}/15`,priceRiskDescription(rating.priceRisk)],
     ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.']
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
   const cond=rating.conditions.reasons.length?`<ul>${rating.conditions.reasons.map(r=>`<li>${r.points>0?'+':''}${num.format(r.points)}: ${escapeHtml(r.text)}</li>`).join('')}</ul>`:'';
@@ -789,7 +770,7 @@ function buildPdfReport(){
   const full=fuelCost+risk+logistics;
   const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
-  const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin')});
+  const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
   const modeLabel=el.competitionMode.options[el.competitionMode.selectedIndex].text;
   const rows=cfg.discounts.map((discount,i)=>{
@@ -827,7 +808,7 @@ function buildPdfReport(){
     </div>
     <h3>Варіанти ставки</h3>
     <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, 30-денний тренд пального, USD/UAH та підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, спільний п’ятиденний ціновий ризик пального та USD/UAH і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95; валютний фактор — офіційний курс НБУ.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
