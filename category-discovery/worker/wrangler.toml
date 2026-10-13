@@ -1,8 +1,0 @@
-name = "euro5-tender-bid-assistant"
-main = "index.js"
-compatibility_date = "2026-10-01"
-
-# Set these in Cloudflare Worker settings / secrets:
-# AI_API_URL
-# AI_API_KEY (secret)
-# AI_MODEL
