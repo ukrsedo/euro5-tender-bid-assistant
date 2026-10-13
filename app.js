@@ -603,9 +603,13 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   };
 }
 
+function marginRatingDescription(rating,minMargin){
+  const multiple=rating.margin50/minMargin;
+  return `Маржа ${num.format(rating.margin50)}% при вашому мінімумі ${num.format(minMargin)}% — ${num.format(multiple)} від мінімуму. Бал: 20 × ${num.format(multiple)}, з обмеженням до 40 → ${num.format(rating.marginScore)} із 40. Мінімум дає 20 балів, 1,5 мінімуму — 30, подвійний — 40.`;
+}
 function priceRiskDescription(risk){
-  if(!risk.ready)return risk.reason+' Використано нейтральну оцінку 7,5/15: ризик не визначений.';
-  return `Горизонт: 5 робочих діб. До мінімальної маржі закупівля може подорожчати на ${num.format(risk.buffer_pct)}%. У ${num.format(risk.safe_count)} із ${num.format(risk.total_count)} модельних сценаріїв цей запас зберігається. Бал: 15 × ${num.format(risk.safe_count)} / ${num.format(risk.total_count)} = ${num.format(round1(risk.points))}.`;
+  if(!risk.ready)return 'Недостатньо даних: ризик не визначений, нейтральні 7,5 із 15.';
+  return `У ${num.format(risk.safe_fraction*100)}% модельних сценаріїв на 5 робочих діб зберігається мінімальна маржа. Запас до її втрати — подорожчання закупівлі на ${num.format(risk.buffer_pct)}%.`;
 }
 function priceRiskDetails(risk,forPrint=false){
   if(!risk.ready)return '';
@@ -642,7 +646,7 @@ function renderRecommendation(rating,cmp,expected,minMargin){
     : `Умови тендера коригують рейтинг на ${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)} балів.`;
 
   breakdown.innerHTML=[
-    scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,`Маржа ${num.format(rating.margin50)}% при мінімально допустимих ${num.format(minMargin)}%. Різниця: ${rating.marginDelta>=0?'+':''}${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа, у межах 0–40. Розрахунок: 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(round1(20*rating.margin50/minMargin))}; після обмеження — ${num.format(rating.marginScore)} бала. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`),
+    scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,marginRatingDescription(rating,minMargin)),
     scoreRow('Бюджет замовника проти ринку',rating.budgetScore,20,budgetText),
     scoreRow('Розмір тендера',rating.sizeScore,15,`Очікувана вартість: ${money.format(expected)} грн без ПДВ.`),
     scoreRow('Ціновий ризик за 5 робочих діб',round1(rating.priceRisk.points),15,priceRiskDescription(rating.priceRisk)),
@@ -769,14 +773,14 @@ function competitionPdfHtml(){
 function ratingPdfHtml(rating,cmp,expected,minMargin){
   if(!rating) return '';
   const rows=[
-    ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,`Маржа ${num.format(rating.margin50)}% при мінімумі ${num.format(minMargin)}%. Різниця: ${num.format(rating.marginDelta)} п.п. Бал = 20 × розрахункова маржа / мінімальна маржа, у межах 0–40. Розрахунок: 20 × ${num.format(rating.margin50)} / ${num.format(minMargin)} = ${num.format(round1(20*rating.margin50/minMargin))}; після обмеження — ${num.format(rating.marginScore)} бала. Досягнення мінімуму — 20 балів; 1,5 мінімуму — 30; 2 мінімуми або більше — 40. Поріг задає користувач; це не ринкова норма. Дробові бали зберігаються.`],
+    ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,marginRatingDescription(rating,minMargin)],
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
     ['Ціновий ризик за 5 робочих діб',`${num.format(round1(rating.priceRisk.points))}/15`,priceRiskDescription(rating.priceRisk)],
     ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.']
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
   const cond=rating.conditions.reasons.length?`<ul>${rating.conditions.reasons.map(r=>`<li>${r.points>0?'+':''}${num.format(r.points)}: ${escapeHtml(r.text)}</li>`).join('')}</ul>`:'';
-  return `<section class="pdf-recommendation"><div class="pdf-score"><strong>${rating.total}/100</strong><span>${escapeHtml(rating.recommendation.title)}</span></div><p>${escapeHtml(rating.recommendation.summary)}</p><table><thead><tr><th>Фактор</th><th>Бали</th><th>Пояснення</th></tr></thead><tbody>${rows}</tbody></table>${priceRiskDetails(rating.priceRisk,true)}${cond}</section>`;
+  return `<section class="pdf-recommendation"><div class="pdf-score"><strong>${rating.total}/100</strong><span>${escapeHtml(rating.recommendation.title)}</span></div><p>${escapeHtml(rating.recommendation.summary)}</p><table><thead><tr><th>Фактор</th><th>Бали</th><th>Пояснення</th></tr></thead><tbody>${rows}</tbody></table>${cond}</section>`;
 }
 
 function buildPdfReport(){
