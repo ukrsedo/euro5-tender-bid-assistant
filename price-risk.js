@@ -28,6 +28,19 @@
   const safe=model.scenarios.filter(s=>s.fuel<=buffer).length;
   return {ready:true,points:15*safe/count,bid,total_cost:totalCost,fuel_cost:fuelCost,min_margin:minMargin,cost_buffer_uah:bid*(1-minMargin/100)-totalCost,buffer_pct:buffer,safe_fraction:safe/count,safe_count:safe,total_count:count,model};
  }
- root.Euro5PriceRisk={fit,assess,windows,businessDays};
+ function simulate(model,bids,totalCost,fuelCost,minMargin,iterations=10000){
+  if(!model?.ready)return {ready:false,reason:model?.reason||'Історія цін недоступна.'};
+  const changes=model.scenarios?.map(s=>s.fuel);
+  if(!changes?.length||!changes.every(Number.isFinite)||!bids?.length||!bids.every(b=>Number.isFinite(b)&&b>0)||!(totalCost>0&&fuelCost>0)||!Number.isFinite(minMargin)||minMargin<=0||minMargin>=100||!Number.isInteger(iterations)||iterations<1)return {ready:false,reason:'Недостатньо коректних даних для симуляції.'};
+  let seed=42;
+  const random=()=>{seed=(Math.imul(1664525,seed)+1013904223)>>>0;return seed/4294967296};
+  // Use identical market draws for all bids and a fixed seed for repeatability.
+  const costs=Array.from({length:iterations},()=>totalCost+fuelCost*changes[Math.floor(random()*changes.length)]/100);
+  const quantile=(a,p)=>{const k=(a.length-1)*p,i=Math.floor(k);return a[i]+(a[Math.min(i+1,a.length-1)]-a[i])*(k-i)};
+  const rows=bids.map(bid=>{const profits=costs.map(c=>bid-c).sort((a,b)=>a-b);return {bid,initial_profit:bid-totalCost,median_profit:quantile(profits,.5),p5_profit:quantile(profits,.05),loss_fraction:profits.filter(p=>p<0).length/iterations,safe_fraction:profits.filter(p=>p/bid*100>=minMargin).length/iterations}});
+  return {ready:true,iterations,historical_count:changes.length,horizon_business_days:model.horizon_business_days,last_observation:model.last_observation,min_margin:minMargin,rows};
+ }
+ root.Euro5PriceRisk={fit,assess,simulate,windows,businessDays};
 })(globalThis);
+
 
