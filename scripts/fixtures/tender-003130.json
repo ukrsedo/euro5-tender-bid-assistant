@@ -1,0 +1,45 @@
+{
+  "tenderID": "UA-2026-10-01-003130-a",
+  "title": "Бензин А-95 (Євро5), талон, Дизельне паливо (Євро5), талон",
+  "date": "2026-10-07T15:08:37.975056+03:00",
+  "tenderPeriod": {
+    "startDate": "2026-10-01T11:14:04.514682+03:00",
+    "endDate": "2026-10-06T00:00:00+03:00"
+  },
+  "value": {
+    "amount": 1341542.0,
+    "currency": "UAH",
+    "valueAddedTaxIncluded": false
+  },
+  "items": [
+    {
+      "id": "9bce25441984448daf901a257c87fb99",
+      "description": "Бензин А-95 (Євро 5), талон",
+      "quantity": 5500.0,
+      "unit": {
+        "name": "літр",
+        "code": "LTR"
+      },
+      "classification": {
+        "description": "Нафта і дистиляти",
+        "scheme": "ДК021",
+        "id": "09130000-9"
+      }
+    },
+    {
+      "id": "5472826644584068af1b951c73c86278",
+      "description": "Дизельне паливо (Євро 5), талон",
+      "quantity": 11000.0,
+      "unit": {
+        "name": "літр",
+        "code": "LTR"
+      },
+      "classification": {
+        "description": "Нафта і дистиляти",
+        "scheme": "ДК021",
+        "id": "09130000-9"
+      }
+    }
+  ],
+  "procurementMethodType": "priceQuotation"
+}

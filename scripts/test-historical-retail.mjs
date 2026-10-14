@@ -1,0 +1,9 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const worker=fs.readFileSync('worker.js','utf8'),records=JSON.parse(fs.readFileSync('scripts/fixtures/minfin-2026-10-01.json','utf8'));
+const fetched=[];const ctx={Date,Intl,URL,Request,Response,AbortSignal,Euro5CategoryWorkerEntrypoint:class{},fetch:async url=>{fetched.push(String(url));if(String(url).endsWith('/data/market-series.json'))return new Response(JSON.stringify(records));return new Response('',{status:403})}};vm.createContext(ctx);vm.runInContext(worker.replace('export default {','const defaultWorker={').replace(/import \{ WorkerEntrypoint[^\n]+\n/,'').replace('export class Euro5CategoryAI','class Euro5CategoryAI'),ctx);
+ctx.fetchEnkorrCurrentPrices=async()=>null;
+const tender=JSON.parse(fs.readFileSync('scripts/fixtures/tender-003130.json','utf8'));
+const parsed={fuel_type:'mixed',gasoline_volume_l:5500,diesel_volume_l:11000};const scope=ctx.validateScope(tender);assert(scope.ok);const format=ctx.detectSupplyFormat(tender,parsed,'mixed');assert.equal(format.supplyFormat,'retail');
+const market=await ctx.buildMarketReference(tender,parsed,scope,format);assert.equal(market.available,true);assert.equal(market.retailReferenceDate,'01.10.2026');assert.equal(market.benchmarkContext,'historical');assert(Math.abs(market.marketValueWithoutVat-1311520.83333333)<.001);assert(Math.abs(market.budgetVsMarketPct-2.289034676)<1e-6);assert(market.retailSource.includes('Minfin'));assert(!fetched.some(u=>u.includes('euro5.ua/tsiny')));
+const archive=await ctx.archivedMinfinPrice('dt',new Date('2026-10-01T12:00:00Z'));assert.equal(archive.priceWithVat,98.44);
+console.log('PASS: real UA-2026-10-01-003130-a, historical date, retail format and quantities, Minfin saved prices despite HTTP403; market 1,311,520.83 without VAT; gap +2.289%');

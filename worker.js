@@ -535,8 +535,22 @@ function parseMinfinRows(html) {
   return rows;
 }
 
+let minfinArchiveCache=null,minfinArchiveLoadedAt=0;
+async function archivedMinfinPrice(slug,targetDate,exactOnly=true){
+ if(!['a95','dt'].includes(slug))return null;
+ if(!minfinArchiveCache||Date.now()-minfinArchiveLoadedAt>300000){
+  minfinArchiveLoadedAt=Date.now();
+  minfinArchiveCache=(async()=>{try{const r=await fetch('https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/market-series.json',{signal:AbortSignal.timeout(10000)});if(!r.ok)return null;const d=await r.json();return d.schema_version===1&&d.sources?.fuel==='https://index.minfin.com.ua/ua/markets/fuel/'&&Array.isArray(d.records)?d.records:null}catch{return null}})();
+ }
+ const rows=await minfinArchiveCache;if(!rows)return null;
+ const target=targetDate.toISOString().slice(0,10),maxGap=7*86400000;
+ const record=rows.filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&r.date<=target&&Number.isFinite(r[slug])&&r[slug]>0&&(exactOnly?r.date===target:Date.parse(target)-Date.parse(r.date)<=maxGap)).sort((a,b)=>b.date.localeCompare(a.date))[0];
+ return record?{source:'Minfin / Консалтингова група А-95 (збережений щоденний ряд)',date:record.date.split('-').reverse().join('.'),priceWithVat:record[slug],priceWithoutVat:record[slug]/(1+UKRAINE_STANDARD_VAT)}:null;
+}
 async function fetchMinfinPrice(slug, targetDate) {
   if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return null;
+  const archived=await archivedMinfinPrice(slug,targetDate);
+  if(archived)return archived;
   const months = [targetDate, previousMonth(targetDate)];
   const candidates = [];
 
@@ -558,7 +572,7 @@ async function fetchMinfinPrice(slug, targetDate) {
 
   const target = Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate());
   const eligible = candidates.filter(x => x.date.getTime() <= target).sort((a,b) => b.date.getTime() - a.date.getTime());
-  if (!eligible.length) return null;
+  if (!eligible.length) return archivedMinfinPrice(slug,targetDate,false);
   const chosen = eligible[0];
   return {
     source: "Minfin / Консалтингова група А-95",
@@ -688,7 +702,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const now = new Date();
   const daysOld = Math.max(0, (now.getTime() - tenderDate.getTime()) / 86400000);
   const recentTender = daysOld <= 30;
-  const benchmarkDate = recentTender ? now : tenderDate;
+  const benchmarkDate = new Date(euro5ObservationDate(tenderDate)+"T12:00:00Z");
+  const currentRetailBenchmark=euro5ObservationDate(benchmarkDate)===euro5ObservationDate(now);
   const trendDate = recentTender ? now : tenderDate;
   const pastDate = new Date(trendDate.getTime() - 30 * 86400000);
 
@@ -699,7 +714,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const needGas = fuelType === "gasoline" || fuelType === "mixed";
   const needDiesel = fuelType === "diesel" || fuelType === "mixed";
 
-  const retailContext=await loadEuro5RetailContext(recentTender);
+  const retailContext=await loadEuro5RetailContext(currentRetailBenchmark);
   const [retailGas, retailDiesel, trendGas, trendGasPast, trendDiesel, trendDieselPast, enkorr] = await Promise.all([
     needGas ? fetchRetailPrice("a95", benchmarkDate, retailContext) : null,
     needDiesel ? fetchRetailPrice("dt", benchmarkDate, retailContext) : null,
@@ -780,7 +795,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const benchmarkLabel = globalFormat === "bulk"
     ? "оптовий ринок Enkorr"
     : globalFormat === "retail"
-      ? [retailGas?.source, retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(" / ") || "роздріб Євро5 недоступний"
+      ? [retailGas?.source, retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(" / ") || "роздрібний орієнтир на дату оголошення недоступний"
       : globalFormat === "split"
         ? "окремий ринковий орієнтир для кожної позиції"
         : "не визначено";
@@ -789,7 +804,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     available: marketValue > 0,
     benchmarkType: globalFormat,
     benchmarkLabel,
-    benchmarkContext: recentTender ? "current" : "historical",
+    benchmarkContext: globalFormat === "bulk" ? (recentTender ? "current" : "historical") : (currentRetailBenchmark ? "current" : "historical"),
     tenderDate: formatUaDate(tenderDate),
     retailReferenceDate: retailGas?.date || retailDiesel?.date || null,
     retailSource: [retailGas?.source,retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ') || null,
@@ -839,7 +854,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     note: globalFormat === "bulk"
       ? "Для наливу використано поточний оптовий орієнтир Enkorr. Роздрібну колонку Enkorr звірено з Minfin як контроль правильності даних."
       : globalFormat === "retail"
-        ? "Для талонів / паливних карток використано: "+common.retailSource+". Поточна дата — стела Євро5; попередні дати — архів Євро5, а за його відсутності Minfin."
+        ? "Для талонів / паливних карток використано: "+common.retailSource+". Порівняння на дату оголошення: сьогодні — стела Євро5; попередні дати — архів Євро5, а за його відсутності щоденні ціни Minfin."
         : "Для кожної позиції використано орієнтир відповідно до підтвердженого формату постачання."
   };
 }
@@ -1177,7 +1192,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.14-buyer-history"
+        version: "2026.10.14-historical-retail"
       }, 200, origin);
     }
 
