@@ -180,6 +180,7 @@ function invalidateCalculation(){
   calculationIsCurrent=false;
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
   exportPdfBtn.disabled=true;
   const status=document.getElementById('calculateStatus');
   if(status) status.textContent='Дані змінено. Натисніть «Розрахувати», щоб оновити результат.';
@@ -273,6 +274,7 @@ analyzeBtn.addEventListener('click', async()=>{
   calculatorSection.classList.add('hidden');
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
   confirmedData=null;
   calculationIsCurrent=false;
 
@@ -450,6 +452,7 @@ acceptBtn.addEventListener('click',()=>{
 
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
   exportPdfBtn.disabled=true;
   calculationIsCurrent=false;
   calculatorSection.classList.remove('hidden');
@@ -661,6 +664,29 @@ function renderRecommendation(rating,cmp,expected,minMargin){
   warnings.innerHTML=details.length?`<h3>Як умови вплинули на рекомендацію</h3><ul>${details.join('')}</ul>`:'';
 }
 
+function forecastCardHtml(result){
+  if(!result.ready)return `<div class="notice warning"><strong>Прогноз недоступний.</strong> ${escapeHtml(result.reason)} Повторно завантажте тендер. Відсотки ризику не розраховані.</div>`;
+  const percent=x=>`${num.format(Math.round(x*1000)/10)}%`;
+  const rows=result.rows.map((r,i)=>`<tr><td>${POSITIONS[i][0]}</td><td>${money.format(r.bid)}</td><td>${percent(r.safe_fraction)}</td><td>${percent(r.loss_fraction)}</td><td>${money.format(r.median_profit)}</td></tr>`).join('');
+  const best=result.rows.reduce((a,r,i)=>r.safe_fraction>result.rows[a].safe_fraction||(r.safe_fraction===result.rows[a].safe_fraction&&r.median_profit>result.rows[a].median_profit)?i:a,0);
+  const r=result.rows[best];
+  const recommendation=r.safe_fraction===0?'Жодна ставка не зберегла мінімальну маржу в симуляції. Перегляньте собівартість або умови закупівлі.':`Найкращий захист прибутку серед чотирьох ставок — «${POSITIONS[best][0]}»: мінімальна маржа зберігається у ${percent(r.safe_fraction)} прогонів, збиток виникає у ${percent(r.loss_fraction)}. Нижчу ставку обирайте лише з урахуванням більшого ризику.`;
+  return `<p>Що станеться з прибутком, якщо закупівельна ціна зміниться за <strong>${result.horizon_business_days} робочих діб</strong>? Ваш мінімум маржі — <strong>${num.format(result.min_margin)}%</strong>.</p><div class="table-wrap"><table><thead><tr><th>Ставка</th><th>Пропозиція, грн</th><th>Маржа ≥ ${num.format(result.min_margin)}%</th><th>Ризик збитку</th><th>Медіанний прибуток, грн</th></tr></thead><tbody>${rows}</tbody></table></div><div class="notice"><strong>Рекомендація:</strong> ${recommendation}</div><p class="muted">Відсотки — частки змодельованих результатів, а не шанси перемоги. Медіанний прибуток — середина розподілу: половина результатів вища, половина нижча. Прибуток враховує задані логістику та резерв.</p><details class="price-risk-details"><summary>Як розраховано</summary><p>${num.format(result.iterations)} прогонів із повторним випадковим вибором із ${result.historical_count} історичних сценаріїв. Остання дата цін: ${escapeHtml(result.last_observation)}. Джерело — Minfin / А-95. Історичні зміни скориговано за трендом та волатильністю за правилами моделі. Припущення: собівартість ЄВРО5 змінюється пропорційно гривневій ринковій ціні пального. Валютний стрес виключено. Ставки, логістика та резерв фіксовані; ринкові зміни однакові для всіх ставок. Кількість прогонів не збільшує обсяг історії. Результат залежить від припущень моделі.</p></details>`;
+}
+
+function renderAnalysisCards({expected,full,fuelCost,gasCostAmount,cfg,minMargin}){
+  const history=lastExtraction?.price_risk_history;
+  const model=history?.ready?Euro5PriceRisk.fit(history.records,history.as_of,gasCostAmount/fuelCost):{ready:false,reason:history?.reason||'Історія цін недоступна.'};
+  const bids=cfg.discounts.map(d=>expected*(1-d/100));
+  const result=Euro5PriceRisk.simulate(model,bids,full,fuelCost,minMargin);
+  document.getElementById('forecastContent').innerHTML=forecastCardHtml(result);
+  document.getElementById('forecastCard').classList.remove('hidden');
+  const eligible=bids.map((bid,i)=>({i,margin:(bid-full)/bid*100})).filter(r=>r.margin>=minMargin);
+  const best=eligible.sort((a,b)=>cfg.competitiveness[b.i]-cfg.competitiveness[a.i])[0];
+  document.getElementById('historicalRecommendation').textContent=best?`За історією найконкурентніша ставка, що проходить мінімальну маржу за незмінної собівартості, — «${POSITIONS[best.i][0]}». Перед вибором перевірте її стійкість у картці Монте-Карло нижче.`:'Жодна ставка не проходить мінімальну маржу за введеної собівартості. Перегляньте економіку закупівлі.';
+}
+
+
 function recalc(){
   const status=document.getElementById('calculateStatus');
   const expected=value('expectedValue');
@@ -676,6 +702,7 @@ function recalc(){
     status.textContent='Мінімальна маржа має бути більшою за 0% і меншою за 100%.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -711,6 +738,7 @@ function recalc(){
     status.textContent='Введіть закупівельну собівартість потрібного виду пального.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -719,6 +747,7 @@ function recalc(){
     status.textContent='Очікувана вартість менша за 1 млн грн без ПДВ.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
+  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -745,6 +774,7 @@ function recalc(){
     tr.title=POSITIONS[i][1];
     tbody.appendChild(tr);
   });
+  renderAnalysisCards({expected,full,fuelCost,gasCostAmount:gasVol*gasCost,cfg,minMargin:minimumMargin});
   recommendationCard.classList.remove('hidden');
   resultsCard.classList.remove('hidden');
   exportPdfBtn.disabled=false;
@@ -833,8 +863,11 @@ function buildPdfReport(){
       <div><span>Повна собівартість</span><strong>${money.format(full)} грн</strong></div>
       <div><span>Мінімальна маржа</span><strong>${pct(value('minMargin'))}</strong></div>
     </div>
-    <h3>Варіанти ставки</h3>
+    <h3>Картка 1 · Історична конкурентність</h3>
     <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
+    <p>${escapeHtml(document.getElementById('historicalRecommendation').textContent)}</p>
+    <h3>Картка 2 · Монте-Карло: стійкість прибутку</h3>
+    ${document.getElementById('forecastContent').innerHTML}
     <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
@@ -865,4 +898,5 @@ window.addEventListener('afterprint',()=>document.body.classList.remove('printin
 
 calculateBtn.addEventListener('click',()=>recalc());
 exportPdfBtn.disabled=true;
+
 
