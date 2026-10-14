@@ -14,9 +14,11 @@ assert.equal((await context.fetchRetailPrice('a95',current,ctx)).priceWithVat,78
 assert.equal((await context.fetchRetailPrice('a95',past,ctx)).source,'Minfin');assert.equal(calls,1);
 ctx.archive=[{date:'2026-09-13',prices_uah_l_with_vat:{a95:70}}];
 assert.equal((await context.fetchRetailPrice('a95',past,ctx)).priceWithVat,70);assert.equal(calls,1);
-assert.equal(await context.fetchRetailPrice('a95',current,{today:ctx.today,live:null,archive:[]}),null);assert.equal(calls,1);
+assert.equal((await context.fetchRetailPrice('a95',current,{today:ctx.today,live:null,archive:[]})).source,'Minfin');assert.equal(calls,2);
+assert.equal((await context.fetchRetailPrice('dt',current,{today:ctx.today,live:{a95:78.9},archive:[]})).source,'Minfin');assert.equal(calls,3);
+assert.equal((await context.fetchRetailPrice('a95',current,{today:ctx.today,live:{a95:78.9},archive:[]})).priceWithVat,78.9);assert.equal(calls,3);
 assert.equal((await context.fetchRetailPrice('a95',current,{today:ctx.today,live:null,archive:[{date:ctx.today,prices_uah_l_with_vat:{a95:78.9}}]})).priceWithVat,78.9);
 assert.equal(euro5ObservationDate(new Date('2026-10-12T22:00:00Z')),'2026-10-13');
 const fixture=label=>`<div class="fuel__col"><div class="elementor-heading-title"><span>${label}</span></div><span class="elementor-heading-title">78,90</span></div>`;
 assert.equal(parseEuro5Retail(fixture('95')+fixture('ДП')).a95,78.9);assert.throws(()=>parseEuro5Retail(fixture('95 EURO')+fixture('ДП EURO')));
-console.log('PASS: current EURO5; historical fallback; archive precedence; ordinary fuel mapping; no silent current fallback; RPC preserved');
+console.log('PASS: current EURO5; historical fallback; archive precedence; ordinary fuel mapping; current-date and per-fuel fallback; RPC preserved');

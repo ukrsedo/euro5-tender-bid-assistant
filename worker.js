@@ -683,8 +683,7 @@ function euro5RetailRecord(slug,targetDate,context){
 async function fetchRetailPrice(slug,targetDate,context){
  const own=euro5RetailRecord(slug,targetDate,context);
  if(own)return own;
- // Current-date retail MUST be EURO5; do not silently substitute Minfin.
- if(euro5ObservationDate(targetDate)===context.today)return null;
+ // EURO5 takes priority; Minfin is the fallback for every requested date.
  return fetchMinfinPrice(slug,targetDate);
 }
 
@@ -854,7 +853,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     note: globalFormat === "bulk"
       ? "Для наливу використано поточний оптовий орієнтир Enkorr. Роздрібну колонку Enkorr звірено з Minfin як контроль правильності даних."
       : globalFormat === "retail"
-        ? "Для талонів / паливних карток використано: "+common.retailSource+". Порівняння на дату оголошення: сьогодні — стела Євро5; попередні дати — архів Євро5, а за його відсутності щоденні ціни Minfin."
+        ? "Для талонів / паливних карток використано: "+common.retailSource+". Порівняння на дату оголошення: спочатку стела або архів Євро5 за потрібну дату; за відсутності ціни відповідної позиції — щоденні ціни Minfin."
         : "Для кожної позиції використано орієнтир відповідно до підтвердженого формату постачання."
   };
 }
@@ -1192,7 +1191,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.14-historical-retail"
+        version: "2026.10.14-retail-fallback"
       }, 200, origin);
     }
 
