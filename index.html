@@ -319,9 +319,15 @@
       </section>
 
       <section id="resultsCard" class="card results-card hidden">
-        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КРОК 5 · ВАРІАНТИ СТАВКИ</div><h2>Варіанти ставки</h2><p>Порівняйте абсолютний прибуток, маржу та історичну конкурентність.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
+        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КАРТКА 1 · PROZORRO BI</div><h2>Історична конкурентність</h2><p>У якій частці завершених схожих тендерів наша ціна була б не вищою за ціну переможця? Це не ймовірність перемоги.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
         <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+        <div class="notice"><strong>Рекомендація:</strong> <span id="historicalRecommendation"></span></div>
+      </section>
+
+      <section id="forecastCard" class="card results-card hidden">
+        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КАРТКА 2 · МОНТЕ-КАРЛО</div><h2>Стійкість прибутку до зміни цін</h2></div></div>
+        <div id="forecastContent" aria-live="polite"></div>
       </section>
 
       <section class="methodology-footnotes">
@@ -349,10 +355,11 @@
     </footer>
   </main>
   <script src="config.js"></script>
-  <script src="price-risk.js?v=20261014-fuel-only"></script>
+  <script src="price-risk.js?v=20261014-monte-carlo-cards"></script>
   <script src="buyer-card.js?v=20261014-buyer-outcomes"></script>
-  <script src="app.js?v=20261014-fuel-only"></script>
+  <script src="app.js?v=20261014-monte-carlo-cards"></script>
 </body>
 </html>
+
 
 
