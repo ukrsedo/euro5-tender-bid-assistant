@@ -1,0 +1,23 @@
+(()=>{
+ const n=new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}),money=new Intl.NumberFormat('uk-UA',{maximumFractionDigits:0});let sequence=0;
+ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const pct=(a,b)=>b?n.format(a/b*100)+'%':'—';const date=s=>s?.split('-').reverse().join('.')||'—';
+ function html(h,name='',code=''){
+  if(!h?.ready)return `<h3>Історія замовника</h3><p>${esc(name)}${code?' · ЄДРПОУ '+esc(code):''}</p><p>${esc(h?.reason||'Завантажую паливні закупівлі за останні 12 місяців…')}</p>`;
+  const labels={open:'Відкриті конкурентні процедури',catalog:'Відбори через Prozorro Market',direct:'Без відкритого електронного відбору',other:'Інші процедури — потребують перевірки'},c=h.competition,nonOpen=h.groups.catalog.count+h.groups.direct.count;
+  const rows=Object.entries(h.groups).filter(([k,g])=>g.count||k==='open').map(([k,g])=>`<tr><td>${esc(labels[k])}</td><td>${money.format(g.count)}</td><td>${pct(g.count,h.count)}</td><td>${money.format(g.value_without_vat)} грн</td><td>${h.unknown_vat?'—':pct(g.value_without_vat,h.value_without_vat)}</td></tr>`).join('');
+  const findings=[];
+  if(h.groups.direct.count)findings.push(`🚩 Без відкритого електронного відбору: ${money.format(h.groups.direct.count)} лотів (${pct(h.groups.direct.count,h.count)}).`);
+  if(h.groups.catalog.count)findings.push(`Відбори через Market: ${pct(h.groups.catalog.count,h.count)} лотів. Для участі потрібна кваліфікація у відповідному профілі каталогу.`);
+  if(h.groups.other.count)findings.push('Є інші типи процедур: їхній доступ потрібно перевірити окремо.');
+  if(h.count<10)findings.push('Мала історія: менше 10 лотів; висновок попередній.');
+  return `<h3>Історія замовника</h3><p><strong>${esc(h.buyer_name||name)}</strong> · ЄДРПОУ ${esc(h.buyer_code)}</p><p>${date(h.period.start)} — ${date(h.period.end)} · Паливо · ${money.format(h.count)} лотів · ${h.cached?'кеш за поточну добу':'BI Prozorro'}</p>${h.count?`<div class="buyer-history-scroll"><table><thead><tr><th>Формат закупівлі</th><th>Лотів</th><th>Частка лотів</th><th>Очікувана вартість без ПДВ</th><th>Частка вартості</th></tr></thead><tbody>${rows}</tbody></table></div><p><strong>Фактична конкуренція:</strong> середня кількість учасників — ${c.mean_participants===null?'—':n.format(c.mean_participants)} (${money.format(c.observed_count)} лотів із учасниками). Один учасник — ${money.format(c.one_count)} із ${money.format(c.known_count)} (${pct(c.one_count,c.known_count)}).</p>${c.zero_count||c.missing_count?`<p class="muted">Нуль учасників у BI: ${money.format(c.zero_count)}; дані відсутні: ${money.format(c.missing_count)}. Ці лоти виключено із середнього. Активні й скасовані лоти не входять до показників конкуренції.</p>`:''}${findings.map(t=>`<p>${esc(t)}</p>`).join('')}<small>Очікувана вартість оголошень, включно з неуспішними й повторними закупівлями; це не фактичні витрати. ${h.unknown_vat?'Невизначена база ПДВ у '+money.format(h.unknown_vat)+' лотах: їхні суми виключено, частки вартості не розраховано.':'Суми з ПДВ приведено до бази без ПДВ за ставкою 20%.'} Інформаційна картка не змінює рейтинг.</small>`:'<p>Паливних лотів за цей період у BI не знайдено.</p>'}`;
+ }
+ async function load(data,api){
+  const ticket=++sequence,card=document.getElementById('buyerHistoryCard');if(!card)return;card.classList.remove('hidden');card.innerHTML=html(null,data.buyer_name,data.buyer_code);
+  if(!data.buyer_code){card.innerHTML=html({reason:'Для завантаження історії потрібне оновлення Worker до версії з карткою замовника.'},data.buyer_name);return}
+  let h;try{const r=await fetch(api+'/buyer-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({buyerCode:data.buyer_code}),signal:AbortSignal.timeout(65000)});h=await r.json();if(!r.ok)throw Error(r.status===404?'Потрібне оновлення Worker для картки замовника.':h.error||'Історія недоступна.')}catch(e){h={ready:false,reason:'Історія замовника недоступна: '+e.message}}
+  if(ticket!==sequence)return;data.buyer_profile=h;card.innerHTML=html(h,data.buyer_name,data.buyer_code);
+ }
+ function reset(){sequence++;const card=document.getElementById('buyerHistoryCard');if(card){card.innerHTML='';card.classList.add('hidden')}}
+ window.Euro5BuyerCard={load,reset,html};
+})();

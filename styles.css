@@ -52,3 +52,5 @@ input[readonly],select:disabled{background:#f2f5f9;color:#34445a;cursor:not-allo
 @media(max-width:700px){.split-supply{grid-template-columns:1fr}}
 
 .price-risk-details{margin:16px 0;padding:16px;background:#f6f9fc;border:1px solid #d7e2ec;border-radius:8px}.price-risk-details summary{cursor:pointer;font-weight:700}.price-risk-details h4{margin:18px 0 7px}.price-risk-details p{line-height:1.6}.price-risk-details table{width:100%;margin:12px 0}@media print{.price-risk-details{break-inside:auto;background:white}}
+
+.buyer-history-card{margin:20px 0;padding:18px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc}.buyer-history-card h3{margin-top:0}.buyer-history-card p{margin:9px 0;line-height:1.5}.buyer-history-scroll{overflow:auto}.buyer-history-card table{width:100%;border-collapse:collapse;font-size:14px}.buyer-history-card th,.buyer-history-card td{padding:9px;border-bottom:1px solid #dbe3ed;text-align:left}.buyer-history-card small,.buyer-history-card .muted{color:#64748b;font-size:12px}

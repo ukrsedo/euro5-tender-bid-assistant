@@ -266,6 +266,7 @@ analyzeBtn.addEventListener('click', async()=>{
   const api=(window.EURO5_CONFIG?.apiUrl||'').replace(/\/$/,'');
   if(!api){status.textContent='Адресу сервера не налаштовано у config.js.';return;}
 
+  window.Euro5BuyerCard?.reset();
   analyzeBtn.disabled=true;
   status.textContent='Завантажую дані з Prozorro та перевіряю умови тендера…';
   reviewSection.classList.add('hidden');
@@ -288,6 +289,7 @@ analyzeBtn.addEventListener('click', async()=>{
     }
     lastExtraction=data;
     renderReview(data);
+    window.Euro5BuyerCard?.load(data,api);
     status.textContent='Дані завантажено. Перевірте Крок 2.';
     reviewSection.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
@@ -808,6 +810,7 @@ function buildPdfReport(){
   report.innerHTML=`
     <div class="pdf-head"><img src="euro5-logo.png" alt="ЄВРО5"><div><h1>Асистент тендерної пропозиції</h1><div>${escapeHtml(lastExtraction?.tender_id||'')}</div></div></div>
     <h2>${escapeHtml(lastExtraction?.tender_title||'Тендер')}</h2>
+    ${lastExtraction?.buyer_profile?.ready?window.Euro5BuyerCard.html(lastExtraction.buyer_profile):''}
     ${competitionPdfHtml()}
     ${ratingPdfHtml(rating,cmp,expected,value('minMargin'))}
     <div class="pdf-grid">
