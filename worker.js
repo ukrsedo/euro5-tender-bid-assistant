@@ -636,9 +636,19 @@ function percentDifference(a, b) {
   return Math.abs(a / b - 1) * 100;
 }
 
-function daysBetween(a, b) {
-  if (!(a instanceof Date) || !(b instanceof Date) || Number.isNaN(a) || Number.isNaN(b)) return null;
-  return Math.abs(a.getTime() - b.getTime()) / 86400000;
+function wholesaleBenchmarkAge(tenderDate, priceDate) {
+  if (!(tenderDate instanceof Date) || !(priceDate instanceof Date) ||
+      !Number.isFinite(tenderDate.getTime()) || !Number.isFinite(priceDate.getTime())) return null;
+  const tenderDay = Date.parse(euro5ObservationDate(tenderDate) + "T00:00:00Z");
+  const priceDay = Date.parse(euro5ObservationDate(priceDate) + "T00:00:00Z");
+  if (priceDay > tenderDay) return null;
+  let age = 0;
+  for (let day = priceDay + 86400000; day <= tenderDay; day += 86400000) {
+    const weekday = new Date(day).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) age++;
+    if (age > 5) break;
+  }
+  return age;
 }
 
 function chooseMarketPrice(format, retailPrice, wholesalePrice, wholesaleUsable) {
@@ -724,9 +734,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     fetchEnkorrCurrentPrices()
   ]);
 
-  // Enkorr wholesale is current only. It is used only for tenders recent enough
-  // to make a current wholesale benchmark meaningful. Historical bulk tenders
-  // stay unscored until a reliable historical Enkorr series is available.
+  // Enkorr must be dated on or before the announcement, at most five
+  // business days earlier. Never use future prices for historical comparison.
   let enkorrMinfinGas = null, enkorrMinfinDiesel = null;
   if (enkorr?.date) {
     [enkorrMinfinGas, enkorrMinfinDiesel] = await Promise.all([
@@ -740,8 +749,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const crossCheckLimitPct = 5;
   const gasWholesaleParsedOk = !!enkorr?.gasoline?.wholesale && (crossGas === null || crossGas <= crossCheckLimitPct);
   const dieselWholesaleParsedOk = !!enkorr?.diesel?.wholesale && (crossDiesel === null || crossDiesel <= crossCheckLimitPct);
-  const wholesaleDateGap = enkorr?.date ? daysBetween(tenderDate, enkorr.date) : null;
-  const wholesaleRecentEnough = recentTender && enkorr?.date && wholesaleDateGap !== null && wholesaleDateGap <= 30;
+  const wholesaleDateGap = enkorr?.date ? wholesaleBenchmarkAge(tenderDate, enkorr.date) : null;
+  const wholesaleRecentEnough = wholesaleDateGap !== null && wholesaleDateGap <= 5;
 
   const retailGasNoVat = retailGas?.priceWithoutVat ?? null;
   const retailDieselNoVat = retailDiesel?.priceWithoutVat ?? null;
@@ -829,9 +838,9 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     if (globalFormat === "unknown") {
       note = "Формат постачання не визначено. Оберіть «Налив» або «Талони / паливні картки», щоб розрахувати бюджет замовника до ринку.";
     } else if (!recentTender && (globalFormat === "bulk" || gasFormat === "bulk" || dieselFormat === "bulk")) {
-      note = "Для історичного тендера з наливом немає надійної щоденної оптової ціни Enkorr на дату тендера. Цей фактор не використовується в рейтингу.";
+      note = "Гуртовий орієнтир Enkorr на дату оголошення або не більш ніж за 5 робочих діб до неї недоступний. Пізніші ціни не використовуються. Порівняння не розраховано; у рейтингу — нейтральні 10/20 балів.";
     } else if ((gasFormat === "bulk" && !gasWholesaleUsable) || (dieselFormat === "bulk" && !dieselWholesaleUsable)) {
-      note = "Оптову ціну Enkorr не вдалося надійно підтвердити. Порівняння бюджету з ринком не розраховано.";
+      note = "Немає підтвердженої гуртової ціни Enkorr на дату оголошення або не більш ніж за 5 робочих діб до неї. Пізніші ціни не використовуються. Порівняння не розраховано; у рейтингу — нейтральні 10/20 балів.";
     } else {
       note = "Ринковий орієнтир знайдено не для всіх потрібних позицій або немає підтвердженого обсягу.";
     }
@@ -851,7 +860,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     text,
     referenceDate: globalFormat === "bulk" ? common.wholesaleReferenceDate : common.retailReferenceDate,
     note: globalFormat === "bulk"
-      ? "Для наливу використано поточний оптовий орієнтир Enkorr. Роздрібну колонку Enkorr звірено з Minfin як контроль правильності даних."
+      ? "Для наливу використано гуртовий орієнтир Enkorr на дату оголошення або не більш ніж за 5 робочих діб до неї (понеділок–п’ятниця). Пізніші ціни виключені. Роздрібну колонку Enkorr звірено з Minfin як контроль правильності даних."
       : globalFormat === "retail"
         ? "Для талонів / паливних карток використано: "+common.retailSource+". Порівняння на дату оголошення: спочатку стела або архів Євро5 за потрібну дату; за відсутності ціни відповідної позиції — щоденні ціни Minfin."
         : "Для кожної позиції використано орієнтир відповідно до підтвердженого формату постачання."
@@ -1191,7 +1200,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.14-retail-fallback"
+        version: "2026.10.14-wholesale-5-business-days"
       }, 200, origin);
     }
 
