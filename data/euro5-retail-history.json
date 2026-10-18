@@ -65,6 +65,19 @@
         "dt": 98.9,
         "lpg": 51.9
       }
+    },
+    {
+      "date": "2026-10-18",
+      "observed_at": "2026-10-18T12:36:30.407Z",
+      "source_url": "https://euro5.ua/tsiny-na-palne/",
+      "prices_uah_l_with_vat": {
+        "a95": 78.9,
+        "a95premium": 88.9,
+        "a92": 76.5,
+        "dtPremium": 107,
+        "dt": 99.99,
+        "lpg": 53.9
+      }
     }
   ]
 }
