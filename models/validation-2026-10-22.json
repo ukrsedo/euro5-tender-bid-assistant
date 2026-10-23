@@ -1,0 +1,108 @@
+{
+  "cutoff": "2026-10-22",
+  "source_update": [
+    "22.10.2026 22:00:31"
+  ],
+  "source_sha256": "f631f72465d90a268ecdf882c1e37299db7e1ecc378df4f033cc713b538912ff",
+  "raw_lots": 24254,
+  "eligible_completed_lots": 10259,
+  "period": [
+    "2022-01-04",
+    "2026-10-16"
+  ],
+  "rejected": {
+    "below_1m_net": 1814,
+    "not_successfully_completed": 4587,
+    "fuel_unknown_or_other_product": 5156,
+    "non_modelled_procedure": 2173,
+    "cpv_outside_scope": 230,
+    "winning_amount_invalid": 32,
+    "completion_unknown_or_after_cutoff": 3
+  },
+  "train": 4406,
+  "calibration": 529,
+  "test": {
+    "n": 466,
+    "two_plus_rate": 0.6845493562231759,
+    "log_loss": 0.5670295202749878,
+    "brier": 0.18701621651717854,
+    "auc": 0.7123984389994241,
+    "accuracy": 0.7381974248927039
+  },
+  "baseline_without_buyer_history": {
+    "n": 466,
+    "two_plus_rate": 0.6845493562231759,
+    "log_loss": 0.5923091211662618,
+    "brier": 0.19795412304778934,
+    "auc": 0.6386241016782889,
+    "accuracy": 0.7296137339055794
+  },
+  "final_core_fit": 5059,
+  "final_calibration": 466,
+  "new_announcements_after_oct5": 54,
+  "new_completions_after_oct5": 166,
+  "price_samples": {
+    "market": {
+      "gasoline": 131,
+      "diesel": 520,
+      "mixed": 361
+    },
+    "n1": {
+      "gasoline": 319,
+      "diesel": 651,
+      "mixed": 1043
+    }
+  },
+  "limitations": [
+    "Reconstructed pipeline: previous training source code is unavailable; not an identical rerun.",
+    "Training fuel labels inferred from lot title/CPV; ambiguous/other products excluded.",
+    "Historical net threshold uses app convention 20% conversion, not reconstructed historical tax treatment.",
+    "Winning amount/expected amount follows BI exported VAT bases; bidder-specific VAT basis is not independently reconstructed.",
+    "Completion status-change date conservatively defines outcome availability. Same-day outcomes excluded from features.",
+    "UI competitiveness is rolling out-of-time coverage, pooled by competition mode; in_window_coverage is separately stored."
+  ],
+  "legacy_comparison": {
+    "period": "2026-10-06..2026-10-22 announcements completed by cutoff",
+    "legacy": {
+      "n": 54,
+      "two_plus_rate": 0.8703703703703703,
+      "log_loss": 0.39969174834431875,
+      "brier": 0.11941673290827169,
+      "auc": 0.5927051671732523,
+      "accuracy": 0.8333333333333334
+    },
+    "refreshed_frozen_before_test": {
+      "n": 54,
+      "two_plus_rate": 0.8703703703703703,
+      "log_loss": 0.39984066391268724,
+      "brier": 0.11928406271507809,
+      "auc": 0.5805471124620061,
+      "accuracy": 0.8518518518518519
+    }
+  },
+  "price_backtest": {
+    "market": {
+      "n": 466,
+      "observed_coverage": [
+        0.3218884120171674,
+        0.6652360515021459,
+        0.8476394849785408,
+        0.9399141630901288
+      ]
+    },
+    "n1": {
+      "n": 147,
+      "observed_coverage": [
+        0.3673469387755102,
+        0.6326530612244898,
+        0.8095238095238095,
+        0.9319727891156463
+      ]
+    }
+  },
+  "runtime_versions": {
+    "numpy": "2.3.5",
+    "scikit-learn": "1.8.0",
+    "websockets": "16.0"
+  }
+}
