@@ -155,7 +155,7 @@ function cors(origin) {
   return {
     ...(allow ? { "Access-Control-Allow-Origin": allow } : {}),
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Vary": "Origin"
   };
 }
@@ -1286,6 +1286,7 @@ export default {
     }
 
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/memory/")) return Euro5Memory.route(request,env,origin);
 
     if (request.method === "GET" && url.pathname === "/health") {
       return json({
@@ -1479,6 +1480,99 @@ response_format: { type: "json_object" }
     }, 200, origin);
   }
 };
+// EURO5_MEMORY_START
+// Authoritative structured memory. No external Mem0 traffic or automatic AI capture.
+const Euro5Memory = (() => {
+  const fail = (message, status=400) => { throw Object.assign(new Error(message), {status}); };
+  const stamp = value => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) fail('Потрібна точна дата і час з часовим поясом.');
+    const calendar=value.slice(0,10);
+    if(new Date(calendar+'T00:00:00Z').toISOString().slice(0,10)!==calendar) fail('Некоректна календарна дата.');
+    const iso = new Date(value).toISOString();
+    if (iso.slice(0,10) !== value.slice(0,10) && value.endsWith('Z')) fail('Некоректна дата.');
+    return iso;
+  };
+  const text = (value, max, optional=false) => {
+    if (optional && (value === undefined || value === null || value === '')) return '';
+    if (typeof value !== 'string' || !value.trim() || value.length > max) fail('Некоректний текст або перевищено обсяг.');
+    return value.trim();
+  };
+  const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+  async function actor(request, env) {
+    if (env.MEMORY_ENABLED !== '1' || !env.EURO5_MEMORY_DB || !env.MEMORY_USERS) fail('Пам’ять ще не підключено.',503);
+    let users; try { users=JSON.parse(env.MEMORY_USERS); } catch { fail('Помилка налаштування доступу.',503); }
+    if (!Array.isArray(users)) fail('Помилка налаштування доступу.',503);
+    const token=(request.headers.get('Authorization')||'').match(/^Bearer ([^\s]{32,256})$/)?.[1];
+    if (!token) fail('Введіть персональний ключ доступу.',401);
+    const hash=await digest(token), user=users.find(x=>x.token_sha256===hash);
+    if (!user || !/^[a-zA-Z0-9_-]{1,80}$/.test(user.id||'') || !/^[a-zA-Z0-9_-]{1,80}$/.test(user.company||'') || !['reader','editor','admin'].includes(user.role)) fail('Ключ доступу недійсний.',401);
+    return user;
+  }
+  async function body(request) {
+    const raw=await request.text();
+    if (raw.length>16000) fail('Надто великий запит.',413);
+    try { const b=JSON.parse(raw); if(!b || Array.isArray(b) || typeof b!=='object') fail('Некоректний запит.'); return b; } catch(e) { if(e.status)throw e;fail('Некоректний JSON.'); }
+  }
+  function normalize(b, user, now) {
+    if(user.role==='reader') fail('Потрібен доступ редактора.',403);
+    if(!['profile','buyer_note','decision','preference'].includes(b.kind)) fail('Невідомий вид запису.');
+    const key=text(b.recordKey,160);
+    if(!/^[a-zA-Z0-9:_-]+$/.test(key)) fail('Некоректний ключ запису.');
+    const content=text(b.content,6000), available=stamp(b.availableAt||now), effective=stamp(b.effectiveAt||available);
+    if(available>now || effective>now) fail('Майбутні записи поки не підтримуються.');
+    const source=text(b.sourceUrl,2000,true);
+    if(source) { try { if(new URL(source).protocol!=='https:') fail('Джерело має бути HTTPS.'); } catch {fail('Некоректне джерело.');} }
+    if(available<now && !source) fail('Для історичної дати потрібне джерело.');
+    const buyer=text(b.buyerCode,10,true), tender=text(b.tenderId,80,true);
+    if(buyer && !/^\d{8,10}$/.test(buyer))fail('Некоректний код замовника.');
+    if(tender && !/^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z](-L\d+)?$/i.test(tender))fail('Некоректний ID тендера.');
+    if(b.kind==='buyer_note' && !buyer)fail('Вкажіть код замовника.');
+    if(b.kind==='decision' && !tender)fail('Вкажіть тендер.');
+    if(b.kind==='profile' && user.role!=='admin')fail('Профіль компанії змінює адміністратор.',403);
+    const scope=b.kind==='preference'?'user':'company';
+    return {key,kind:b.kind,content,available,effective,source,buyer,tender,scope,owner:scope==='user'?user.id:''};
+  }
+  async function save(db,b,user,now=new Date().toISOString()) {
+    const v=normalize(b,user,now), id=crypto.randomUUID();
+    await db.prepare(`INSERT INTO euro5_memories
+      (id,company_id,scope,owner_id,record_key,kind,buyer_code,tender_id,content,available_at,effective_at,recorded_at,actor_id,source_url)
+      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)`)
+      .bind(id,user.company,v.scope,v.owner,v.key,v.kind,v.buyer,v.tender,v.content,v.available,v.effective,now,user.id,v.source).run();
+    return {id,recordKey:v.key,recordedAt:now,availableAt:v.available,sourceStatus:v.source?'user_supplied_source':'user_statement'};
+  }
+  async function context(db,b,user,now=new Date().toISOString()) {
+    const asOf=stamp(b.asOf);
+    if(asOf>now)fail('Дата аналізу не може бути в майбутньому.');
+    const buyer=text(b.buyerCode,10,true),tender=text(b.tenderId,80,true);
+    // Choose the visible revision before entity filtering. A later change cannot erase the earlier as-of revision.
+    const query=`WITH visible AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY scope,owner_id,kind,record_key ORDER BY recorded_at DESC,rowid DESC) AS revision
+      FROM euro5_memories WHERE company_id=?1 AND (scope='company' OR (scope='user' AND owner_id=?2))
+      AND available_at<=?3 AND effective_at<=?3
+    ) SELECT id,scope,record_key,kind,buyer_code,tender_id,content,available_at,effective_at,recorded_at,actor_id,source_url
+      FROM visible WHERE revision=1 AND
+      (kind IN ('profile','preference') OR (kind='buyer_note' AND buyer_code=?4 AND ?4<>'') OR (kind='decision' AND tender_id=?5 AND ?5<>''))
+      ORDER BY kind,recorded_at DESC LIMIT 101`;
+    const result=await db.prepare(query).bind(user.company,user.id,asOf,buyer,tender).all();
+    const rows=result.results||[];
+    return {ready:true,asOf,records:rows.slice(0,100),truncated:rows.length>100,
+      note:'Записи користувачів; джерела не перевірено автоматично. Пізніші відомості виключено. Бали рейтингу не змінено.'};
+  }
+  async function route(request,env,origin) {
+    const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors(origin),'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
+    try {
+      if(origin && !ALLOWED_ORIGINS.includes(origin))fail('Forbidden origin',403);
+      if(request.method!=='POST')fail('Method not allowed',405);
+      const user=await actor(request,env),b=await body(request),path=new URL(request.url).pathname;
+      if(path==='/memory/context')return response(await context(env.EURO5_MEMORY_DB,b,user));
+      if(path==='/memory/save')return response(await save(env.EURO5_MEMORY_DB,b,user),201);
+      fail('Не знайдено',404);
+    } catch(e) { return response({ready:false,error:e.status?e.message:'Пам’ять тимчасово недоступна.'},e.status||503); }
+  }
+  return {route,normalize,context,save,stamp,digest};
+})();
+// EURO5_MEMORY_END
+
 // APPEND this entire file to the existing fuel Worker. Do not replace its code.
 import { WorkerEntrypoint as Euro5CategoryWorkerEntrypoint } from 'cloudflare:workers';
 const euro5CategoryAIInternal = (()=>{
