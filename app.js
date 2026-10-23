@@ -214,6 +214,7 @@ function benchmarkDescription(format,gasFormat,dieselFormat){
   return '';
 }
 function invalidateCalculation(){
+  window.Euro5MemoryUI?.invalidate();
   calculationIsCurrent=false;
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
@@ -805,6 +806,14 @@ function recalc(){
   const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   renderRecommendation(rating,cmp,expected,value('minMargin'));
+  window.Euro5MemoryUI?.observe({
+    tenderId:lastExtraction?.tender_id,buyerCode:lastExtraction?.buyer_code,
+    fuelType:el.fuelType.value,supplyFormat:activeTenderData()?.supply_format,
+    expectedValue:expected,totalCost:full,minMargin:value('minMargin'),margin50:rating.margin50,
+    score:rating.total,stop:rating.stop,paymentDays:activeTenderData()?.payment_days??null,
+    buyerPenalty:rating.buyerCompetition.points,recommendation:rating.recommendation.title,
+    modelVersion:String(lastExtraction?.competition_forecast?.model_version||'')
+  });
   const tbody=document.getElementById('resultsBody'); tbody.innerHTML='';
   cfg.discounts.forEach((discount,i)=>{
     const bid=expected*(1-discount/100);
@@ -862,7 +871,7 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Конкурентність замовника',`${rating.buyerCompetition.points}`,rating.buyerCompetition.label+'. '+rating.buyerCompetition.reason]
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
   const cond=rating.conditions.reasons.length?`<ul>${rating.conditions.reasons.map(r=>`<li>${r.points>0?'+':''}${num.format(r.points)}: ${escapeHtml(r.text)}</li>`).join('')}</ul>`:'';
-  return `<section class="pdf-recommendation"><div class="pdf-score"><strong>${rating.total}/100</strong><span>${escapeHtml(rating.recommendation.title)}</span></div><p>${escapeHtml(rating.recommendation.summary)}</p><table><thead><tr><th>Фактор</th><th>Бали</th><th>Пояснення</th></tr></thead><tbody>${rows}</tbody></table>${cond}</section>`;
+  return `<section class="pdf-recommendation"><div class="pdf-score"><strong>${rating.total}/100</strong><span>${escapeHtml(rating.recommendation.title)}</span></div><p>${escapeHtml(rating.recommendation.summary)}</p><table><thead><tr><th>Фактор</th><th>Бали</th><th>Пояснення</th></tr></thead><tbody>${rows}</tbody></table>${cond}${window.Euro5MemoryUI?.reportHtml()||''}</section>`;
 }
 
 function buildPdfReport(){
