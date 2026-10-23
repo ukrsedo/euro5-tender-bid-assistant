@@ -1558,18 +1558,77 @@ const Euro5Memory = (() => {
     return {ready:true,asOf,records:rows.slice(0,100),truncated:rows.length>100,
       note:'Записи користувачів; джерела не перевірено автоматично. Пізніші відомості виключено. Бали рейтингу не змінено.'};
   }
+
+  function autoCase(raw,now) {
+    if(!raw || typeof raw!=='object')fail('Немає параметрів аналізу.');
+    const tenderId=text(raw.tenderId,80),buyerCode=text(raw.buyerCode,10);
+    if(!/^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z](-L\d+)?$/i.test(tenderId)||!/^\d{8,10}$/.test(buyerCode))fail('Некоректний тендер або замовник.');
+    if(!['gasoline','diesel','mixed'].includes(raw.fuelType)||!['bulk','retail','split'].includes(raw.supplyFormat))fail('Некоректний вид пального або постачання.');
+    const number=(value,min,max,nullable=false)=>{if(nullable&&(value===null||value===undefined))return null;if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)fail('Некоректний показник аналізу.');return value;};
+    const analysisAsOf=stamp(raw.analysisAsOf);if(analysisAsOf>now)fail('Майбутній момент аналізу.');
+    if(typeof raw.stop!=='boolean')fail('Некоректний результат перевірки маржі.');
+    return {schema:'euro5_auto_case_v1',tenderId,buyerCode,fuelType:raw.fuelType,supplyFormat:raw.supplyFormat,
+      analysisAsOf,expectedValue:number(raw.expectedValue,1000000,1e13),totalCost:number(raw.totalCost,0,1e13),
+      minMargin:number(raw.minMargin,0.000001,99.999999),margin50:number(raw.margin50,-1e8,100),score:number(raw.score,0,100),stop:raw.stop,
+      paymentDays:number(raw.paymentDays,0,10000,true),buyerPenalty:number(raw.buyerPenalty,-20,0),
+      recommendation:text(raw.recommendation,250),modelVersion:text(raw.modelVersion,80,true)};
+  }
+  function rankCases(rows,current) {
+    const ranked=[];
+    for(const row of rows){
+      let c;try{c=JSON.parse(row.content)}catch{continue}
+      if(c.schema!=='euro5_auto_case_v1'||c.tenderId===current.tenderId||!(c.expectedValue>0))continue;
+      const sameBuyer=c.buyerCode===current.buyerCode,sameFuel=c.fuelType===current.fuelType,sameFormat=c.supplyFormat===current.supplyFormat;
+      const size=Math.max(c.expectedValue,current.expectedValue)/Math.min(c.expectedValue,current.expectedValue);
+      if(!sameBuyer && !(sameFuel&&sameFormat&&size<=2))continue;
+      ranked.push({id:row.id,recordedAt:row.recorded_at,availableAt:row.available_at,case:c,match:sameBuyer?'same_buyer':'similar_tender',rank:(sameBuyer?8:0)+(sameFuel?2:0)+(sameFormat?2:0)+(size<=2?1:0)});
+    }
+    return ranked.sort((a,b)=>b.rank-a.rank||b.availableAt.localeCompare(a.availableAt)||a.case.tenderId.localeCompare(b.case.tenderId)).slice(0,5);
+  }
+  function makeHints(cases,current) {
+    const hints=[],same=cases.filter(x=>x.case.buyerCode===current.buyerCode),stops=cases.filter(x=>x.case.stop),buyer= same.filter(x=>x.case.buyerPenalty<0);
+    if(stops.length)hints.push({code:'previous_margin_risk',text:`У ${stops.length} із ${cases.length} схожих попередніх аналізів обережна ставка не забезпечувала введену мінімальну маржу. Перед участю повторно перевірте актуальну собівартість, логістику та запас маржі.`,evidence:stops.map(x=>x.case.tenderId)});
+    if(buyer.length)hints.push({code:'previous_buyer_risk',text:`У ${buyer.length} із ${same.length} попередніх аналізів цього замовника був негативний бал за конкурентність. Зіставте причини з поточною перевіреною історією замовника; старе застереження саме по собі не доводить проблему в новому тендері.`,evidence:buyer.map(x=>x.case.tenderId)});
+    const pay=cases.filter(x=>x.case.paymentDays!==null&&current.paymentDays!==null&&current.paymentDays>x.case.paymentDays);
+    if(pay.length)hints.push({code:'longer_payment',text:`Поточна відстрочка оплати довша, ніж у ${pay.length} із ${cases.length} знайдених попередніх аналізів. Перевірте вартість фінансування та оборотні кошти.`,evidence:pay.map(x=>x.case.tenderId)});
+    if(cases.length&&!hints.length)hints.push({code:'comparison',text:`Знайдено ${cases.length} схожих попередніх аналізів. Порівняйте їхні параметри з поточними; повторюваного застереження за збереженими показниками не встановлено. Це не підтвердження безпечності участі.`,evidence:cases.map(x=>x.case.tenderId)});
+    return hints;
+  }
+  async function observe(db,b,user,now=new Date().toISOString()) {
+    if(user.role==='reader')return {saved:false,reason:'read_only'};
+    const c=autoCase(b.snapshot,now),key='auto:'+c.tenderId,content=JSON.stringify(c);
+    const last=await db.prepare("SELECT id,content FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision' AND record_key=?2 ORDER BY recorded_at DESC,rowid DESC LIMIT 1").bind(user.company,key).first();
+    if(last?.content===content)return {saved:true,duplicate:true,id:last.id};
+    const saved=await save(db,{kind:'decision',recordKey:key,content,buyerCode:c.buyerCode,tenderId:c.tenderId,sourceUrl:'https://prozorro.gov.ua/tender/'+c.tenderId},user,now);
+    return {saved:true,id:saved.id,recordedAt:saved.recordedAt};
+  }
+  async function hints(db,b,user,now=new Date().toISOString()) {
+    const current=autoCase(b.snapshot,now),asOf=current.analysisAsOf;
+    const result=await db.prepare(`WITH visible AS (
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY tender_id ORDER BY recorded_at DESC,rowid DESC) AS revision
+      FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision'
+      AND record_key LIKE 'auto:%' AND available_at<=?2 AND effective_at<=?2 AND tender_id<>?3
+    ) SELECT id,content,recorded_at,available_at FROM visible WHERE revision=1 ORDER BY available_at DESC LIMIT 501`).bind(user.company,asOf,current.tenderId).all();
+    const rows=result.results||[],cases=rankCases(rows.slice(0,500),current);
+    return {ready:true,asOf,cases:cases.map(({rank,...rest})=>rest),hints:makeHints(cases,current),coverageLimited:rows.length>500,
+      note:'Це збережені розрахунки системи та підтверджені користувачем вхідні дані, не фактичні рішення компанії чи результати торгів. Пізніші записи і поточний тендер виключено. Бали не змінено.'};
+  }
+
   async function route(request,env,origin) {
     const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{...cors(origin),'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
     try {
       if(origin && !ALLOWED_ORIGINS.includes(origin))fail('Forbidden origin',403);
       if(request.method!=='POST')fail('Method not allowed',405);
       const user=await actor(request,env),b=await body(request),path=new URL(request.url).pathname;
+      if(path==='/memory/status')return response({ready:true,role:user.role});
+      if(path==='/memory/observe')return response(await observe(env.EURO5_MEMORY_DB,b,user));
+      if(path==='/memory/hints')return response(await hints(env.EURO5_MEMORY_DB,b,user));
       if(path==='/memory/context')return response(await context(env.EURO5_MEMORY_DB,b,user));
       if(path==='/memory/save')return response(await save(env.EURO5_MEMORY_DB,b,user),201);
       fail('Не знайдено',404);
     } catch(e) { return response({ready:false,error:e.status?e.message:'Пам’ять тимчасово недоступна.'},e.status||503); }
   }
-  return {route,normalize,context,save,stamp,digest};
+  return {route,normalize,context,save,stamp,digest,autoCase,rankCases,makeHints,observe,hints};
 })();
 // EURO5_MEMORY_END
 

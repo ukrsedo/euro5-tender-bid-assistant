@@ -1,38 +1,44 @@
 (()=>{
-  let api='',lastData=null,generation=0;
+  let api='',lastData=null,lastSnapshot=null,lastResult=null,connected=false,generation=0;
   const by=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const panel=by('memoryPanel'); if(!panel)return;
+  const panel=by('memoryPanel');if(!panel)return;
+  function advisory(html){const node=by('memoryAdvice');if(node)node.innerHTML=html;}
+  function invalidate(){generation++;lastResult=null;lastSnapshot=null;advisory('');}
   async function call(path,payload){
-    const key=by('memoryKey').value.trim();
-    if(!key)throw Error('Введіть персональний ключ доступу.');
+    const key=by('memoryKey').value.trim();if(!key)throw Error('Введіть персональний ключ доступу.');
     const r=await fetch(api+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
-    const d=await r.json();if(!r.ok)throw Error(d.error||'Помилка пам’яті.');return d;
+    const d=await r.json();if(!r.ok)throw Error(r.status===404?'Оновіть Worker до версії автоматичної пам’яті.':d.error||'Пам’ять тимчасово недоступна.');return d;
   }
-  function reset(){generation++;lastData=null;by('memoryRecords').innerHTML='';by('memoryStatus').textContent='';panel.classList.add('hidden');by('memoryContent').value='';}
-  function load(data,url){reset();lastData=data;api=url;panel.classList.remove('hidden');
-    // A date-only cutoff excludes the whole announcement day conservatively.
-    const date=data.buyer_history_as_of||data.tender_announcement_date;
-    by('memoryAsOf').value=date?date.slice(0,10)+'T00:00:00Z':'';
-    by('memoryStatus').textContent='Пам’ять не завантажено. Вкажіть ключ і точний момент аналізу. Дата без часу: використано початок доби UTC.';
+  function reportHtml(){
+    if(!lastResult)return '';
+    const d=lastResult;
+    const hints=d.hints.map(h=>`<li>${esc(h.text)}<br><small>Аналізи: ${h.evidence.map(esc).join(', ')}</small></li>`).join('');
+    const rows=d.cases.map(x=>`<tr><td>${esc(x.case.tenderId)}</td><td>${x.match==='same_buyer'?'Той самий замовник':'Схожі параметри'}</td><td>${esc(x.case.score)}</td><td>${esc(x.case.recommendation)}</td></tr>`).join('');
+    return `<section><h3>Підказки з попередніх аналізів</h3>${hints?'<ul>'+hints+'</ul>':'<p>До дати оголошення цього тендера ще немає схожих збережених аналізів. Пам’ять накопичуватиметься автоматично.</p>'}${rows?'<div class="table-wrap"><table><thead><tr><th>Тендер</th><th>Схожість</th><th>Попередній бал</th><th>Попередня рекомендація</th></tr></thead><tbody>'+rows+'</tbody></table></div>':''}<p class="muted">${esc(d.note)}${d.coverageLimited?' Перевірено лише 500 останніх доступних аналізів.':''}</p></section>`;
   }
-  async function refresh(){const ticket=++generation;by('memoryRecords').innerHTML='';
-    const d=await call('/memory/context',{asOf:by('memoryAsOf').value,buyerCode:lastData?.buyer_code||'',tenderId:lastData?.tender_id||''});
-    if(ticket!==generation)return;
-    by('memoryRecords').innerHTML=d.records.map(r=>`<article class="notice"><strong>${esc(({profile:'Профіль компанії',preference:'Особисті налаштування',buyer_note:'Нотатка про замовника',decision:'Рішення щодо тендера'})[r.kind])}</strong><p style="white-space:pre-wrap">${esc(r.content)}</p><small>Відомо: ${esc(r.available_at)} · Автор: ${esc(r.actor_id)} · Версія: ${esc(r.record_key)}${r.source_url?' · Джерело: '+esc(r.source_url):''}</small></article>`).join('');
-    by('memoryStatus').textContent=`${d.records.length} записів станом на ${d.asOf}. ${d.note}${d.truncated?' Показано перші 100 записів.':''}`;
+  async function process(){
+    if(!lastSnapshot)return;
+    if(!connected){advisory('<p>Для автоматичних підказок підключіть пам’ять ЄВРО5 ключем доступу внизу сторінки.</p>');return;}
+    const ticket=++generation,snapshot={...lastSnapshot};lastResult=null;
+    advisory('<p>Шукаю схожі попередні аналізи…</p>');
+    try{
+      const result=await call('/memory/hints',{snapshot});if(ticket!==generation)return;
+      lastResult=result;advisory(reportHtml());
+      const saved=await call('/memory/observe',{snapshot});if(ticket!==generation)return;
+      by('memoryStatus').textContent=saved.saved?'Автоматична пам’ять підключена. Поточний аналіз збережено для майбутніх рекомендацій.':'Підказки отримано. Ваш ключ дозволяє лише читання; поточний аналіз не збережено.';
+    }catch(e){if(ticket!==generation)return;by('memoryStatus').textContent=e.message;advisory((lastResult?reportHtml():'')+`<p>Пам’ять: ${esc(e.message)} Поточний рейтинг розраховано без змін.</p>`);}
   }
-  by('memoryLoad').onclick=()=>refresh().catch(e=>by('memoryStatus').textContent=e.message);
-  by('memoryLock').onclick=()=>{generation++;by('memoryKey').value='';by('memoryRecords').innerHTML='';by('memoryStatus').textContent='Доступ закрито.';};
-  by('memoryKey').oninput=()=>{generation++;by('memoryRecords').innerHTML='';};
-  window.addEventListener('pagehide',()=>{generation++;by('memoryKey').value='';by('memoryRecords').innerHTML='';});
-  by('memoryAsOf').oninput=()=>{generation++;by('memoryRecords').innerHTML='';by('memoryStatus').textContent='Момент аналізу змінено. Завантажте пам’ять повторно.';};
-  by('memorySave').onclick=async()=>{try{
-    const kind=by('memoryKind').value,key=by('memoryRecordKey').value.trim()||crypto.randomUUID();
-    const b={kind,recordKey:key,content:by('memoryContent').value,buyerCode:kind==='buyer_note'?lastData?.buyer_code:'',tenderId:kind==='decision'?lastData?.tender_id:'',sourceUrl:by('memorySource').value};
-    if(by('memoryAvailable').value.trim())b.availableAt=by('memoryAvailable').value.trim();
-    const saved=await call('/memory/save',b);by('memoryRecordKey').value=key;
-    by('memoryStatus').textContent=`Збережено. Ключ версій: ${key}. Відомо з ${saved.availableAt}. Новий запис не потрапить до аналізу на ранішу дату.`;
-    by('memoryContent').value='';
-  }catch(e){by('memoryStatus').textContent=e.message;}};
-  window.Euro5MemoryUI={load,reset};
+  function reset(){invalidate();lastData=null;by('memoryStatus').textContent='';panel.classList.add('hidden');}
+  function load(data,url){reset();lastData=data;api=url;panel.classList.remove('hidden');by('memoryStatus').textContent=connected?'Пам’ять підключена. Після розрахунку аналіз збережеться автоматично.':'Введіть ключ один раз для цієї сесії. Нотатки заповнювати не потрібно.';}
+  function observe(snapshot){
+    const date=lastData?.buyer_history_as_of||lastData?.tender_announcement_date;
+    if(!/^\d{4}-\d{2}-\d{2}/.test(date||'')){advisory('<p>Пам’ять не використано: немає підтвердженої дати оголошення.</p>');return;}
+    lastSnapshot={...snapshot,analysisAsOf:date.slice(0,10)+'T00:00:00Z'};void process();
+  }
+  by('memoryLoad').onclick=async()=>{const ticket=++generation;try{await call('/memory/status',{});if(ticket!==generation)return;connected=true;by('memoryStatus').textContent='Пам’ять підключена. Аналізи зберігатимуться автоматично.';await process();}catch(e){if(ticket===generation){connected=false;by('memoryStatus').textContent=e.message;}}};
+  function lock(){connected=false;generation++;lastResult=null;by('memoryKey').value='';advisory('');by('memoryStatus').textContent='Автоматичну пам’ять відключено.';}
+  by('memoryLock').onclick=lock;
+  by('memoryKey').oninput=()=>{connected=false;generation++;lastResult=null;advisory('');};
+  window.addEventListener('pagehide',lock);
+  window.Euro5MemoryUI={load,reset,observe,invalidate,reportHtml};
 })();
