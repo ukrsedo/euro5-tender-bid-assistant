@@ -38,7 +38,16 @@ export async function handle(request,env,ctx,application=app){
   const user=await authenticate(request,env);
   if(!user)return request.method==='GET'&&!path.startsWith('/memory/')&&path!=='/session'?redirect('/login'):json({error:'Сесія закінчилась. Увійдіть знову.',loginUrl:'/login'},401);
   if(path==='/session'&&request.method==='GET')return json({id:user.id,name:user.name,role:user.role,shared:user.id==='test-team'});
-  if(['/tender-check','/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
+  if(path==='/tender-check'){
+    if(request.method!=='POST')return json({error:'Method not allowed'},405);
+    if(!env.TENDER_AI?.fetch)return json({error:'Внутрішнє підключення аналізу ще не налаштовано.'},503);
+    // The existing backend keeps its own AI secrets. Only this authenticated route may call it.
+    // Forward the analysis payload without browser session, Access assertions or credentials.
+    const headers=new Headers({'Content-Type':'application/json'});
+    try{return await env.TENDER_AI.fetch(new Request('https://internal.euro5/tender-check',{method:'POST',headers,body:request.body,duplex:'half'}));}
+    catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
+  }
+  if(['/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
     // Identity is a trusted internal object, never a client header or selected profile ID.
     const headers=new Headers(request.headers);headers.delete('Origin');headers.delete('Authorization');
     return application.fetch(new Request(request,{headers}),{...env,MEMORY_AUTH_MODE:'session',EURO5_SESSION_ACTOR:user},ctx);

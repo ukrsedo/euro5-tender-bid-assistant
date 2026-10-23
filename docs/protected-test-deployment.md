@@ -32,7 +32,7 @@ Profiles are server configuration, not a client-side selector. Passwords and pro
    ```sh
    npx wrangler secret bulk /absolute/path/to/euro5-private-secrets.json --config wrangler.protected.jsonc
    ```
-   In the new Worker's settings, configure the existing AI connection exactly as in the original Worker: secret `AI_API_KEY`, and values `AI_API_URL` / `AI_MODEL`. This change does not create an OpenAI key, change the model, or add AI calls. If this Worker needs other existing bindings, copy those settings too; the Category AI RPC export remains present.
+   The `TENDER_AI` service binding calls the existing `euro5-tender-bid-assistant` Worker internally. Its existing AI URL, model and encrypted API key stay there; do not copy, reveal, replace or recreate them. No `AI_API_KEY`, `AI_API_URL` or `AI_MODEL` is needed on the new gateway for tender analysis. This internal binding is declared in `wrangler.protected.jsonc` and is created by deployment. Authentication and same-origin POST checks run before every forwarded request. Memory remains local to the protected gateway and retains its authenticated author ID. No browser cookies or Access assertions are forwarded to the analysis backend.
 7. Run the admin-email setup below. The shared test login can operate independently; the administrator's email login fails closed until Access is configured.
 
 ## Administrator's email OTP
@@ -62,7 +62,7 @@ Before inviting testers, verify in separate browser profiles:
 Only after these tests pass:
 
 1. Disable the existing GitHub Pages publication and distribute only the protected test URL.
-2. Close the original public Worker's HTTP entry points. One option is to update its script to this branch's `worker.js`, then set `MEMORY_AUTH_MODE=session` on that original Worker **without** an internal gateway actor: all of its direct HTTP routes then return 401. Setting this variable on the old deployed script alone is insufficient. Alternatively disable all its public domains/routes. Preserve any Category AI service bindings still used by other tools; do not delete the Worker blindly.
+2. Disable all of the original `euro5-tender-bid-assistant` Worker's public domains/routes and preview/version URLs while keeping the Worker itself, its existing AI settings and service bindings intact. `TENDER_AI` continues to invoke it internally. **Do not set `MEMORY_AUTH_MODE=session` on that backend**: its default HTTP fetch handler is now called by the service binding without a browser actor. Doing so would block internal analysis as well. If an old version of this guide was followed and that variable was set, remove it from the backend. The protected gateway remains in session mode. Before disabling the original URL, check for other tools that still rely on it and move those calls to authenticated/internal paths. Keep its current manual deployment approach, or persist `workers_dev:false` and disabled previews in its own deployment configuration if it later becomes managed by Wrangler. Do not deploy `wrangler.protected.jsonc` to the old backend or delete the Worker.
 3. Remove the legacy `MEMORY_USERS` secret from the retired public deployment after verifying it is no longer needed.
 
 The public Git repository still exposes the published source code and any data previously committed to it. Login protects runtime access and D1, not repository contents. Review/remove confidential repository content separately; no credentials should be committed at any stage.

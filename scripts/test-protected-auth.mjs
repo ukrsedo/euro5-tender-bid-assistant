@@ -68,3 +68,14 @@ const statusRequest=()=>request('/memory/status',{method:'POST',headers:{Cookie:
 const memoryStatus=await handle(statusRequest(),{...env,MEMORY_ENABLED:'1'}, {},realWorker);assert.equal(memoryStatus.status,200);assert.equal((await memoryStatus.json()).role,'editor');
 const unauthorizedProfile=await handle(request('/memory/save',{method:'POST',headers:{Cookie:sessionCookie,Origin:'https://test.example','Content-Type':'application/json'},body:JSON.stringify({kind:'profile',recordKey:'company',content:'Unauthorized company profile change'})}),{...env,MEMORY_ENABLED:'1'}, {},realWorker);assert.equal(unauthorizedProfile.status,403);
 console.log('Real Worker integration: direct URL guard, authenticated memory and shared-profile privilege restriction passed.');
+// Tender analysis uses the existing backend service, never a copied API credential.
+let forwarded=0,forwardedBody;
+const serviceEnv={...env,TENDER_AI:{fetch:async r=>{forwarded++;assert.equal(r.url,'https://internal.euro5/tender-check');assert.equal(r.headers.get('Origin'),null);assert.equal(r.headers.get('Cookie'),null);assert.equal(r.headers.get('Authorization'),null);assert.equal(r.headers.get('Cf-Access-Jwt-Assertion'),null);forwardedBody=await r.json();return new Response(JSON.stringify({ready:true,tender_id:forwardedBody.tenderId}),{headers:{'Content-Type':'application/json'}});}}};
+const tenderRequest=(extra={})=>request('/tender-check',{method:'POST',headers:{Cookie:sessionCookie,Origin:'https://test.example','Content-Type':'application/json','Cf-Access-Jwt-Assertion':'must-not-forward',...extra},body:JSON.stringify({tenderId:'UA-2026-10-13-014119-a'})});
+assert.equal((await handle(tenderRequest({Cookie:''}),serviceEnv)).status,401);assert.equal(forwarded,0);
+assert.equal((await handle(tenderRequest({Origin:'https://attacker.example'}),serviceEnv)).status,403);assert.equal(forwarded,0);
+const analyzed=await handle(tenderRequest(),serviceEnv);assert.equal(analyzed.status,200);assert.equal(forwardedBody.tenderId,'UA-2026-10-13-014119-a');assert.equal(forwarded,1);
+assert.equal((await handle(tenderRequest(),env)).status,503);
+assert.equal((await handle(tenderRequest(),{...env,TENDER_AI:{fetch:async()=>{throw Error('private backend failure')}}})).status,502);
+const statusBefore=forwarded;assert.equal((await handle(statusRequest(),{...serviceEnv,MEMORY_ENABLED:'1'}, {},realWorker)).status,200);assert.equal(forwarded,statusBefore);
+console.log('Internal AI service: authenticated forwarding without key duplication, blocked anonymous/CSRF calls, stripped browser credentials, local author-aware memory and backend failure handling passed.');
