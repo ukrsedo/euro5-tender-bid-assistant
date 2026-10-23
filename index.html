@@ -8,9 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="euro5-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20261023-auto-memory" />
+  <link rel="stylesheet" href="styles.css?v=20261023-session-memory" />
 </head>
 <body>
+  <aside id="sessionBar" class="card" aria-live="polite"><span id="sessionName">Перевіряю сесію…</span> <form action="/logout" method="post"><button class="btn secondary-btn" type="submit">Вийти</button></form></aside>
   <main class="shell">
     <header class="hero">
       <div class="brand-lockup">
@@ -354,10 +355,6 @@
     <section id="memoryPanel" class="card hidden" aria-labelledby="memoryTitle">
       <h2 id="memoryTitle">Автоматична пам’ять ЄВРО5</h2>
       <p>Після розрахунку система автоматично зберігає параметри та рекомендацію. У майбутніх аналізах схожі випадки використовуються як підказки. Вводити нотатки не потрібно.</p>
-      <label for="memoryKey">Персональний ключ доступу — один раз на поточну сесію сторінки</label>
-      <input id="memoryKey" type="password" autocomplete="off" spellcheck="false">
-      <button id="memoryLoad" class="btn primary-btn" type="button">Підключити автоматичну пам’ять</button>
-      <button id="memoryLock" class="btn secondary-btn" type="button">Відключити</button>
       <p id="memoryStatus" role="status" aria-live="polite"></p>
       <p class="muted">Для історичного прогнозу використовуються лише записи, збережені до дати оголошення. Нові аналізи накопичуються з моменту підключення. Фактичні результати торгів або рішення ЄВРО5 автоматично не встановлюються.</p>
     </section>
@@ -374,8 +371,8 @@
   <script src="price-risk.js?v=20261023-buyer-competition"></script>
   <script src="buyer-competition.js?v=20261023-buyer-competition"></script>
   <script src="buyer-card.js?v=20261023-buyer-competition"></script>
-  <script src="memory.js?v=20261023-auto-memory"></script>
-  <script src="app.js?v=20261023-auto-memory"></script>
+  <script src="memory.js?v=20261023-session-memory"></script>
+  <script src="app.js?v=20261023-session-memory"></script>
 </body>
 </html>
 

@@ -1,13 +1,12 @@
 (()=>{
-  let api='',lastData=null,lastSnapshot=null,lastResult=null,connected=false,generation=0;
+  let api='',lastData=null,lastSnapshot=null,lastResult=null,connected=false,generation=0,authPromise=null;
   const by=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const panel=by('memoryPanel');if(!panel)return;
   function advisory(html){const node=by('memoryAdvice');if(node)node.innerHTML=html;}
   function invalidate(){generation++;lastResult=null;lastSnapshot=null;advisory('');}
   async function call(path,payload){
-    const key=by('memoryKey').value.trim();if(!key)throw Error('Введіть персональний ключ доступу.');
-    const r=await fetch(api+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
-    const d=await r.json();if(!r.ok)throw Error(r.status===404?'Оновіть Worker до версії автоматичної пам’яті.':d.error||'Пам’ять тимчасово недоступна.');return d;
+    const r=await fetch(api+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+    const d=await r.json().catch(()=>({}));if(r.status===401){connected=false;throw Error('Сесія закінчилась. Увійдіть знову через сторінку входу.');}if(!r.ok)throw Error(r.status===404?'Оновіть Worker до версії автоматичної пам’яті.':d.error||'Пам’ять тимчасово недоступна.');return d;
   }
   function reportHtml(){
     if(!lastResult)return '';
@@ -18,8 +17,9 @@
   }
   async function process(){
     if(!lastSnapshot)return;
-    if(!connected){advisory('<p>Для автоматичних підказок підключіть пам’ять ЄВРО5 ключем доступу внизу сторінки.</p>');return;}
-    const ticket=++generation,snapshot={...lastSnapshot};lastResult=null;
+    const ticket=++generation,snapshot={...lastSnapshot};
+    if(!connected){advisory('<p>Перевіряю доступ до пам’яті…</p>');await connect();if(ticket!==generation||!connected)return;}
+    lastResult=null;
     advisory('<p>Шукаю схожі попередні аналізи…</p>');
     try{
       const result=await call('/memory/hints',{snapshot});if(ticket!==generation)return;
@@ -29,16 +29,23 @@
     }catch(e){if(ticket!==generation)return;by('memoryStatus').textContent=e.message;advisory((lastResult?reportHtml():'')+`<p>Пам’ять: ${esc(e.message)} Поточний рейтинг розраховано без змін.</p>`);}
   }
   function reset(){invalidate();lastData=null;by('memoryStatus').textContent='';panel.classList.add('hidden');}
-  function load(data,url){reset();lastData=data;api=url;panel.classList.remove('hidden');by('memoryStatus').textContent=connected?'Пам’ять підключена. Після розрахунку аналіз збережеться автоматично.':'Введіть ключ один раз для цієї сесії. Нотатки заповнювати не потрібно.';}
+  function load(data,url){reset();lastData=data;api=url;panel.classList.remove('hidden');by('memoryStatus').textContent=connected?'Пам’ять підключена. Після розрахунку аналіз збережеться автоматично.':'Пам’ять підключається автоматично після входу.';void connect();}
   function observe(snapshot){
     const date=lastData?.buyer_history_as_of||lastData?.tender_announcement_date;
     if(!/^\d{4}-\d{2}-\d{2}/.test(date||'')){advisory('<p>Пам’ять не використано: немає підтвердженої дати оголошення.</p>');return;}
     lastSnapshot={...snapshot,analysisAsOf:date.slice(0,10)+'T00:00:00Z'};void process();
   }
-  by('memoryLoad').onclick=async()=>{const ticket=++generation;try{await call('/memory/status',{});if(ticket!==generation)return;connected=true;by('memoryStatus').textContent='Пам’ять підключена. Аналізи зберігатимуться автоматично.';await process();}catch(e){if(ticket===generation){connected=false;by('memoryStatus').textContent=e.message;}}};
-  function lock(){connected=false;generation++;lastResult=null;by('memoryKey').value='';advisory('');by('memoryStatus').textContent='Автоматичну пам’ять відключено.';}
-  by('memoryLock').onclick=lock;
-  by('memoryKey').oninput=()=>{connected=false;generation++;lastResult=null;advisory('');};
-  window.addEventListener('pagehide',lock);
+  async function connect(){
+    if(connected||!api)return;
+    if(authPromise)return authPromise;
+    authPromise=(async()=>{try{await call('/memory/status',{});connected=true;by('memoryStatus').textContent='Пам’ять підключена автоматично.';}catch(e){by('memoryStatus').textContent=e.message;advisory('<p>'+esc(e.message)+'</p>');}finally{authPromise=null;}})();
+    return authPromise;
+  }
+  window.addEventListener('pagehide',()=>{generation++;connected=false;lastResult=null;advisory('');});
+  async function session(){try{
+    const r=await fetch('/session',{headers:{Accept:'application/json'}});if(!r.ok){window.location.assign('/login');return;}
+    const user=await r.json();by('sessionName').textContent=user.name+(user.shared?' · спільний тестовий профіль':'');
+  }catch{by('sessionName').textContent='Не вдалося перевірити сесію. Оновіть сторінку.';}}
+  void session();
   window.Euro5MemoryUI={load,reset,observe,invalidate,reportHtml};
 })();

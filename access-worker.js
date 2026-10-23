@@ -1,0 +1,49 @@
+import app from './worker.js';
+export { Euro5CategoryAI } from './worker.js';
+import {verifyAccess} from './auth/access.js';
+import {authenticate,issue,cookie,profiles,tester,hash,allowPasswordAttempt} from './auth/session.js';
+import {loginHtml} from './auth/login.js';
+const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
+const login=(message='',status=200)=>new Response(loginHtml(message),{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
+const redirect=(location,session)=>new Response(null,{status:303,headers:{Location:location,'Cache-Control':'no-store',...(session?{'Set-Cookie':cookie(session.value,session.maxAge)}:{})}});
+function secure(response){const result=new Response(response.body,response);for(const [name,value] of Object.entries({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','X-Frame-Options':'DENY','Content-Security-Policy':"frame-ancestors 'none'; base-uri 'self'; form-action 'self'"}))result.headers.set(name,value);return result;}
+export async function handle(request,env,ctx,application=app){
+  const url=new URL(request.url),path=url.pathname,origin=request.headers.get('Origin');
+  if(url.protocol!=='https:')return json({error:'HTTPS required'},400);
+  if(!env.SESSION_SECRET||env.SESSION_SECRET.length<48)return json({error:'Вхід ще не налаштовано.'},503);
+  if(!['GET','HEAD','POST'].includes(request.method))return json({error:'Method not allowed'},405);
+  if(request.method==='POST'&&origin!==url.origin)return json({error:'Forbidden origin'},403);
+  if(path==='/login'&&request.method==='GET')return login();
+  if(path==='/auth/test'&&request.method==='POST'){
+    try{
+      const user=tester(env);if(!user)return login('Спільний тестовий вхід вимкнено.',403);
+      if(!await allowPasswordAttempt(request,env))return login('Забагато спроб. Спробуйте через 15 хвилин.',429);
+      if(Number(request.headers.get('Content-Length')||0)>2048)return login('Некоректний запит.',413);
+      const raw=await request.text();if(raw.length>2048)return login('Некоректний запит.',413);
+      if(!request.headers.get('Content-Type')?.startsWith('application/x-www-form-urlencoded'))return login('Некоректний запит.',400);
+      const password=new URLSearchParams(raw).get('password')||'';
+      if(password.length<12||password.length>256||await hash(password)!==env.TEST_PASSWORD_SHA256)return login('Невірний пароль.',401);
+      return redirect('/',await issue(user,env));
+    }catch{return login('Вхід тимчасово недоступний.',503);}
+  }
+  if(path==='/admin-login'&&request.method==='GET'){
+    try{
+      const identity=await verifyAccess(request,env);
+      const user=profiles(env).find(x=>x.email.trim().toLowerCase()===identity.email.trim().toLowerCase());
+      if(!user)return login('Вашому акаунту доступ не надано.',403);
+      return redirect('/',await issue(user,env));
+    }catch{return login('Індивідуальний вхід недоступний. Перевірте налаштування Cloudflare Access.',403);}
+  }
+  if(path==='/logout'&&request.method==='POST')return redirect('/login',{value:'',maxAge:0});
+  const user=await authenticate(request,env);
+  if(!user)return request.method==='GET'&&!path.startsWith('/memory/')&&path!=='/session'?redirect('/login'):json({error:'Сесія закінчилась. Увійдіть знову.',loginUrl:'/login'},401);
+  if(path==='/session'&&request.method==='GET')return json({id:user.id,name:user.name,role:user.role,shared:user.id==='test-team'});
+  if(['/tender-check','/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
+    // Identity is a trusted internal object, never a client header or selected profile ID.
+    const headers=new Headers(request.headers);headers.delete('Origin');headers.delete('Authorization');
+    return application.fetch(new Request(request,{headers}),{...env,MEMORY_AUTH_MODE:'session',EURO5_SESSION_ACTOR:user},ctx);
+  }
+  if(request.method==='GET'||request.method==='HEAD')return env.ASSETS.fetch(request);
+  return json({error:'Не знайдено'},404);
+}
+export default {async fetch(request,env,ctx){try{return secure(await handle(request,env,ctx));}catch{return secure(json({error:'Сервіс тимчасово недоступний.'},503));}}};

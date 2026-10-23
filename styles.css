@@ -56,3 +56,6 @@ input[readonly],select:disabled{background:#f2f5f9;color:#34445a;cursor:not-allo
 .buyer-history-card{margin:20px 0;padding:18px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc}.buyer-history-card h3{margin-top:0}.buyer-history-card p{margin:9px 0;line-height:1.5}.buyer-history-scroll{overflow:auto}.buyer-history-card table{width:100%;border-collapse:collapse;font-size:14px}.buyer-history-card th,.buyer-history-card td{padding:9px;border-bottom:1px solid #dbe3ed;text-align:left}.buyer-history-card small,.buyer-history-card .muted{color:#64748b;font-size:12px}
 
 #memoryPanel{margin-top:18px}#memoryPanel label{display:block;font-size:12px;font-weight:700;margin:14px 0 6px}#memoryPanel textarea{width:100%;font:inherit;border:1px solid #cbd6e5;border-radius:9px;padding:10px;background:var(--yellow);resize:vertical}#memoryPanel button{margin:12px 8px 0 0}#memoryPanel summary{cursor:pointer;font-weight:700;margin-top:18px}#memoryPanel .notice{margin-bottom:10px;overflow-wrap:anywhere}#memoryPanel input,#memoryPanel textarea{max-width:100%}
+
+#sessionBar {max-width:1120px;margin:16px auto;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px;}
+#sessionBar form {margin:0;}
