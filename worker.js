@@ -468,18 +468,20 @@ function detectSupplyFormat(data, parsed, fuelType) {
 }
 
 function tenderAnnouncementDate(data) {
-  const candidates = [
-    data?.tenderPeriod?.startDate,
-    data?.enquiryPeriod?.startDate,
-    data?.date,
-    data?.dateModified
-  ];
-  for (const value of candidates) {
-    if (!value) continue;
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return null;
+  // Do not substitute bid submission, last modification or status-change dates.
+  // Confirm the initial enquiry day against the immutable creation day and ID.
+  // If these signals disagree, do not claim a publication-date benchmark.
+  if (data?.status === "draft") return null;
+  const idMatch = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
+  if (!idMatch) return null;
+  const idDate = new Date(idMatch[1] + "T12:00:00Z");
+  if (!Number.isFinite(idDate.getTime()) || idDate.toISOString().slice(0, 10) !== idMatch[1]) return null;
+  const created = typeof data?.dateCreated === "string" ? new Date(data.dateCreated) : null;
+  const enquiry = typeof data?.enquiryPeriod?.startDate === "string" ? new Date(data.enquiryPeriod.startDate) : null;
+  if (!created || !enquiry || !Number.isFinite(created.getTime()) || !Number.isFinite(enquiry.getTime())) return null;
+  if (euro5ObservationDate(created) !== idMatch[1] || euro5ObservationDate(enquiry) !== idMatch[1]) return null;
+  // Calendar day, anchored at noon UTC to keep Kyiv/UTC date handling stable.
+  return idDate;
 }
 
 function monthPath(date) {
@@ -705,7 +707,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const tenderDate = tenderAnnouncementDate(data);
   if (!tenderDate) return {
     available: false,
-    note: "Не вдалося визначити дату оголошення для порівняння бюджету з ринком."
+    note: "Не вдалося підтвердити дату оприлюднення для порівняння бюджету з ринком."
   };
 
   const now = new Date();
@@ -1200,7 +1202,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.14-wholesale-5-business-days"
+        version: "2026.10.23-submission-date-risk"
       }, 200, origin);
     }
 
@@ -1320,11 +1322,12 @@ response_format: { type: "json_object" }
       scope.normalizedWithoutVat
     );
 
-    const signalDate=tenderAnnouncementDate(source.data),recentSignal=signalDate&&(Date.now()-signalDate.getTime())/86400000<=30;
+    // Supply available price history; the calculator fits it at the user-confirmed
+    // submission date. Never anchor price risk to the tender publication date.
     const [market, fx, priceRiskHistory] = await Promise.all([
       buildMarketReference(source.data, parsed, scope, supplyInfo),
       buildFxTrend(source.data),
-      fetchPriceRiskHistory(recentSignal?new Date():signalDate)
+      fetchPriceRiskHistory(new Date())
     ]);
 
     return json({
@@ -1416,3 +1419,4 @@ export class Euro5CategoryAI extends Euro5CategoryWorkerEntrypoint {
   return {status:response.status,data:await response.json()};
  }
 };
+

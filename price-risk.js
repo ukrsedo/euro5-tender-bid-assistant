@@ -1,11 +1,22 @@
 /* Empirical five-business-day price-risk model. No normal-distribution assumption. */
 (function(root){
  const day=s=>Date.parse(s+'T00:00:00Z'),pct=(a,b)=>(b/a-1)*100;
+ function riskPeriod(submissionDate){
+  if(typeof submissionDate!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(submissionDate))return null;
+  const t=day(submissionDate);
+  if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==submissionDate)return null;
+  let end=t,n=0;
+  // Submission is day zero. Count the next five Monday-Friday days.
+  while(n<5){end+=86400000;const w=new Date(end).getUTCDay();if(w!==0&&w!==6)n++}
+  return {submission_date:submissionDate,risk_end_date:new Date(end).toISOString().slice(0,10),horizon_business_days:5};
+ }
  const mean=xs=>xs.reduce((s,x)=>s+x,0)/xs.length;
  const sd=xs=>{if(xs.length<2)return null;const m=mean(xs);return Math.sqrt(xs.reduce((s,x)=>s+(x-m)**2,0)/(xs.length-1))};
  function businessDays(a,b){let n=0;for(let t=day(a)+86400000;t<=day(b);t+=86400000){const w=new Date(t).getUTCDay();if(w!==0&&w!==6)n++}return n}
  function windows(rows){const out=[];for(let i=5;i<rows.length;i++){const a=rows[i-5],b=rows[i];if(businessDays(a.date,b.date)!==5)continue;out.push({start:a.date,end:b.date,a95:pct(a.a95,b.a95),dt:pct(a.dt,b.dt)})}return out}
  function fit(rows,asOf,gasWeight=0){
+  const period=riskPeriod(asOf);
+  if(!period||!Array.isArray(rows))return {ready:false,reason:'Вкажіть коректну дату подання нашої пропозиції.'};
   const cutoff=day(asOf),start=cutoff-30*86400000,historyStart=cutoff-365*86400000;
   const clean=[...new Map(rows.filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&day(r.date)<=cutoff&&day(r.date)>=historyStart&&[r.a95,r.dt].every(v=>Number.isFinite(v)&&v>0)&&![0,6].includes(new Date(day(r.date)).getUTCDay())).map(r=>[r.date,r])).values()].sort((a,b)=>a.date.localeCompare(b.date));
   const all=windows(clean),recent=all.filter(r=>day(r.start)>=start),historical=all.filter(r=>day(r.end)<start);
@@ -17,7 +28,7 @@
   const shrink=recent.length/(recent.length+historical.length);
   const transform=(v,m,s,hm,hs)=>{const pooledMean=hm+shrink*(m-hm),pooledSd=hs+shrink*(s-hs);return hs>1e-12?pooledMean+(v-hm)*pooledSd/hs:pooledMean};
   const scenarios=historical.map((r,i)=>({fuel:transform(hf[i],muF,sF,hmF,hsF)}));
-  return {ready:true,horizon_business_days:5,as_of:asOf,last_observation:clean.at(-1).date,recent_count:recent.length,historical_count:historical.length,recent_weight:shrink,fuel:{trend_pct:muF,volatility_pct:sF},scenarios};
+  return {ready:true,...period,as_of:asOf,last_observation:clean.at(-1).date,recent_count:recent.length,historical_count:historical.length,recent_weight:shrink,fuel:{trend_pct:muF,volatility_pct:sF},scenarios};
  }
  function assess(model,bid,totalCost,fuelCost,minMargin){
   if(!model?.ready)return {ready:false,points:7.5,reason:model?.reason||'Статистична модель ще недоступна.'};
@@ -38,9 +49,10 @@
   const costs=Array.from({length:iterations},()=>totalCost+fuelCost*changes[Math.floor(random()*changes.length)]/100);
   const quantile=(a,p)=>{const k=(a.length-1)*p,i=Math.floor(k);return a[i]+(a[Math.min(i+1,a.length-1)]-a[i])*(k-i)};
   const rows=bids.map(bid=>{const profits=costs.map(c=>bid-c).sort((a,b)=>a-b);return {bid,initial_profit:bid-totalCost,median_profit:quantile(profits,.5),p5_profit:quantile(profits,.05),loss_fraction:profits.filter(p=>p<0).length/iterations,safe_fraction:profits.filter(p=>p/bid*100>=minMargin).length/iterations}});
-  return {ready:true,iterations,historical_count:changes.length,horizon_business_days:model.horizon_business_days,last_observation:model.last_observation,min_margin:minMargin,rows};
+  return {ready:true,iterations,historical_count:changes.length,horizon_business_days:model.horizon_business_days,submission_date:model.submission_date,risk_end_date:model.risk_end_date,last_observation:model.last_observation,min_margin:minMargin,rows};
  }
- root.Euro5PriceRisk={fit,assess,simulate,windows,businessDays};
+ root.Euro5PriceRisk={fit,assess,simulate,windows,businessDays,riskPeriod};
 })(globalThis);
+
 
 
