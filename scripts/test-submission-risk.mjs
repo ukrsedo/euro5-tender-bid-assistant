@@ -9,6 +9,7 @@ function element(id){
 }
 const context=vm.createContext({console,Intl,Date,document:{getElementById:element,createElement:()=>element('new-row'),body:element('body')},window:{addEventListener(){}},setTimeout});
 vm.runInContext(fs.readFileSync('price-risk.js','utf8'),context);
+vm.runInContext(fs.readFileSync('buyer-competition.js','utf8'),context);
 vm.runInContext(fs.readFileSync('app.js','utf8'),context);
 const risk=context.Euro5PriceRisk;
 assert.equal(risk.riskPeriod('2026-10-13').risk_end_date,'2026-10-20');
@@ -72,3 +73,26 @@ assert.equal(rating.priceRisk.model.submission_date,'2026-10-13');
 assert.equal(rating.priceRisk.model.risk_end_date,'2026-10-20');
 
 console.log('PASS: submission-date horizon, weekends/leap/year boundaries, dated history, 10000 simulations, date edit invalidation, missing/future/stale-history rejection, rating and PDF agreement.');
+
+// A buyer-history result must invalidate a previously exported/rated result.
+vm.runInContext('calculationIsCurrent=true; window.onBuyerHistoryLoaded(lastExtraction,{ready:false,reason:"Test update"});',context);
+assert.equal(element('exportPdfBtn').disabled,true);
+assert(element('calculateStatus').textContent.includes('конкурентності'));
+
+// The separate buyer factor changes the total and is printed in the PDF.
+const buyer={ready:true,history_version:2,buyer_code:'20001645',as_of:'2026-10-13',period:{start:'2025-10-13',end:'2026-10-12'},count:7,value_without_vat:100,unknown_vat:0,verification:{candidate_lots:7,verified_lots:7},groups:{open:{count:7,value_without_vat:100},catalog:{count:0,value_without_vat:0},direct:{count:0,value_without_vat:0},other:{count:0,value_without_vat:0}},states:{'Завершено лот закупівлі':6,'Неуспішний лот закупівлі':1},competition:{final_count:7,known_count:7,observed_count:6,one_count:3,zero_count:1,missing_count:0,mean_participants:1.5},suppliers:{known_lots:6,distinct_count:2,leaders:[{id:'44763104',name:'Supplier A',count:3}]}};
+context.buyerFixture=buyer;
+vm.runInContext("lastExtraction.buyer_profile=buyerFixture;lastExtraction.buyer_code='20001645';lastExtraction.buyer_history_as_of='2026-10-13'",context);
+const ratingExpr='buildParticipationRating({expected:4861400,full:3312000,complete:true,cfg:MODEL.market.mixed,cmp:null,minMargin:2,fuelCost:3200000,gasCostAmount:1600000})';
+const before=vm.runInContext(ratingExpr,context);
+vm.runInContext('buyerFixture.suppliers.leaders[0].count=5',context);
+const after=vm.runInContext(ratingExpr,context);
+assert.equal(before.total-after.total,10);
+assert.equal(after.buyerCompetition.points,-10);
+assert.equal(after.recommendation.tone,'warn');
+vm.runInContext(fs.readFileSync('buyer-card.js','utf8'),context);
+assert.equal(vm.runInContext('recalc()',context),true);
+vm.runInContext('buildPdfReport()',context);
+assert(element('pdfReport').innerHTML.includes('Конкурентність замовника'));
+assert(element('pdfReport').innerHTML.includes('🚩 Концентрація перемог'));
+assert(element('pdfReport').innerHTML.includes('83,33%'));

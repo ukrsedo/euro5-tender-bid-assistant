@@ -618,17 +618,18 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const priceRisk=Euro5PriceRisk.assess(model,bid50,full,fuelCost,minMargin);
   const conditions=conditionAdjustment(activeTenderData());
   const base=marginScore+budgetScore+sizeScore+priceRisk.points;
-  const total=clamp(base+conditions.points,0,100);
+  const buyerCompetition=Euro5BuyerCompetition.assess(lastExtraction?.buyer_profile,lastExtraction?.buyer_history_as_of,lastExtraction?.buyer_code);
+  const total=clamp(base+conditions.points+buyerCompetition.points,0,100);
 
   const cautiousBid=expected*(1-cfg.discounts[0]/100);
   const cautiousMargin=(cautiousBid-full)/cautiousBid*100;
   const stop=cautiousMargin<minMargin;
-  const recommendation=recommendationFromScore(total,stop);
+  const recommendation=Euro5BuyerCompetition.recommendation(recommendationFromScore(total,stop),buyerCompetition,stop);
 
   return {
     total:Math.round(total),base:round1(base),conditions,discount50,margin50,marginDelta,
     marginScore:round1(marginScore),budgetScore:round1(budgetScore),sizeScore,
-    priceRisk,cautiousMargin,stop,recommendation
+    priceRisk,buyerCompetition,cautiousMargin,stop,recommendation
   };
 }
 
@@ -679,10 +680,11 @@ function renderRecommendation(rating,cmp,expected,minMargin){
     scoreRow('Бюджет замовника проти ринку',rating.budgetScore,20,budgetText),
     scoreRow('Розмір тендера',rating.sizeScore,15,`Очікувана вартість: ${money.format(expected)} грн без ПДВ.`),
     scoreRow('Ціновий ризик за 5 робочих діб',round1(rating.priceRisk.points),15,priceRiskDescription(rating.priceRisk)),
-    scoreRow('Умови тендера',rating.conditions.points,0,condText,'condition-row')
+    scoreRow('Умови тендера',rating.conditions.points,0,condText,'condition-row'),
+    scoreRow('Конкурентність замовника',rating.buyerCompetition.points,0,rating.buyerCompetition.label+'. '+rating.buyerCompetition.reason,'condition-row')
   ].join('')+priceRiskDetails(rating.priceRisk);
 
-  const details=[];
+  const details=[`<li><strong>Конкурентність замовника (${rating.buyerCompetition.points} балів):</strong> ${escapeHtml(rating.buyerCompetition.reason)}</li>`];
   rating.conditions.reasons.forEach(r=>details.push(`<li><strong>${r.points>0?'+':''}${num.format(r.points)}:</strong> ${escapeHtml(r.text)}</li>`));
   if(rating.stop) details.unshift(`<li><strong>Стоп-фактор:</strong> обережна ставка дає маржу ${num.format(rating.cautiousMargin)}%, що нижче мінімальних ${num.format(minMargin)}%.</li>`);
   warnings.innerHTML=details.length?`<h3>Як умови вплинули на рекомендацію</h3><ul>${details.join('')}</ul>`:'';
@@ -840,7 +842,8 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
     ['Ціновий ризик за 5 робочих діб',`${num.format(round1(rating.priceRisk.points))}/15`,priceRiskDescription(rating.priceRisk)],
-    ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.']
+    ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.'],
+    ['Конкурентність замовника',`${rating.buyerCompetition.points}`,rating.buyerCompetition.label+'. '+rating.buyerCompetition.reason]
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
   const cond=rating.conditions.reasons.length?`<ul>${rating.conditions.reasons.map(r=>`<li>${r.points>0?'+':''}${num.format(r.points)}: ${escapeHtml(r.text)}</li>`).join('')}</ul>`:'';
   return `<section class="pdf-recommendation"><div class="pdf-score"><strong>${rating.total}/100</strong><span>${escapeHtml(rating.recommendation.title)}</span></div><p>${escapeHtml(rating.recommendation.summary)}</p><table><thead><tr><th>Фактор</th><th>Бали</th><th>Пояснення</th></tr></thead><tbody>${rows}</tbody></table>${cond}</section>`;
@@ -937,3 +940,12 @@ exportPdfBtn.disabled=true;
 
 updateRiskPeriodHint();
 document.getElementById('submissionDate').addEventListener('input',()=>{updateRiskPeriodHint();invalidateCalculation();});
+
+window.onBuyerHistoryLoaded=(data,history)=>{
+ if(data!==lastExtraction)return;
+ lastExtraction.buyer_profile=history;
+ if(confirmedData)confirmedData.buyer_profile=history;
+ const wasCurrent=calculationIsCurrent;
+ invalidateCalculation();
+ if(wasCurrent)document.getElementById('calculateStatus').textContent='Історію конкурентності оновлено. Натисніть «Розрахувати», щоб оновити рейтинг і рекомендацію.';
+};

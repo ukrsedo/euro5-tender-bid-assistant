@@ -1,4 +1,4 @@
-// Public BI history; informational, never changes the participation rating.
+// Buyer evidence: only snapshots confirmed to predate the analysed announcement.
 const BUYER_BI_APP='fba3f2f2-cf55-40a0-a79f-b74f5ce947c2';
 function buyerHistoryPeriod(now=new Date()){
  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
@@ -8,23 +8,25 @@ function buyerHistoryPeriod(now=new Date()){
 }
 function buyerProcedureGroup(name){
  if(/Запит ціни пропозиції|Запит пропозицій постачальників/i.test(name))return 'catalog';
- if(/Відкриті торги|Спрощена закупівля|Допорогова закупівля/i.test(name)&&!/рамков|другий етап/i.test(name))return 'open';
+ if(/Відкриті торги|Спрощена (?:процедура )?закупівл[ія]|Допорогова закупівля/i.test(name)&&!/рамков|другий етап/i.test(name))return 'open';
  if(/без використання електронної системи|Звіт про.*договір|Переговорна процедура/i.test(name))return 'direct';
  return 'other';
 }
 function summarizeBuyerHistory(rows,code,period){
  const unique=new Map();for(const row of rows){const id=row['Ідентифікатор лота'];if(!id)throw Error('BI не повернув ідентифікатор лота.');unique.set(id,row)}
  const lots=[...unique.values()],groups=Object.fromEntries(['open','catalog','direct','other'].map(k=>[k,{count:0,value_without_vat:0,unknown_vat:0,procedures:{}}]));
- const finished=[],states={},cpv=new Set();let totalValue=0,unknownVat=0;
+ const finished=[],states={},cpv=new Set(),winners=new Map();let totalValue=0,unknownVat=0,winnerLots=0;
  for(const r of lots){
   const name=r['Процедура закупівлі']||'Не визначено',g=groups[buyerProcedureGroup(name)];g.count++;g.procedures[name]=(g.procedures[name]||0)+1;
   const amount=r['Очікувана вартість'],vat=r['ПДВ в очікуваній вартості'];
   if(Number.isFinite(amount)&&['з ПДВ','без ПДВ'].includes(vat)){const value=vat==='з ПДВ'?amount/1.2:amount;g.value_without_vat+=value;totalValue+=value}else{g.unknown_vat++;unknownVat++}
   const state=r['Статус лота'];states[state]=(states[state]||0)+1;cpv.add(r['Класифікація CPV']);
+  const winner=String(r['Переможець']||'').trim();
+  if(state==='Завершено лот закупівлі'&&winner&&winner!=='-'){const m=winner.match(/(?:\|\s*|#)(\d{8,10})\s*$/);if(m){const key=m[1];winners.set(key,{id:key,name:winner.replace(/\s*\|\s*\d{8,10}\s*$/,''),count:(winners.get(key)?.count||0)+1});winnerLots++}}
   if(['open','catalog'].includes(buyerProcedureGroup(name))&&['Завершено лот закупівлі','Неуспішний лот закупівлі'].includes(state))finished.push(r);
  }
  const participants=finished.map(r=>r['Кіль-ть унікальних учасників лота']),known=participants.filter(n=>Number.isFinite(n)&&n>=0),positive=known.filter(n=>n>0);
- return {ready:true,buyer_code:code,buyer_name:lots[0]?.['Організатор']?.split(' | ')[0]||null,period,as_of:new Date().toISOString(),source:'Prozorro BI',source_url:'https://bi.prozorro.org/sense/app/'+BUYER_BI_APP+'',count:lots.length,value_without_vat:totalValue,unknown_vat:unknownVat,groups,states,cpv:[...cpv],competition:{final_count:finished.length,known_count:known.length,observed_count:positive.length,mean_participants:positive.length?positive.reduce((a,b)=>a+b,0)/positive.length:null,one_count:known.filter(n=>n===1).length,zero_count:known.filter(n=>n===0).length,missing_count:participants.length-known.length}};
+ return {ready:true,buyer_code:code,buyer_name:lots[0]?.['Організатор']?.split(' | ')[0]||null,period,as_of:new Date().toISOString(),source:'Prozorro BI',source_url:'https://bi.prozorro.org/sense/app/'+BUYER_BI_APP+'',count:lots.length,value_without_vat:totalValue,unknown_vat:unknownVat,groups,states,cpv:[...cpv],suppliers:{known_lots:winnerLots,distinct_count:winners.size,leaders:[...winners.values()].sort((a,b)=>b.count-a.count||a.id.localeCompare(b.id)),new_supplier_entry_established:false},competition:{final_count:finished.length,known_count:known.length,observed_count:positive.length,mean_participants:positive.length?positive.reduce((a,b)=>a+b,0)/positive.length:null,one_count:known.filter(n=>n===1).length,zero_count:known.filter(n=>n===0).length,missing_count:participants.length-known.length}};
 }
 class BuyerBiConnection{
  constructor(){this.seq=0;this.pending=new Map()}
@@ -52,9 +54,9 @@ class BuyerBiConnection{
   const original=(await this.rpc(this.doc,'GetObject',{qId:'VcLPJX'})).qReturn.qHandle;
   const hc=structuredClone((await this.rpc(original,'GetProperties')).qProp.qHyperCubeDef);
   if(hc.qDimensions.length<30)throw Error('Структура BI змінилася.');
-  hc.qDimensions=[0,2,3,4,5,7,18,23,24].map(i=>hc.qDimensions[i]);hc.qMeasures=[];
+  hc.qDimensions=[0,2,3,4,5,7,18,19,23,24].map(i=>hc.qDimensions[i]);hc.qMeasures=[];
   for(const c of hc.qDimensions){c.qCalcCondition={qCond:{},qMsg:{}};c.qCalcCond={}}
-  hc.qInitialDataFetch=[];hc.qColumnOrder=hc.qInterColumnSortOrder=Array.from({length:9},(_,i)=>i);delete hc.qLayoutExclude;
+  hc.qInitialDataFetch=[];hc.qColumnOrder=hc.qInterColumnSortOrder=Array.from({length:10},(_,i)=>i);delete hc.qLayoutExclude;
   const cube=(await this.rpc(this.doc,'CreateSessionObject',{qProp:{qInfo:{qType:'table'},qHyperCubeDef:hc}})).qReturn.qHandle;
   const layout=(await this.rpc(cube,'GetLayout')).qLayout.qHyperCube;
   if(layout.qError||layout.qCalcCondMsg)throw Error('BI не дозволив розрахувати історію.');
@@ -62,14 +64,56 @@ class BuyerBiConnection{
   const headers=layout.qDimensionInfo.map(d=>d.qFallbackTitle);for(const key of ['Ідентифікатор лота','Процедура закупівлі','Організатор','Кіль-ть унікальних учасників лота'])if(!headers.includes(key))throw Error('BI змінив колонку '+key);
   const rows=[];for(let top=0;top<n;top+=1000){const height=Math.min(1000,n-top),pages=(await this.rpc(cube,'GetHyperCubeData',{qPath:'/qHyperCubeDef',qPages:[{qTop:top,qLeft:0,qWidth:width,qHeight:height}]})).qDataPages;const matrix=pages?.[0]?.qMatrix;if(matrix?.length!==height)throw Error('Історію отримано не повністю.');rows.push(...matrix.map(cells=>Object.fromEntries(headers.map((h,i)=>[h,Number.isFinite(cells[i]?.qNum)?cells[i].qNum:cells[i]?.qText]))))}
   if(rows.some(r=>!String(r['Організатор']).endsWith(' | '+code)))throw Error('BI повернув дані іншого замовника.');
-  return summarizeBuyerHistory(rows,code,period);
+  return {rows,code,period};
  }
 }
 async function loadBuyerHistory(code,period){const connection=new BuyerBiConnection();let timer;try{return await Promise.race([connection.download(code,period),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Історія замовника не завантажилась за 55 секунд.')),55000)})])}finally{clearTimeout(timer);connection.close()}}
+function validBuyerAsOf(value){
+ if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+ const d=new Date(value+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value&&value<=euro5ObservationDate();
+}
+async function verifyBuyerRows(rows,code,period,excludedTenderId){
+ const parents=[...new Set(rows.map(r=>String(r['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0]).filter(Boolean))];
+ const states=new Map();let cursor=0;const deadline=Date.now()+40000;
+ const headers={Accept:'application/json','User-Agent':'Mozilla/5.0 (compatible; EURO5-Tender-Assistant/1.0)'};
+ // A bounded, conservative snapshot check. Changed-after-cutoff snapshots are
+ // excluded rather than retroactively importing their current result.
+ const candidates=parents.filter(id=>id!==excludedTenderId).sort().reverse();
+ await Promise.all(Array.from({length:Math.min(4,candidates.length)},async()=>{
+  while(cursor<Math.min(candidates.length,60)&&Date.now()<deadline){
+   const id=candidates[cursor++];
+   try{
+    const summary=await fetch('https://prozorro.gov.ua/api/tenders/'+encodeURIComponent(id)+'/summary',{headers,signal:AbortSignal.timeout(8000)});
+    if(!summary.ok)throw Error('summary');const raw=await summary.json(),internal=findInternalId(raw);if(!internal)throw Error('id');
+    const response=await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders/'+internal,{headers,signal:AbortSignal.timeout(8000)});
+    if(!response.ok)throw Error('api');const payload=await response.json(),data=payload.data||payload;
+    if(data.tenderID!==id||buyerCode(data)!==code)throw Error('identity');
+    const modified=new Date(data.dateModified),created=new Date(data.dateCreated);
+    if(!Number.isFinite(modified.getTime())||!Number.isFinite(created.getTime()))throw Error('date');
+    states.set(id,euro5ObservationDate(modified)<=period.end&&euro5ObservationDate(created)>=period.start?'verified':'after_cutoff');
+   }catch{states.set(id,'unavailable')}
+  }
+ }));
+ const unique=[...new Map(rows.map(r=>[r['Ідентифікатор лота'],r])).values()];
+ const eligible=unique.filter(r=>states.get(String(r['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0])==='verified');
+ const history=summarizeBuyerHistory(eligible,code,period);
+ return {...history,history_version:2,as_of:period.as_of,excluded_tender_id:excludedTenderId,
+  verification:{candidate_lots:unique.length,verified_lots:eligible.length,excluded_or_unverified_lots:unique.length-eligible.length,
+   method:'Public Prozorro snapshot last modified no later than the day before announcement'},
+  evidence_note:'Рейтинг використовує лише попередні закупівлі, стан яких підтверджено до дати оголошення. Пізніші зміни та неперевірені записи виключено. Дані про нового постачальника за межами цієї історії не встановлено.'};
+}
 async function buyerHistoryRoute(request,origin,ctx){
  if(origin&&!ALLOWED_ORIGINS.includes(origin))return json({error:'Forbidden origin'},403,origin);
- const body=await request.json().catch(()=>({})),code=String(body.buyerCode||'');if(!/^\d{8,10}$/.test(code))return json({ready:false,reason:'Код замовника не визначено.'},400,origin);
- const period=buyerHistoryPeriod(),cache=caches.default,key=new Request(new URL('/buyer-history-cache/v1/'+code+'/'+period.end,request.url));
+ const body=await request.json().catch(()=>({})),code=String(body.buyerCode||''),asOf=body.asOf;
+ if(!/^\d{8,10}$/.test(code)||!validBuyerAsOf(asOf))return json({ready:false,reason:'Потрібні код замовника та дата оголошення тендера.'},400,origin);
+ const excluded=String(body.excludeTenderId||'');
+ const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
+ const key=new Request(new URL('/buyer-history-cache/v3/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
  try{const hit=await cache.match(key);if(hit)return json({...await hit.json(),cached:true},200,origin)}catch{}
- try{const history=await loadBuyerHistory(code,period);const response=new Response(JSON.stringify(history),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=86400'}});const write=cache.put(key,response).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(write);else await write;return json(history,200,origin)}catch(e){return json({ready:false,buyer_code:code,period,reason:e.message},200,origin)}
+ try{
+  const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded);
+  const response=new Response(JSON.stringify(history),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=86400'}});
+  const write=cache.put(key,response).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(write);else await write;
+  return json(history,200,origin);
+ }catch(e){return json({ready:false,buyer_code:code,period,as_of:asOf,reason:e.message},200,origin)}
 }
