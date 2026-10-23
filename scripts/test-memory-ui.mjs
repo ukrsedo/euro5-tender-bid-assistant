@@ -1,0 +1,14 @@
+import {readFileSync} from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const nodes=new Map();const get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:'',classList:{add(){},remove(){}}});return nodes.get(id)};
+let requestBody,headers,pending;
+const context=vm.createContext({document:{getElementById:get},window:{addEventListener(){}},crypto:globalThis.crypto,AbortSignal,fetch:async(url,opts)=>{requestBody=JSON.parse(opts.body);headers=opts.headers;return {ok:true,json:async()=>({records:[{kind:'buyer_note',content:'<script>test</script>',available_at:'2026-10-12',actor_id:'one',record_key:'x'}],asOf:requestBody.asOf,note:'test'})}}});
+vm.runInContext(readFileSync(new URL('../memory.js',import.meta.url),'utf8'),context);
+const ui=context.window.Euro5MemoryUI;
+ui.load({buyer_code:'12345678',buyer_history_as_of:'2026-10-13',tender_id:'UA-2026-10-13-123456-a'},'https://worker.example');
+get('memoryKey').value='a'.repeat(40);await get('memoryLoad').onclick();
+assert.equal(requestBody.asOf,'2026-10-13T00:00:00Z');assert.equal(requestBody.buyerCode,'12345678');assert.equal(headers.Authorization,'Bearer '+'a'.repeat(40));assert(get('memoryRecords').innerHTML.includes('&lt;script&gt;'));assert(!get('memoryRecords').innerHTML.includes('<script>'));
+get('memoryLock').onclick();assert.equal(get('memoryKey').value,'');assert.equal(get('memoryRecords').innerHTML,'');
+get('memoryKey').value='b'.repeat(40);
+context.fetch=async()=>({ok:true,json:()=>new Promise(resolve=>pending=resolve)});
+const load=get('memoryLoad').onclick();await new Promise(resolve=>setImmediate(resolve));get('memoryLock').onclick();pending({records:[{kind:'profile',content:'private'}],asOf:'2026-10-13',note:''});await load;assert.equal(get('memoryRecords').innerHTML,'');
+console.log('Memory UI: query scope, UTC cutoff, escaped content, lock and stale-response protection passed.');

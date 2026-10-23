@@ -291,6 +291,7 @@ analyzeBtn.addEventListener('click', async()=>{
   if(!api){status.textContent='Адресу сервера не налаштовано у config.js.';return;}
 
   window.Euro5BuyerCard?.reset();
+  window.Euro5MemoryUI?.reset();
   analyzeBtn.disabled=true;
   status.textContent='Завантажую дані з Prozorro та перевіряю умови тендера…';
   reviewSection.classList.add('hidden');
@@ -314,6 +315,7 @@ analyzeBtn.addEventListener('click', async()=>{
     }
     lastExtraction=data;
     renderReview(data);
+    window.Euro5MemoryUI?.load(data,api);
     window.Euro5BuyerCard?.load(data,api);
     status.textContent='Дані завантажено. Перевірте Крок 2.';
     reviewSection.scrollIntoView({behavior:'smooth',block:'start'});
