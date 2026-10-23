@@ -1292,7 +1292,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.23-fuel-filter-v2"
+        version: "2026.10.23-participation-decisions"
       }, 200, origin);
     }
 
@@ -1532,7 +1532,8 @@ const Euro5Memory = (() => {
     const scope=b.kind==='preference'?'user':'company';
     return {key,kind:b.kind,content,available,effective,source,buyer,tender,scope,owner:scope==='user'?user.id:''};
   }
-  async function save(db,b,user,now=new Date().toISOString()) {
+  async function save(db,b,user,now=new Date().toISOString(),internal=false) {
+    if(!internal&&/^(auto|participation):/i.test(String(b.recordKey||'')))fail('Службовий ключ запису. Використайте відповідну дію збереження.');
     const v=normalize(b,user,now), id=crypto.randomUUID();
     await db.prepare(`INSERT INTO euro5_memories
       (id,company_id,scope,owner_id,record_key,kind,buyer_code,tender_id,content,available_at,effective_at,recorded_at,actor_id,source_url)
@@ -1599,8 +1600,53 @@ const Euro5Memory = (() => {
     const c=autoCase(b.snapshot,now),key='auto:'+c.tenderId,content=JSON.stringify(c);
     const last=await db.prepare("SELECT id,content FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision' AND record_key=?2 ORDER BY recorded_at DESC,rowid DESC LIMIT 1").bind(user.company,key).first();
     if(last?.content===content)return {saved:true,duplicate:true,id:last.id};
-    const saved=await save(db,{kind:'decision',recordKey:key,content,buyerCode:c.buyerCode,tenderId:c.tenderId,sourceUrl:'https://prozorro.gov.ua/tender/'+c.tenderId},user,now);
+    const saved=await save(db,{kind:'decision',recordKey:key,content,buyerCode:c.buyerCode,tenderId:c.tenderId,sourceUrl:'https://prozorro.gov.ua/tender/'+c.tenderId},user,now,true);
     return {saved:true,id:saved.id,recordedAt:saved.recordedAt};
+  }
+  function decisionRef(b){
+    const tenderId=text(b.tenderId,80),buyerCode=text(b.buyerCode,10);
+    if(!/^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z](-L\d+)?$/i.test(tenderId)||!/^\d{8,10}$/.test(buyerCode))fail('Некоректний тендер або замовник.');
+    return {tenderId,buyerCode};
+  }
+  async function participation(db,b,user,now=new Date().toISOString()){
+    if(user.role==='reader')fail('Збереження рішення доступне редактору.',403);
+    const ref=decisionRef(b);
+    if(!['participate','decline'].includes(b.choice))fail('Оберіть: беремо участь або не беремо участі.');
+    const comment=text(b.comment,2000,true),snapshot=b.snapshot?autoCase(b.snapshot,now):null;
+    if(snapshot&&(snapshot.tenderId!==ref.tenderId||snapshot.buyerCode!==ref.buyerCode))fail('Розрахунок належить іншому тендеру.');
+    const content={schema:'euro5_participation_decision_v1',...ref,choice:b.choice,comment,snapshot,decidedAt:now};
+    const key='participation:'+ref.tenderId;
+    const last=await db.prepare("SELECT id,content,actor_id,recorded_at FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision' AND record_key=?2 ORDER BY recorded_at DESC,rowid DESC LIMIT 1").bind(user.company,key).first();
+    if(last&&last.actor_id===user.id){
+      let old;try{old=JSON.parse(last.content)}catch{}
+      if(old?.choice===content.choice&&old.comment===comment&&JSON.stringify(old.snapshot)===JSON.stringify(snapshot))return {saved:true,duplicate:true,id:last.id,recordedAt:last.recorded_at,actor:user.id,decision:old};
+    }
+    const saved=await save(db,{kind:'decision',recordKey:key,content:JSON.stringify(content),buyerCode:ref.buyerCode,tenderId:ref.tenderId,sourceUrl:'https://prozorro.gov.ua/uk/tender/'+ref.tenderId.replace(/-L\d+$/i,'')},user,now,true);
+    return {...saved,saved:true,actor:user.id,decision:content};
+  }
+  async function currentParticipation(db,b,user){
+    const ref=decisionRef(b);
+    const row=await db.prepare("SELECT id,content,actor_id,recorded_at FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision' AND record_key=?2 AND buyer_code=?3 ORDER BY recorded_at DESC,rowid DESC LIMIT 1").bind(user.company,'participation:'+ref.tenderId,ref.buyerCode).first();
+    if(!row)return {ready:true,decision:null};
+    let content;try{content=JSON.parse(row.content)}catch{return {ready:true,decision:null}}
+    return {ready:true,id:row.id,decision:content,actor:row.actor_id,recordedAt:row.recorded_at};
+  }
+  async function priorParticipation(db,current,user){
+    const result=await db.prepare(`WITH visible AS (
+      SELECT *,ROW_NUMBER() OVER(PARTITION BY tender_id ORDER BY recorded_at DESC,rowid DESC) AS revision
+      FROM euro5_memories WHERE company_id=?1 AND scope='company' AND kind='decision'
+      AND record_key LIKE 'participation:%' AND available_at<=?2 AND effective_at<=?2 AND tender_id<>?3
+    ) SELECT id,content,buyer_code,tender_id,actor_id,recorded_at FROM visible WHERE revision=1 ORDER BY recorded_at DESC LIMIT 501`).bind(user.company,current.analysisAsOf,current.tenderId).all();
+    const rows=result.results||[],decisions=[];
+    for(const row of rows.slice(0,500)){
+      let c;try{c=JSON.parse(row.content)}catch{continue}
+      if(c.schema!=='euro5_participation_decision_v1'||!['participate','decline'].includes(c.choice))continue;
+      const same=row.buyer_code===current.buyerCode,s=c.snapshot;
+      const similar=s&&s.fuelType===current.fuelType&&s.supplyFormat===current.supplyFormat&&Math.max(s.expectedValue,current.expectedValue)/Math.min(s.expectedValue,current.expectedValue)<=2;
+      if(!same&&!similar)continue;
+      decisions.push({id:row.id,tenderId:row.tender_id,buyerCode:row.buyer_code,choice:c.choice,comment:c.comment,actor:row.actor_id,recordedAt:row.recorded_at,match:same?'same_buyer':'similar_tender'});
+    }
+    return {decisions:decisions.slice(0,5),decisionCoverageLimited:rows.length>500};
   }
   async function hints(db,b,user,now=new Date().toISOString()) {
     const current=autoCase(b.snapshot,now),asOf=current.analysisAsOf;
@@ -1610,7 +1656,8 @@ const Euro5Memory = (() => {
       AND record_key LIKE 'auto:%' AND available_at<=?2 AND effective_at<=?2 AND tender_id<>?3
     ) SELECT id,content,recorded_at,available_at FROM visible WHERE revision=1 ORDER BY available_at DESC LIMIT 501`).bind(user.company,asOf,current.tenderId).all();
     const rows=result.results||[],cases=rankCases(rows.slice(0,500),current);
-    return {ready:true,asOf,cases:cases.map(({rank,...rest})=>rest),hints:makeHints(cases,current),coverageLimited:rows.length>500,
+    const prior=await priorParticipation(db,current,user);
+    return {ready:true,asOf,...prior,cases:cases.map(({rank,...rest})=>rest),hints:makeHints(cases,current),coverageLimited:rows.length>500,
       note:'Це збережені розрахунки системи та підтверджені користувачем вхідні дані, не фактичні рішення компанії чи результати торгів. Пізніші записи і поточний тендер виключено. Бали не змінено.'};
   }
 
@@ -1621,6 +1668,8 @@ const Euro5Memory = (() => {
       if(request.method!=='POST')fail('Method not allowed',405);
       const user=await actor(request,env),b=await body(request),path=new URL(request.url).pathname;
       if(path==='/memory/status')return response({ready:true,role:user.role});
+      if(path==='/memory/participation')return response(await participation(env.EURO5_MEMORY_DB,b,user));
+      if(path==='/memory/participation/current')return response(await currentParticipation(env.EURO5_MEMORY_DB,b,user));
       if(path==='/memory/observe')return response(await observe(env.EURO5_MEMORY_DB,b,user));
       if(path==='/memory/hints')return response(await hints(env.EURO5_MEMORY_DB,b,user));
       if(path==='/memory/context')return response(await context(env.EURO5_MEMORY_DB,b,user));
@@ -1628,7 +1677,7 @@ const Euro5Memory = (() => {
       fail('Не знайдено',404);
     } catch(e) { return response({ready:false,error:e.status?e.message:'Пам’ять тимчасово недоступна.'},e.status||503); }
   }
-  return {route,normalize,context,save,stamp,digest,autoCase,rankCases,makeHints,observe,hints};
+  return {route,normalize,context,save,stamp,digest,autoCase,rankCases,makeHints,observe,hints,participation,currentParticipation,priorParticipation};
 })();
 // EURO5_MEMORY_END
 
@@ -1662,5 +1711,6 @@ export class Euro5CategoryAI extends Euro5CategoryWorkerEntrypoint {
   return {status:response.status,data:await response.json()};
  }
 };
+
 
 

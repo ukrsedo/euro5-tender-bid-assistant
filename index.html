@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="euro5-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20261023-auto-memory" />
+  <link rel="stylesheet" href="styles.css?v=20261023-participation-decisions" />
 </head>
 <body>
   <main class="shell">
@@ -262,7 +262,7 @@
 
         <article class="card">
           <h2>Економічні параметри</h2>
-          <div class="field"><label for="submissionDate">Дата подання нашої пропозиції</label><input id="submissionDate" type="date" required aria-describedby="riskPeriodHint" /><div id="riskPeriodHint" class="hint">Вкажіть дату подання. Від неї відраховуються наступні 5 робочих діб (понеділок–п’ятниця); день подання — день 0.</div></div>
+          <div class="field submission-date-field"><label for="submissionDate">Дата подання нашої пропозиції</label><input id="submissionDate" type="date" required aria-describedby="riskPeriodHint" /><div id="riskPeriodHint" class="hint">Вкажіть дату подання. Від неї відраховуються наступні 5 робочих діб (понеділок–п’ятниця); день подання — день 0.</div></div>
           <div class="hint">Введіть собівартість на дату подання. Ціна кожної пропозиції, логістика та резерв фіксовані; моделюється лише зміна закупівельної вартості пального.</div>
           <div class="field"><label for="logistics">Логістика, грн/л</label><input id="logistics" type="text" inputmode="decimal" value="1,20" /></div>
           <div class="field"><label for="riskReserve">Резерв на ризики, %</label><input id="riskReserve" type="text" inputmode="decimal" value="1" /></div>
@@ -351,12 +351,23 @@
     </section>
 
 
+    <section id="participationDecision" class="card hidden" aria-labelledby="decisionTitle">
+      <h2 id="decisionTitle">Рішення закупівельника</h2>
+      <p>Збережіть рішення щодо участі. Воно окреме від рекомендації асистента; коментар необов’язковий.</p>
+      <div class="field"><label for="participationChoice">Наше рішення</label><select id="participationChoice"><option value="">Оберіть рішення…</option><option value="participate">Беремо участь</option><option value="decline">Не беремо участі</option></select></div>
+      <div class="field"><label for="participationComment">Коментар (необов’язково)</label><textarea id="participationComment" rows="3" maxlength="2000" placeholder="Наприклад: не підходить покриття АЗС, недостатня маржа або рішення керівника"></textarea></div>
+      <p id="participationContext" class="muted"></p>
+      <button id="participationSave" class="btn primary-btn" type="button" disabled>Зберегти рішення</button>
+      <p id="participationStatus" role="status" aria-live="polite"></p>
+      <p id="participationSaved" class="muted"></p>
+    </section>
+
     <section id="memoryPanel" class="card hidden" aria-labelledby="memoryTitle">
-      <h2 id="memoryTitle">Автоматична пам’ять ЄВРО5</h2>
-      <p>Після розрахунку система автоматично зберігає параметри та рекомендацію. У майбутніх аналізах схожі випадки використовуються як підказки. Вводити нотатки не потрібно.</p>
+      <h2 id="memoryTitle">Пам’ять ЄВРО5</h2>
+      <p>Розрахунки та рекомендації асистента зберігаються автоматично. Рішення закупівельника — «Беремо участь» або «Не беремо участі» — зберігається лише окремою кнопкою, з необов’язковим коментарем. Обидва види записів доступні для наступних аналізів.</p>
       <label for="memoryKey">Персональний ключ доступу — один раз на поточну сесію сторінки</label>
       <input id="memoryKey" type="password" autocomplete="off" spellcheck="false">
-      <button id="memoryLoad" class="btn primary-btn" type="button">Підключити автоматичну пам’ять</button>
+      <button id="memoryLoad" class="btn primary-btn" type="button">Підключити пам’ять</button>
       <button id="memoryLock" class="btn secondary-btn" type="button">Відключити</button>
       <p id="memoryStatus" role="status" aria-live="polite"></p>
       <p class="muted">Для історичного прогнозу використовуються лише записи, збережені до дати оголошення. Нові аналізи накопичуються з моменту підключення. Фактичні результати торгів або рішення ЄВРО5 автоматично не встановлюються.</p>
@@ -374,10 +385,11 @@
   <script src="price-risk.js?v=20261023-buyer-competition"></script>
   <script src="buyer-competition.js?v=20261023-buyer-competition"></script>
   <script src="buyer-card.js?v=20261023-buyer-competition"></script>
-  <script src="memory.js?v=20261023-auto-memory"></script>
-  <script src="app.js?v=20261023-auto-memory"></script>
+  <script src="memory.js?v=20261023-participation-decisions"></script>
+  <script src="app.js?v=20261023-participation-decisions"></script>
 </body>
 </html>
+
 
 
 

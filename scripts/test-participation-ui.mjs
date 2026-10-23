@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';
+const nodes=new Map();const get=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:'',disabled:false,classList:{add(){},remove(){}}});return nodes.get(id)};
+let role='editor',requests=[],paused;const previous={ready:true,cases:[],hints:[],decisions:[{tenderId:'UA-2026-10-01-000001-a',choice:'decline',comment:'<script>bad</script>',actor:'alice',recordedAt:'2026-10-12T10:00:00Z'}],note:'Decisions and analyses are separate'};
+const c=vm.createContext({document:{getElementById:get},window:{addEventListener(){}},AbortSignal,fetch:async(url,opts)=>{const b=JSON.parse(opts.body);requests.push({url,b});return {ok:true,json:async()=>url.endsWith('/status')?{role}:url.endsWith('/current')?{decision:null}:url.endsWith('/hints')?previous:url.endsWith('/observe')?{saved:true}:{saved:true,actor:'alice',recordedAt:'2026-10-23T12:00:00Z',decision:{...b,decidedAt:'2026-10-23T12:00:00Z'}}}}});
+vm.runInContext(fs.readFileSync('memory.js','utf8'),c);const ui=c.window.Euro5MemoryUI;
+const data={tender_id:'UA-2026-10-13-000002-a',buyer_code:'12345678',buyer_history_as_of:'2026-10-13'};
+ui.load(data,'https://worker.example');assert.equal(get('participationChoice').value,'');assert(get('participationSave').disabled);
+get('memoryKey').value='a'.repeat(40);await get('memoryLoad').onclick();assert(get('participationSave').disabled);
+get('participationChoice').value='decline';get('participationChoice').oninput();assert(!get('participationSave').disabled);
+assert.equal(requests.filter(x=>x.url.endsWith('/participation')).length,0);
+await get('participationSave').onclick();const p=requests.find(x=>x.url.endsWith('/participation'));assert.equal(p.b.choice,'decline');assert.equal(p.b.comment,'');assert.equal(p.b.snapshot,null);assert(get('participationSaved').textContent.includes('Не беремо участі'));
+ui.observe({tenderId:data.tender_id,buyerCode:data.buyer_code});await new Promise(r=>setImmediate(r));assert(ui.reportHtml().includes('&lt;script&gt;bad&lt;/script&gt;'));assert(!ui.reportHtml().includes('<script>'));assert(get('participationContext').textContent.includes('поточний розрахунок'));
+ui.invalidate();assert(get('participationContext').textContent.includes('не буде додано'));
+const originalFetch=c.fetch;c.fetch=async(url,opts)=>url.endsWith('/participation')?{ok:true,json:()=>new Promise(r=>paused=r)}:originalFetch(url,opts);
+const save=get('participationSave').onclick();await new Promise(r=>setImmediate(r));ui.load({...data,tender_id:'UA-2026-10-14-000003-a'},'https://worker.example');paused({saved:true,decision:{choice:'decline'},actor:'alice',recordedAt:'old'});await save;assert(!get('participationSaved').textContent.includes('old'));assert.equal(get('participationChoice').value,'');
+get('memoryLock').onclick();role='reader';get('memoryKey').value='b'.repeat(40);await get('memoryLoad').onclick();get('participationChoice').value='participate';get('participationChoice').oninput();assert(get('participationSave').disabled);
+const css=fs.readFileSync('styles.css','utf8'),html=fs.readFileSync('index.html','utf8');assert(css.includes('#submissionDate{background:#ede9fe'));assert(css.includes('border:2px solid #7c3aed'));assert(html.includes('submission-date-field'));assert(html.includes('Коментар (необов’язково)'));
+console.log('PASS: no default/implicit choice, explicit save, optional comment, no stale snapshot, read-only lock, cross-tender race, escaped decisions and distinct date styling');
