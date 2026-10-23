@@ -1206,35 +1206,56 @@ function validBuyerAsOf(value){
  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
  const d=new Date(value+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value&&value<=euro5ObservationDate();
 }
-async function verifyBuyerRows(rows,code,period,excludedTenderId){
- const parents=[...new Set(rows.map(r=>String(r['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0]).filter(Boolean))];
- const states=new Map();let cursor=0;const deadline=Date.now()+40000;
+// BEGIN VERIFIED BUYER SNAPSHOTS
+const BUYER_VERIFIED_SNAPSHOTS = [{"tender_id":"UA-2025-12-04-020528-a","buyer_code":"20001645","created_day":"2025-12-04","modified_day":"2025-12-17","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2025-12-04-020528-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":5256009.6,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-03-09-011486-a","buyer_code":"20001645","created_day":"2026-03-09","modified_day":"2026-03-20","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-03-09-011486-a-L1","Лот":"ДК 021:2015 09130000-9 Нафта і дистиляти (Бензин А-95 по талонах, дизпаливо по талонах)","Очікувана вартість":3459016,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-05-08-012643-a","buyer_code":"20001645","created_day":"2026-05-08","modified_day":"2026-05-25","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-05-08-012643-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":5960000,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]},{"tender_id":"UA-2026-07-17-009760-a","buyer_code":"20001645","created_day":"2026-07-17","modified_day":"2026-07-28","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-17-009760-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":7542800,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Неуспішний лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"-","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":0}]},{"tender_id":"UA-2026-07-28-009801-a","buyer_code":"20001645","created_day":"2026-07-28","modified_day":"2026-08-07","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-28-009801-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":7542800,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-07-30-010070-a","buyer_code":"20001645","created_day":"2026-07-30","modified_day":"2026-08-19","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-30-010070-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":4648087.5,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]},{"tender_id":"UA-2026-08-21-012048-a","buyer_code":"20001645","created_day":"2026-08-21","modified_day":"2026-09-14","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-08-21-012048-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":1598037.5,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"УКРНАФТА-ПОСТАЧ\" | 43012009","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]}];
+// END VERIFIED BUYER SNAPSHOTS
+function buyerParentId(row){return String(row['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0]}
+async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
+ const unique=[...new Map(rows.filter(r=>buyerParentId(r)!==excludedTenderId).map(r=>[r['Ідентифікатор лота'],r])).values()];
+ const parents=[...new Set(unique.map(buyerParentId).filter(Boolean))].sort().reverse();
+ const states=new Map(),proofs=new Map();let cursor=0;const deadline=Date.now()+40000;
+ const cache=options.cache,base=options.baseUrl||'https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev';
+ const key=id=>new Request(new URL('/buyer-evidence/v1/'+code+'/'+period.as_of+'/'+id,base));
+ const usable=(e,id)=>e?.buyer_code===code&&e.tender_id===id&&/^\d{4}-\d{2}-\d{2}$/.test(e.modified_day)&&e.modified_day<=period.end&&e.created_day>=period.start&&e.created_day<=period.end&&e.modified_day>=e.created_day&&Array.isArray(e.rows)&&unique.filter(r=>buyerParentId(r)===id).every(r=>e.rows.some(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота']&&String(x['Організатор']).endsWith(' | '+code)));
+ for(const id of parents){
+  let e;
+  try{const hit=await cache?.match(key(id));if(hit)e=await hit.json()}catch{}
+  if(!usable(e,id))e=BUYER_VERIFIED_SNAPSHOTS.find(x=>usable(x,id));
+  if(e){states.set(id,'verified');proofs.set(id,e)}
+ }
+ const candidates=parents.filter(id=>!proofs.has(id));
  const headers={Accept:'application/json','User-Agent':'Mozilla/5.0 (compatible; EURO5-Tender-Assistant/1.0)'};
- // A bounded, conservative snapshot check. Changed-after-cutoff snapshots are
- // excluded rather than retroactively importing their current result.
- const candidates=parents.filter(id=>id!==excludedTenderId).sort().reverse();
  await Promise.all(Array.from({length:Math.min(4,candidates.length)},async()=>{
   while(cursor<Math.min(candidates.length,60)&&Date.now()<deadline){
    const id=candidates[cursor++];
-   try{
-    const summary=await fetch('https://prozorro.gov.ua/api/tenders/'+encodeURIComponent(id)+'/summary',{headers,signal:AbortSignal.timeout(8000)});
-    if(!summary.ok)throw Error('summary');const raw=await summary.json(),internal=findInternalId(raw);if(!internal)throw Error('id');
-    const response=await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders/'+internal,{headers,signal:AbortSignal.timeout(8000)});
-    if(!response.ok)throw Error('api');const payload=await response.json(),data=payload.data||payload;
-    if(data.tenderID!==id||buyerCode(data)!==code)throw Error('identity');
-    const modified=new Date(data.dateModified),created=new Date(data.dateCreated);
-    if(!Number.isFinite(modified.getTime())||!Number.isFinite(created.getTime()))throw Error('date');
-    states.set(id,euro5ObservationDate(modified)<=period.end&&euro5ObservationDate(created)>=period.start?'verified':'after_cutoff');
-   }catch{states.set(id,'unavailable')}
+   // A transient response/timeout gets another attempt, never an eligibility verdict.
+   for(let attempt=0;attempt<2&&Date.now()<deadline;attempt++){
+    try{
+     const summary=await fetch('https://prozorro.gov.ua/api/tenders/'+encodeURIComponent(id)+'/summary',{headers,signal:AbortSignal.timeout(Math.min(6000,Math.max(1,deadline-Date.now())))});
+     if(!summary.ok)throw Error('summary');const raw=await summary.json(),internal=findInternalId(raw);if(!internal)throw Error('id');
+     const response=await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders/'+internal,{headers,signal:AbortSignal.timeout(Math.min(6000,Math.max(1,deadline-Date.now())))});
+     if(!response.ok)throw Error('api');const payload=await response.json(),data=payload.data||payload;
+     if(data.tenderID!==id||buyerCode(data)!==code){states.set(id,'identity_mismatch');break}
+     const modified=new Date(data.dateModified),created=new Date(data.dateCreated);
+     if(!Number.isFinite(modified.getTime())||!Number.isFinite(created.getTime()))throw Error('date');
+     const e={buyer_code:code,tender_id:id,created_day:euro5ObservationDate(created),modified_day:euro5ObservationDate(modified),rows:unique.filter(r=>buyerParentId(r)===id),source:'Prozorro API verified snapshot'};
+     if(!usable(e,id)){states.set(id,'after_cutoff');break}
+     states.set(id,'verified');proofs.set(id,e);
+     if(cache)try{await cache.put(key(id),new Response(JSON.stringify(e),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=31536000'}}))}catch{}
+     break;
+    }catch{states.set(id,'unavailable')}
+   }
   }
  }));
- const unique=[...new Map(rows.map(r=>[r['Ідентифікатор лота'],r])).values()];
- const eligible=unique.filter(r=>states.get(String(r['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0])==='verified');
+ // Take the preserved row, not a later BI row paired with an old verification flag.
+ const eligible=unique.flatMap(r=>{const e=proofs.get(buyerParentId(r));return e?[e.rows.find(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота'])]:[]});
+ const unresolved=unique.filter(r=>!['verified','after_cutoff','identity_mismatch'].includes(states.get(buyerParentId(r))));
+ const reasons=unique.filter(r=>states.get(buyerParentId(r))!=='verified').map(r=>({lot_id:r['Ідентифікатор лота'],reason:states.get(buyerParentId(r))||'not_checked'}));
  const history=summarizeBuyerHistory(eligible,code,period);
  return {...history,history_version:2,as_of:period.as_of,excluded_tender_id:excludedTenderId,
-  verification:{candidate_lots:unique.length,verified_lots:eligible.length,excluded_or_unverified_lots:unique.length-eligible.length,
-   method:'Public Prozorro snapshot last modified no later than the day before announcement'},
-  evidence_note:'Рейтинг використовує лише попередні закупівлі, стан яких підтверджено до дати оголошення. Пізніші зміни та неперевірені записи виключено. Дані про нового постачальника за межами цієї історії не встановлено.'};
+  verification:{candidate_lots:unique.length,verified_lots:eligible.length,unresolved_lots:unresolved.length,excluded_lots:unique.length-eligible.length-unresolved.length,complete:unresolved.length===0,excluded_or_unverified_lots:unique.length-eligible.length,details:reasons,
+   method:'Preserved verified rows or public Prozorro snapshot last modified before announcement'},
+  evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано збережені підтверджені дані до дати оголошення. Пізніші результати аналізованого тендера не враховано.'};
 }
 async function buyerHistoryRoute(request,origin,ctx){
  if(origin&&!ALLOWED_ORIGINS.includes(origin))return json({error:'Forbidden origin'},403,origin);
@@ -1242,12 +1263,15 @@ async function buyerHistoryRoute(request,origin,ctx){
  if(!/^\d{8,10}$/.test(code)||!validBuyerAsOf(asOf))return json({ready:false,reason:'Потрібні код замовника та дата оголошення тендера.'},400,origin);
  const excluded=String(body.excludeTenderId||'');
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v3/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
- try{const hit=await cache.match(key);if(hit)return json({...await hit.json(),cached:true},200,origin)}catch{}
+ const key=new Request(new URL('/buyer-history-cache/v4/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
-  const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded);
-  const response=new Response(JSON.stringify(history),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=86400'}});
-  const write=cache.put(key,response).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(write);else await write;
+  const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
+  // Do not preserve a failed verification as the buyer's history for another day.
+  if(history.verification.complete){
+   const response=new Response(JSON.stringify(history),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=86400'}});
+   const write=cache.put(key,response).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(write);else await write;
+  }
   return json(history,200,origin);
  }catch(e){return json({ready:false,buyer_code:code,period,as_of:asOf,reason:e.message},200,origin)}
 }
@@ -1267,7 +1291,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.23-model-20261022"
+        version: "2026.10.23-buyer-history-recovery"
       }, 200, origin);
     }
 
