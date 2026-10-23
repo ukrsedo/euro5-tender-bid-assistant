@@ -11,6 +11,20 @@ const MODEL = {
   }
 };
 
+// BEGIN GENERATED PRICE REFRESH
+const MODEL_REFRESH = {"market":{"gasoline":{"discounts":[0.75,5.5,9.5,11.25],"competitiveness":[32.18884120171674,66.52360515021459,84.76394849785407,93.99141630901288],"sample":131,"in_window_coverage":[27.480916030534353,51.14503816793893,75.57251908396947,90.07633587786259]},"diesel":{"discounts":[1.25,4.25,7.0,10.0],"competitiveness":[32.18884120171674,66.52360515021459,84.76394849785407,93.99141630901288],"sample":520,"in_window_coverage":[25.384615384615383,50.57692307692307,76.34615384615384,90.1923076923077]},"mixed":{"discounts":[1.0,4.0,6.75,9.5],"competitiveness":[32.18884120171674,66.52360515021459,84.76394849785407,93.99141630901288],"sample":361,"in_window_coverage":[26.038781163434905,51.24653739612188,76.17728531855957,90.02770083102493]}},"n1":{"gasoline":{"discounts":[0.25,1.5,5.5,10.25],"competitiveness":[36.734693877551024,63.26530612244898,80.95238095238095,93.19727891156462],"sample":319,"in_window_coverage":[30.094043887147336,51.410658307210035,75.23510971786834,91.22257053291536]},"diesel":{"discounts":[0.25,1.25,5.5,10.5],"competitiveness":[36.734693877551024,63.26530612244898,80.95238095238095,93.19727891156462],"sample":651,"in_window_coverage":[32.104454685099846,50.84485407066052,76.34408602150538,90.62980030721967]},"mixed":{"discounts":[0.25,1.75,5.25,9.75],"competitiveness":[36.734693877551024,63.26530612244898,80.95238095238095,93.19727891156462],"sample":1043,"in_window_coverage":[29.242569511025884,51.006711409395976,75.16778523489933,90.12464046021093]}}};
+// END GENERATED PRICE REFRESH
+
+function activeStatisticalModel(){
+  // Old Workers lack this version: frontend must not silently use a newer model.
+  return activeTenderData()?.competition_forecast?.model_version==='2026-10-22' ? MODEL_REFRESH : MODEL;
+}
+function statisticalModelNote(){
+  return activeStatisticalModel()===MODEL_REFRESH
+    ? 'Версія 22.10.2026: 10 259 завершених лотів у статистичній базі Prozorro за 2022–2026; зріз BI від 22.10.2026. Модель застосовується до оголошень від 23.10.2026.'
+    : 'Попередня версія 05.10.2026: 11 858 завершених паливних тендерів Prozorro за 2022–05.10.2026. Для цього оголошення збережено попередню версію.';
+}
+
 const POSITIONS = [
   ['Обережна','Більше прибутку, нижча історична конкурентність'],
   ['Помірна','Компроміс між ціною та прибутком'],
@@ -788,7 +802,7 @@ function recalc(){
     return false;
   }
 
-  const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
+  const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   renderRecommendation(rating,cmp,expected,value('minMargin'));
   const tbody=document.getElementById('resultsBody'); tbody.innerHTML='';
@@ -861,7 +875,7 @@ function buildPdfReport(){
   const logistics=litres*value('logistics');
   const full=fuelCost+risk+logistics;
   const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
-  const cfg=MODEL[el.competitionMode.value][el.fuelType.value];
+  const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
   const modeLabel=el.competitionMode.options[el.competitionMode.selectedIndex].text;
@@ -906,7 +920,7 @@ function buildPdfReport(){
     <p>${escapeHtml(document.getElementById('historicalRecommendation').textContent)}</p>
     <h3>Картка 2 · Монте-Карло: стійкість прибутку</h3>
     ${document.getElementById('forecastContent').innerHTML}
-    <div class="pdf-footnotes"><p><sup>1</sup> Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()}</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
