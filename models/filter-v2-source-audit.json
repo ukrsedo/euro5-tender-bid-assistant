@@ -1,0 +1,25 @@
+{
+  "raw_sha256": "f631f72465d90a268ecdf882c1e37299db7e1ecc378df4f033cc713b538912ff",
+  "composition_sha256": "b0849f4e0e89a59fa6700f3e757591b556484d793c66571dd50f679bc078067a",
+  "items_sha256": "6648859d9ea1c30c900ebfc9165a13200505e5a79ab82ff3e526e1043f22267c",
+  "saved_api_parents": 172,
+  "lots": 24254,
+  "classification": {
+    "explicit_title_cpv / accepted": 18743,
+    "explicit_title_cpv / other_product": 2678,
+    "explicit_title_cpv / unresolved_product": 1751,
+    "bi_single_item_description / other_product": 8,
+    "api_items / accepted": 134,
+    "explicit_title_cpv / other_cpv": 38,
+    "api_items / other_product": 31,
+    "api_items / unresolved_product": 24,
+    "bi_single_item_description / unresolved_product": 734,
+    "bi_single_item_description / accepted": 112,
+    "bi_single_item_description / unit_or_quantity_unresolved": 1
+  },
+  "limitations": [
+    "API enrichment was interrupted by HTTP 429; unknown lots remain unresolved.",
+    "API snapshots modified after 2026-10-22 are not used.",
+    "Detailed BI descriptions are used only when BI reports exactly one item with valid physical quantity."
+  ]
+}

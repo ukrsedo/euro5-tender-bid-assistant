@@ -11,7 +11,7 @@ assert.equal(run('2026-10-05'),null);
 assert.equal(run('2026-10-06').model_version,'2026-10-05');
 const oct13=run('2026-10-13');assert.equal(oct13.model_version,'2026-10-05');assert.equal(oct13.buyer_history_tenders,19);
 assert.equal(run('2026-10-22').model_version,'2026-10-05');
-const oct23=run('2026-10-23');assert.equal(oct23.model_version,'2026-10-22');assert.equal(oct23.buyer_history_tenders,refresh.buyers['20001645'][0]);
+const oct23=run('2026-10-23');assert.equal(oct23.model_version,refresh.version);assert.equal(oct23.buyer_history_tenders,refresh.buyers['20001645'][0]);
 assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(COMPETITION_BUYER_HISTORY)',c)),legacy.buyers);
 assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(COMPETITION_MODEL)',c)),legacy.model);
 for(const fixture of fixtures){c.parity=fixture;const p=vm.runInContext('(()=>{const m=COMPETITION_REFRESH.model;let d=m.intercept;parity.x.forEach((v,i)=>d+=m.coef[i]*(v-m.mean[i])/m.scale[i]);return Math.max(.01,Math.min(.99,sigmoid(m.calibrationIntercept+m.calibrationCoef*d)));})()',c);assert(Math.abs(p-fixture.expected)<1e-12);}
@@ -21,5 +21,6 @@ for(const file of ['price-risk.js','buyer-competition.js','app.js'])vm.runInCont
 a.result=oct13;vm.runInContext('lastExtraction={competition_forecast:result}',a);assert.equal(vm.runInContext('activeStatisticalModel()===MODEL',a),true);
 a.result=oct23;vm.runInContext('lastExtraction={competition_forecast:result}',a);assert.equal(vm.runInContext('activeStatisticalModel()===MODEL_REFRESH',a),true);
 assert.equal(vm.runInContext('activeStatisticalModel().market.diesel.discounts[1]',a),refresh.price.market.diesel.discounts[1]);
+a.result={model_version:'2026-10-22'};vm.runInContext('lastExtraction={competition_forecast:result}',a);assert.equal(vm.runInContext('activeStatisticalModel()===MODEL_REFRESH_V1',a),true);
 vm.runInContext('lastExtraction={competition_forecast:{}}',a);assert.equal(vm.runInContext('activeStatisticalModel()===MODEL',a),true);
 console.log('Model: dated selection, unchanged Oct13 legacy, Python/JS parity, Worker/frontend selection passed');

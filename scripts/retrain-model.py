@@ -7,6 +7,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss,brier_score_loss,roc_auc_score,accuracy_score
+import fuel_filter
 EPOCH=datetime.date(1899,12,30)
 CUTOFF='2026-10-22'
 ALLOWED={'09130000-9','09132000-3','09132100-4','09132200-5','09132300-6','09134100-8','09134200-9','09134210-2','09134220-5'}
@@ -25,26 +26,21 @@ def proc(s,d):
  if 'відкриті торги' in s:return 'open_special' if d>='2022-10-19' else 'open'
  return 'other'
 def fuel(title,cpv):
- s=title.lower()
- # Out-of-scope products must not become gasoline/diesel training examples.
- if re.search(r'газ скрап|скраплен|пропан|бутан|мазут|авіаці|мастил|олив',s):return None
- gas=cpv.startswith('09132') or bool(re.search(r'бензин|gasoline|petrol|а[-– ]?9[2458]',s))
- diesel=cpv.startswith('09134') or bool(re.search(r'дизел|diesel|\bдп\b',s))
- return 'mixed' if gas and diesel else 'gasoline' if gas else 'diesel' if diesel else None
+ return fuel_filter.product(title,cpv)[0]
 
 def normalize(path):
  rows=[];rejected=collections.Counter();seen=set();updates=set()
  for s in gzip.open(path,'rt',encoding='utf8'):
   r=json.loads(s);updates.add(text(r,'Дата/час початку останнього оновлення даних у додатку'))
   id=text(r,'Ідентифікатор лота');pub=date(r,'Дата');known=date(r,'Дата останньої зміни статусу лота')
-  cpv=text(r,'Класифікація CPV')[:10];title=text(r,'Лот');kind=fuel(title,cpv);procedure=proc(text(r,'Процедура закупівлі'),pub or '')
+  cpv=text(r,'Класифікація CPV')[:10];title=text(r,'Лот');decision=r.get('fuel_filter_v2') or fuel_filter.classify(r);kind=decision['fuel'];procedure=proc(text(r,'Процедура закупівлі'),pub or '')
   reason=None
   if id in seen:raise ValueError('Duplicate lot '+id)
   seen.add(id)
   amount=number(r,'Очікувана вартість');net=amount/(1.2 if text(r,'ПДВ в очікуваній вартості')=='з ПДВ' else 1)
   n=number(r,'Кіль-ть унікальних учасників лота');win=number(r,'Сума переможної пропозиції')
   if cpv not in ALLOWED:reason='cpv_outside_scope'
-  elif kind is None:reason='fuel_unknown_or_other_product'
+  elif kind is None:reason='fuel_'+decision['reason']
   elif procedure=='other':reason='non_modelled_procedure'
   elif not (net>=1e6):reason='below_1m_net'
   elif text(r,'Статус лота')!='Завершено лот закупівлі':reason='not_successfully_completed'
@@ -52,7 +48,7 @@ def normalize(path):
   elif not math.isfinite(n) or n<1 or int(n)!=n:reason='participants_missing'
   elif not math.isfinite(win) or not (0<win<=amount*1.001):reason='winning_amount_invalid'
   if reason:rejected[reason]+=1;continue
-  rows.append(dict(id=id,published=pub,known=known,buyer=text(r,'Код організатора'),title=title,procedure=procedure,fuel=kind,expected=amount,expected_net=net,participants=int(n),discount=max(0,100*(1-win/amount)),winner=text(r,'Переможець')))
+  rows.append(dict(id=id,published=pub,known=known,buyer=text(r,'Код організатора'),title=title,procedure=procedure,fuel=kind,expected=amount,expected_net=net,participants=int(n),discount=max(0,100*(1-win/amount)),winner=text(r,'Переможець'),fuel_basis=decision['basis']))
  return sorted(rows,key=lambda r:(r['published'],r['id'])),dict(rejected),sorted(updates),len(seen)
 
 def features(rows):
@@ -117,8 +113,8 @@ def main():
  ft=(pub>='2025-01-01')&(known<'2026-09-01');fc=(pub>='2026-09-01')&(known<=CUTOFF)
  final,platt=fit(X,y,ft,fc);scaler=final[0];lr=final[1]
  model=dict(intercept=float(lr.intercept_[0]),coef=lr.coef_[0].tolist(),mean=scaler.mean_.tolist(),scale=scaler.scale_.tolist(),calibrationIntercept=float(platt.intercept_[0]),calibrationCoef=float(platt.coef_[0][0]))
- data=dict(version='2026-10-22',cutoff=CUTOFF,valid_from='2026-10-23',model=model,buyers=buyers,price=curves(rows,CUTOFF))
- report=dict(cutoff=CUTOFF,source_update=updates,source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),raw_lots=raw,eligible_completed_lots=len(rows),period=[rows[0]['published'],rows[-1]['published']],rejected=rejections,train=int(train.sum()),calibration=int(cal.sum()),test=validation,baseline_without_buyer_history=baseline,final_core_fit=int(ft.sum()),final_calibration=int(fc.sum()),new_announcements_after_oct5=sum(r['published']>'2026-10-05' for r in rows),new_completions_after_oct5=sum(r['known']>'2026-10-05' for r in rows),price_samples={m:{f:v['sample'] for f,v in kinds.items()} for m,kinds in data['price'].items()},limitations=['Reconstructed pipeline: previous training source code is unavailable; not an identical rerun.','Training fuel labels inferred from lot title/CPV; ambiguous/other products excluded.','Historical net threshold uses app convention 20% conversion, not reconstructed historical tax treatment.','Winning amount/expected amount follows BI exported VAT bases; bidder-specific VAT basis is not independently reconstructed.','Completion status-change date conservatively defines outcome availability. Same-day outcomes excluded from features.','UI competitiveness is rolling out-of-time coverage, pooled by competition mode; in_window_coverage is separately stored.'])
+ data=dict(version='2026-10-22-items-v2',cutoff=CUTOFF,valid_from='2026-10-23',model=model,buyers=buyers,price=curves(rows,CUTOFF))
+ report=dict(cutoff=CUTOFF,source_update=updates,source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),raw_lots=raw,fuel_filter_version=2,fuel_classification_basis=dict(collections.Counter(r['fuel_basis'] for r in rows)),eligible_completed_lots=len(rows),period=[rows[0]['published'],rows[-1]['published']],rejected=rejections,train=int(train.sum()),calibration=int(cal.sum()),test=validation,baseline_without_buyer_history=baseline,final_core_fit=int(ft.sum()),final_calibration=int(fc.sum()),new_announcements_after_oct5=sum(r['published']>'2026-10-05' for r in rows),new_completions_after_oct5=sum(r['known']>'2026-10-05' for r in rows),price_samples={m:{f:v['sample'] for f,v in kinds.items()} for m,kinds in data['price'].items()},limitations=['Reconstructed pipeline: previous training source code is unavailable; not an identical rerun.','Fuel items resolve generic titles; remaining unresolved evidence and lots containing other products are excluded. Explicit, unambiguous title/CPV labels remain a fallback where no detailed item evidence was fetched.','Historical net threshold uses app convention 20% conversion, not reconstructed historical tax treatment.','Winning amount/expected amount follows BI exported VAT bases; bidder-specific VAT basis is not independently reconstructed.','Completion status-change date conservatively defines outcome availability. Same-day outcomes excluded from features.','UI competitiveness is rolling out-of-time coverage, pooled by competition mode; in_window_coverage is separately stored.'])
  # Walk-forward price validation, rebuild windows on each earlier announcement date.
  price_test={}
  for mode in ['market','n1']:

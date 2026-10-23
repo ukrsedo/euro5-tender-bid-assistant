@@ -1,50 +1,29 @@
-"""Embed validated dated model artifacts in Worker and frontend, preserving legacy."""
+"""Embed dated model assets into the current Worker without overwriting other features."""
 from pathlib import Path
 import json,re
 root=Path(__file__).resolve().parents[1]
-data=json.loads((root/'models/model-2026-10-22.json').read_text())
-report=json.loads((root/'models/validation-2026-10-22.json').read_text())
-p=root/'worker.js';s=p.read_text()
-block='// BEGIN GENERATED COMPETITION REFRESH\nconst COMPETITION_REFRESH = '+json.dumps(data,ensure_ascii=False,separators=(',',':'))+';\n// END GENERATED COMPETITION REFRESH\n'
-if '// BEGIN GENERATED COMPETITION REFRESH' in s:s=re.sub(r'// BEGIN GENERATED COMPETITION REFRESH.*?// END GENERATED COMPETITION REFRESH\n',lambda _:block,s,flags=re.S)
-else:
- s=s.replace('function sigmoid(x) {',block+'''\nfunction competitionModelForAnnouncement(data) {
-  const date=tenderAnnouncementDate(data);
-  const day=date?.toISOString().slice(0,10);
-  if(!day || day<"2026-10-06") return null;
-  if(day>=COMPETITION_REFRESH.valid_from) return COMPETITION_REFRESH;
-  return {version:"2026-10-05",cutoff:"2026-10-05",model:COMPETITION_MODEL,buyers:COMPETITION_BUYER_HISTORY};
-}
-
-function sigmoid(x) {''')
- s=s.replace('  const buyer = buyerCode(data);\n  const h = buyer && COMPETITION_BUYER_HISTORY[buyer]\n    ? COMPETITION_BUYER_HISTORY[buyer]', '  const state = competitionModelForAnnouncement(data);\n  if (!state) return null;\n  const model=state.model;\n  const buyer = buyerCode(data);\n  const h = buyer && state.buyers[buyer]\n    ? state.buyers[buyer]')
- start=s.index('function buildCompetitionForecast(');end=s.index('\nfunction cors(',start)
- f=s[start:end].replace('COMPETITION_MODEL.','model.')
- f=f.replace('  return {\n    one_participant_pct:', '  return {\n    model_version: state.version,\n    training_cutoff: state.cutoff,\n    one_participant_pct:')
- s=s[:start]+f+s[end:]
- s=s.replace('2026.10.23-buyer-competition','2026.10.23-model-20261022')
-p.write_text(s)
-p=root/'app.js';s=p.read_text()
-price='// BEGIN GENERATED PRICE REFRESH\nconst MODEL_REFRESH = '+json.dumps(data['price'],ensure_ascii=False,separators=(',',':'))+';\n// END GENERATED PRICE REFRESH\n'
-if '// BEGIN GENERATED PRICE REFRESH' in s:s=re.sub(r'// BEGIN GENERATED PRICE REFRESH.*?// END GENERATED PRICE REFRESH\n',lambda _:price,s,flags=re.S)
-else:
- s=s.replace('const POSITIONS = [',price+'''\nfunction activeStatisticalModel(){
-  // Old Workers lack this version: frontend must not silently use a newer model.
-  return activeTenderData()?.competition_forecast?.model_version==='2026-10-22' ? MODEL_REFRESH : MODEL;
+data=json.loads((root/'models/model-2026-10-22.json').read_text());report=json.loads((root/'models/validation-2026-10-22.json').read_text());previous=json.loads((root/'models/model-2026-10-22-v1.json').read_text())
+def update_block(s,name,body):
+ pattern=r'// BEGIN GENERATED '+name+r'.*?// END GENERATED '+name+r'\n'
+ if len(re.findall(pattern,s,re.S))!=1:raise ValueError('Missing or duplicated generated '+name)
+ return re.sub(pattern,lambda _: '// BEGIN GENERATED '+name+'\n'+body+'\n// END GENERATED '+name+'\n',s,flags=re.S)
+compact=lambda x:json.dumps(x,ensure_ascii=False,separators=(',',':'))
+p=root/'worker.js';s=p.read_text();s=update_block(s,'COMPETITION REFRESH','const COMPETITION_REFRESH = '+compact(data)+';');s=re.sub(r'version: "2026\.10\.23-[^"]+"','version: "2026.10.23-fuel-filter-v2"',s,count=1);p.write_text(s)
+p=root/'app.js';s=p.read_text();s=update_block(s,'PRICE REFRESH','const MODEL_REFRESH = '+compact(data['price'])+';\nconst MODEL_REFRESH_V1 = '+compact(previous['price'])+';')
+a=s.index('function activeStatisticalModel()');b=s.index('\nconst POSITIONS',a)
+count=f"{report['eligible_completed_lots']:,}".replace(',',' ')
+s=s[:a]+'''function activeStatisticalModel(){
+  const version=activeTenderData()?.competition_forecast?.model_version;
+  if(version==='2026-10-22-items-v2') return MODEL_REFRESH;
+  if(version==='2026-10-22') return MODEL_REFRESH_V1;
+  return MODEL;
 }
 function statisticalModelNote(){
-  return activeStatisticalModel()===MODEL_REFRESH
-    ? 'Версія 22.10.2026: 10 259 завершених лотів у статистичній базі Prozorro за 2022–2026; зріз BI від 22.10.2026. Модель застосовується до оголошень від 23.10.2026.'
-    : 'Попередня версія 05.10.2026: 11 858 завершених паливних тендерів Prozorro за 2022–05.10.2026. Для цього оголошення збережено попередню версію.';
+  const selected=activeStatisticalModel();
+  if(selected===MODEL_REFRESH) return 'Версія 22.10.2026, фільтр v2: '''+count+''' завершених лотів у статистичній базі. Загальні назви уточнюються за підтвердженими позиціями або описом єдиного товару. Перевірка решти спірних записів неповна через обмеження API.';
+  if(selected===MODEL_REFRESH_V1) return 'Версія 22.10.2026, попередній фільтр: 10 259 завершених лотів. Для нового фільтра потрібне оновлення Worker.';
+  return 'Попередня версія 05.10.2026: 11 858 завершених паливних тендерів Prozorro за 2022–05.10.2026. Для цього оголошення збережено попередню версію.';
 }
-
-const POSITIONS = [''')
- s=s.replace('const cfg=MODEL[el.competitionMode.value][el.fuelType.value];','const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];')
- s=s.replace('Розрахунок базується на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.','${statisticalModelNote()}')
-p.write_text(s)
-p=root/'index.html';s=p.read_text()
-s=s.replace('Розрахунок побудовано на 11 858 завершених паливних тендерах Prozorro за 2022–05.10.2026.', 'Нова версія побудована на базі 10 259 завершених паливних лотів Prozorro за 2022–2026 зі срезу BI від 22.10.2026. Вона застосовується до оголошень від 23.10.2026. Для оголошень 06–22.10 зберігається попередня версія від 05.10.2026 (11 858 тендерів).')
-s=s.replace('11 858 завершених паливних тендерів Prozorro, 2022–05.10.2026','срез Prozorro BI 22.10.2026 · 10 259 відібраних завершених лотів · попередня версія для оголошень до 23.10')
-s=s.replace('срез','зріз')
-p.write_text(s)
-print('Embedded version',data['version'],'eligible lots',report['eligible_completed_lots'])
+''' +s[b:];p.write_text(s)
+p=root/'index.html';s=p.read_text();s=re.sub(r'(?<=на базі )[\d ]+(?= завершених паливних лотів)',count,s);s=re.sub(r'\d[\d ]*(?= відібраних завершених лотів)',count,s);s=s.replace('зі зрізу BI від 22.10.2026.', 'зі зрізу BI від 22.10.2026 (фільтр v2). Спірні назви уточнюються за позиціями або описом єдиного товару; частина перевірок API ще не завершена.');p.write_text(s)
+print('Embedded',data['version'],report['eligible_completed_lots'])
