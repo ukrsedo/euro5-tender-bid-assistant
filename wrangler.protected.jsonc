@@ -2,7 +2,26 @@
   "name": "euro5-tender-test",
   "main": "access-worker.js",
   "compatibility_date": "2026-10-23",
-  "assets": {"directory": "./protected-public", "binding": "ASSETS", "run_worker_first": true},
-  "vars": {"MEMORY_ENABLED": "1", "MEMORY_AUTH_MODE": "session", "TEST_LOGIN_ENABLED": "1"},
-  "d1_databases": [{"binding": "EURO5_MEMORY_DB", "database_name": "euro5-project-memory", "database_id": "c9285807-daa1-4772-91e4-4808c90d5ad2", "migrations_dir": "migrations"}]
+  "assets": {
+    "directory": "./protected-public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "MEMORY_ENABLED": "1",
+    "MEMORY_AUTH_MODE": "session",
+    "TEST_LOGIN_ENABLED": "1",
+    "ACCESS_TEAM_DOMAIN": "https://wispy-paper-b8a0.cloudflareaccess.com",
+    "ACCESS_AUD": "c6016bffdb9e826adca7821c7924cbb0272a5b06c877eaa7d2e91134c242df8c"
+  },
+  "d1_databases": [
+    {
+      "binding": "EURO5_MEMORY_DB",
+      "database_name": "euro5-project-memory",
+      "database_id": "c9285807-daa1-4772-91e4-4808c90d5ad2",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "workers_dev": true,
+  "preview_urls": false
 }
