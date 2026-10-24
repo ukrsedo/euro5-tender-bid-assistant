@@ -1,5 +1,6 @@
 (()=>{
-  let api='',lastData=null,lastSnapshot=null,lastResult=null,connected=false,generation=0;
+  let api='',lastData=null,lastSnapshot=null,lastResult=null,connected=false,generation=0,authPromise=null;
+  const sessionMode=window.EURO5_CONFIG?.authMode==='session';
   let role='',decisionEpoch=0,draft=0,saving=false,savedDecision=null;
   const by=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const panel=by('memoryPanel');if(!panel)return;
@@ -12,9 +13,10 @@
   }
   function invalidate(){generation++;draft++;lastResult=null;lastSnapshot=null;advisory('');decisionState();}
   async function call(path,payload){
-    const key=by('memoryKey').value.trim();if(!key)throw Error('Введіть персональний ключ доступу.');
-    const r=await fetch(api+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
-    const d=await r.json();if(!r.ok)throw Error(r.status===404?'Оновіть Worker до версії з рішеннями закупівельника.':d.error||'Пам’ять тимчасово недоступна.');return d;
+    const headers={'Content-Type':'application/json'};
+    if(!sessionMode){const key=by('memoryKey').value.trim();if(!key)throw Error('Введіть персональний ключ доступу.');headers.Authorization='Bearer '+key;}
+    const r=await fetch(api+path,{method:'POST',headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+    const d=await r.json().catch(()=>({}));if(r.status===401&&sessionMode){connected=false;decisionState();throw Error('Сесія закінчилась. Увійдіть знову через сторінку входу.');}if(!r.ok)throw Error(r.status===404?'Оновіть Worker до версії з рішеннями закупівельника.':d.error||'Пам’ять тимчасово недоступна.');return d;
   }
   function savedText(d){return `${label(d.decision.choice)} · ${d.recordedAt} · ${d.actor}${d.decision.comment?'\nКоментар: '+d.decision.comment:''}`;}
   function reportHtml(){
@@ -41,6 +43,7 @@
   }
   async function process(){
     decisionState();if(!lastSnapshot)return;
+    if(sessionMode&&!connected){const revision=generation;await connect();if(revision!==generation||!connected)return;}
     if(!connected){advisory('<p>Для підказок і збереження рішення підключіть пам’ять ЄВРО5 внизу сторінки.</p>');return;}
     const ticket=++generation,snapshot={...lastSnapshot};lastResult=null;
     advisory('<p>Шукаю попередні розрахунки та рішення…</p>');
@@ -60,14 +63,20 @@
   }
   function load(data,url){
     reset();lastData=data;api=url;panel.classList.remove('hidden');by('participationDecision')?.classList.remove('hidden');
-    by('memoryStatus').textContent=connected?'Пам’ять підключена. Оберіть і збережіть рішення щодо участі.':'Підключіть пам’ять, щоб зберегти рішення щодо участі.';
-    if(!connected)by('participationStatus').textContent='Для збереження рішення спочатку підключіть пам’ять нижче.';
-    decisionState();void readDecision();
+    by('memoryStatus').textContent=connected?'Пам’ять підключена. Оберіть і збережіть рішення щодо участі.':sessionMode?'Пам’ять підключається автоматично після входу.':'Підключіть пам’ять, щоб зберегти рішення щодо участі.';
+    if(!connected)by('participationStatus').textContent=sessionMode?'Пам’ять підключається автоматично після входу.':'Для збереження рішення спочатку підключіть пам’ять нижче.';
+    decisionState();if(sessionMode){const epoch=decisionEpoch;void connect().then(()=>{if(epoch===decisionEpoch)void readDecision();});}else void readDecision();
   }
   function observe(snapshot){
     const date=lastData?.buyer_history_as_of||lastData?.tender_announcement_date;
     if(!/^\d{4}-\d{2}-\d{2}/.test(date||'')){advisory('<p>Пам’ять не використано: немає підтвердженої дати оголошення.</p>');return;}
     lastSnapshot={...snapshot,analysisAsOf:date.slice(0,10)+'T00:00:00Z'};void process();
+  }
+  async function connect(){
+    if(connected||!api)return;
+    if(authPromise)return authPromise;
+    authPromise=(async()=>{try{const status=await call('/memory/status',{});connected=true;role=status.role||'';by('memoryStatus').textContent='Пам’ять підключена автоматично.';by('participationStatus').textContent=role==='reader'?'Ваш доступ — лише читання.':'';decisionState();}catch(e){by('memoryStatus').textContent=e.message;decisionState();}finally{authPromise=null;}})();
+    return authPromise;
   }
   by('memoryLoad').onclick=async()=>{
     const ticket=++generation;try{
@@ -96,5 +105,9 @@
   by('memoryLock').onclick=lock;
   by('memoryKey').oninput=()=>{connected=false;role='';generation++;decisionEpoch++;saving=false;lastResult=null;savedDecision=null;by('participationSaved').textContent='';advisory('');decisionState();};
   window.addEventListener('pagehide',lock);
+  if(sessionMode){
+    by('memoryCredentials')?.classList.add('hidden');by('sessionBar')?.classList.remove('hidden');
+    void(async()=>{try{const r=await fetch('/session',{headers:{Accept:'application/json'}});if(!r.ok){window.location.assign('/login');return;}const user=await r.json();by('sessionName').textContent=user.name+(user.shared?' · спільний тестовий профіль':'');}catch{by('sessionName').textContent='Не вдалося перевірити сесію. Оновіть сторінку.';}})();
+  }
   window.Euro5MemoryUI={load,reset,observe,invalidate,reportHtml};
 })();

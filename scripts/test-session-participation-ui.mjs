@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';
+const nodes=new Map();const get=id=>{if(!nodes.has(id)){const classes=new Set();nodes.set(id,{value:'',innerHTML:'',textContent:'',disabled:false,classes,classList:{add(c){classes.add(c)},remove(c){classes.delete(c)}}});}return nodes.get(id)};
+let role='editor',requests=[],paused;const previous={ready:true,cases:[],hints:[],decisions:[],note:'Separate decisions'};
+const c=vm.createContext({document:{getElementById:get},window:{EURO5_CONFIG:{authMode:'session'},addEventListener(){},location:{assign(){throw Error('Unexpected redirect')}}},AbortSignal,fetch:async(url,opts)=>{const b=opts.body?JSON.parse(opts.body):null;requests.push({url,b,opts});return {ok:true,json:async()=>url==='/session'?{name:'Тестувальник ЄВРО5',shared:true}:url.endsWith('/status')?{role}:url.endsWith('/current')?{decision:null}:url.endsWith('/hints')?previous:url.endsWith('/observe')?{saved:true}:{saved:true,actor:'test-team',recordedAt:'2026-10-24T12:00:00Z',decision:{...b}}}}});
+vm.runInContext(fs.readFileSync('memory.js','utf8'),c);const ui=c.window.Euro5MemoryUI;
+const data={tender_id:'UA-2026-10-13-014119-a',buyer_code:'20001645',buyer_history_as_of:'2026-10-13'};
+ui.load(data,'https://test.example');ui.observe({tenderId:data.tender_id,buyerCode:data.buyer_code});await new Promise(r=>setImmediate(r));
+assert(get('memoryCredentials').classes.has('hidden'));assert(!get('sessionBar').classes.has('hidden'));assert(get('sessionName').textContent.includes('Тестувальник ЄВРО5'));
+assert.equal(requests.filter(x=>x.url.endsWith('/status')).length,1);assert.equal(requests.filter(x=>x.url.endsWith('/observe')).length,1);
+assert(requests.every(x=>!x.opts.headers.Authorization));assert.equal(get('memoryKey').value,'');assert.equal(get('participationChoice').value,'');assert(get('participationSave').disabled);
+get('participationChoice').value='decline';get('participationChoice').oninput();assert(!get('participationSave').disabled);
+assert.equal(requests.filter(x=>x.url.endsWith('/participation')).length,0);get('participationComment').value='Перевірити доступність товару';await get('participationSave').onclick();
+assert.equal(requests.find(x=>x.url.endsWith('/participation')).b.choice,'decline');assert(get('participationSaved').textContent.includes('test-team'));assert(get('participationSaved').textContent.includes('Перевірити доступність товару'));
+ui.invalidate();await get('participationSave').onclick();assert.equal(requests.filter(x=>x.url.endsWith('/participation')).at(-1).b.snapshot,null);
+const originalFetch=c.fetch;c.fetch=async(url,opts)=>url.endsWith('/participation')?{ok:true,json:()=>new Promise(r=>paused=r)}:originalFetch(url,opts);
+const save=get('participationSave').onclick();await new Promise(r=>setImmediate(r));ui.load({...data,tender_id:'UA-2026-10-14-000003-a'},'https://test.example');paused({saved:true,decision:{choice:'decline'},actor:'old-user',recordedAt:'old'});await save;assert(!get('participationSaved').textContent.includes('old-user'));
+// Expiry disables saving and does not fall back to the public key flow.
+c.fetch=async()=>({ok:false,status:401,json:async()=>({})});get('participationChoice').value='participate';get('participationChoice').oninput();await get('participationSave').onclick();assert(get('participationSave').disabled);assert(get('participationStatus').textContent.includes('Сесія закінчилась'));
+const html=fs.readFileSync('index.html','utf8');assert(html.includes('id="reviewGasolineProduct"'));assert(html.includes('id="reviewDieselProduct"'));assert(html.includes('id="participationDecision"'));assert(html.includes('id="sessionBar"'));
+console.log('PASS shared UI in session mode: automatic memory, no key, explicit decision/comment, tester attribution, fresh snapshot, races and session expiry.');

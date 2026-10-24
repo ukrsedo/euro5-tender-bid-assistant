@@ -1321,6 +1321,8 @@ async function buyerHistoryRoute(request,origin,ctx){
 
 export default {
   async fetch(request, env, ctx) {
+    if(env.MEMORY_AUTH_MODE==='session' && (!env.EURO5_SESSION_ACTOR || typeof env.EURO5_SESSION_ACTOR!=='object'))
+      return new Response(JSON.stringify({error:'Потрібен захищений вхід.'}),{status:401,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
     const origin = request.headers.get("Origin") || "";
 
     if (request.method === "OPTIONS") {
@@ -1545,6 +1547,12 @@ const Euro5Memory = (() => {
   };
   const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   async function actor(request, env) {
+    if(env.MEMORY_AUTH_MODE==='session'){
+      const user=env.EURO5_SESSION_ACTOR;
+      if(!user||typeof user!=='object'||!/^[a-zA-Z0-9_-]{1,80}$/.test(user.id||'')||!/^[a-zA-Z0-9_-]{1,80}$/.test(user.company||'')||!['reader','editor','admin'].includes(user.role))fail('Потрібен вхід.',401);
+      if(env.MEMORY_ENABLED!=='1'||!env.EURO5_MEMORY_DB)fail('Пам’ять ще не підключено.',503);
+      return user;
+    }
     if (env.MEMORY_ENABLED !== '1' || !env.EURO5_MEMORY_DB || !env.MEMORY_USERS) fail('Пам’ять ще не підключено.',503);
     let users; try { users=JSON.parse(env.MEMORY_USERS); } catch { fail('Помилка налаштування доступу.',503); }
     if (!Array.isArray(users)) fail('Помилка налаштування доступу.',503);
