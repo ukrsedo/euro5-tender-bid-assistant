@@ -23,10 +23,11 @@ function activeStatisticalModel(){
   return MODEL;
 }
 function statisticalModelNote(){
+  const qualityScope=" Узагальнена модель без поділу за маркою, преміальністю та сезонністю; точність для окремого різновиду не підтверджена.";
   const selected=activeStatisticalModel();
-  if(selected===MODEL_REFRESH) return 'Версія 22.10.2026, фільтр v2: 10 391 завершених лотів у статистичній базі. Загальні назви уточнюються за підтвердженими позиціями або описом єдиного товару. Перевірка решти спірних записів неповна через обмеження API.';
-  if(selected===MODEL_REFRESH_V1) return 'Версія 22.10.2026, попередній фільтр: 10 259 завершених лотів. Для нового фільтра потрібне оновлення Worker.';
-  return 'Попередня версія 05.10.2026: 11 858 завершених паливних тендерів Prozorro за 2022–05.10.2026. Для цього оголошення збережено попередню версію.';
+  if(selected===MODEL_REFRESH) return qualityScope+'Версія 22.10.2026, фільтр v2: 10 391 завершених лотів у статистичній базі. Загальні назви уточнюються за підтвердженими позиціями або описом єдиного товару. Перевірка решти спірних записів неповна через обмеження API.';
+  if(selected===MODEL_REFRESH_V1) return qualityScope+'Версія 22.10.2026, попередній фільтр: 10 259 завершених лотів. Для нового фільтра потрібне оновлення Worker.';
+  return qualityScope+'Попередня версія 05.10.2026: 11 858 завершених паливних тендерів Prozorro за 2022–05.10.2026. Для цього оголошення збережено попередню версію.';
 }
 
 const POSITIONS = [
@@ -69,6 +70,7 @@ function updateRiskPeriodHint(){
     : 'Вкажіть дату подання нашої пропозиції. Від неї відраховуються наступні 5 робочих діб.';
 }
 function submissionRiskModel(fuelCost,gasCostAmount){
+  if(!productRiskSupported())return {ready:false,reason:'Марку або різновид не підтверджено чи для нього немає окремого історичного ряду. Звичайний А-95 / ДП не підставляється. Нейтральна оцінка ризику 7,5/15.'};
   const period=selectedRiskPeriod();
   if(!period||period.submission_date>kyivToday())return {ready:false,reason:'Вкажіть дату подання нашої пропозиції, не пізнішу за сьогодні.'};
   const history=lastExtraction?.price_risk_history;
@@ -192,18 +194,34 @@ function syncSplitSupplyVisibility(){
   const split=document.getElementById('reviewSupplyFormat').value==='split';
   document.getElementById('splitSupplyFormats').classList.toggle('hidden',!split);
 }
-function benchmarkFor(format,fuel){
-  if(!lastExtraction) return null;
-  if(format==='retail'){
-    return Number(lastExtraction[`market_retail_${fuel}_price_uah_l_without_vat`]);
-  }
-  if(format==='bulk'){
-    const usable=lastExtraction[`market_wholesale_${fuel}_usable`]===true;
-    if(!usable) return null;
-    return Number(lastExtraction[`market_wholesale_${fuel}_price_uah_l_without_vat`]);
-  }
+function selectedProduct(family,d=activeTenderData()){
+  const key=family==='gasoline'?'gasoline_product':'diesel_product';
+  return d?.[key]||'unknown';
+}
+function productLabel(family,d=activeTenderData()){
+ const labels={unknown:'не підтверджено',a95_regular:'А-95 звичайний',a92:'А-92',a98:'А-98 / А-100',diesel_regular:'ДП звичайний без спеціальних вимог до сезонності',premium:'преміальний / брендований',winter:'зимовий',arctic:'арктичний',other:'інший або кілька різновидів'};
+ return labels[selectedProduct(family,d)]||'не підтверджено';
+}
+function standardProductConfirmed(family,d=activeTenderData()){
+  if(!lastExtraction?.market_reference_candidates||lastExtraction.market_reference_candidates.policy!=='fuel-quality-v1')return false;
+  const selection=selectedProduct(family,d),profile=lastExtraction?.fuel_products?.[family];
+  if(!profile?.items?.length)return false;
+  if(profile.tier==='premium'||profile.tier==='ambiguous')return false;
+  if(family==='gasoline')return selection==='a95_regular'&&profile.grade==='95'&&profile.items.every(p=>p.grade==='95');
+  return selection==='diesel_regular'&&['unspecified','summer'].includes(profile.season);
+}
+function productRiskSupported(){
+ const d=activeTenderData(),type=d?.fuel_type;
+ return (type==='diesel'||standardProductConfirmed('gasoline',d))&&(type==='gasoline'||standardProductConfirmed('diesel',d))&&['gasoline','diesel','mixed'].includes(type);
+}
+function benchmarkFor(format,fuel,d=activeTenderData()){
+  if(!standardProductConfirmed(fuel,d))return null;
+  const candidate=lastExtraction.market_reference_candidates[fuel];
+  if(format==='retail')return candidate?.retail>0?candidate.retail:null;
+  if(format==='bulk')return candidate?.bulk>0?candidate.bulk:null;
   return null;
 }
+
 function benchmarkDescription(format,gasFormat,dieselFormat){
   if(format==='bulk'){
     const d=lastExtraction?.market_wholesale_reference_date;
@@ -234,8 +252,8 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
   const format=d.supplyFormat || d.supply_format || 'unknown';
   const gasFormat=format==='split'?(d.gasolineSupplyFormat || d.gasoline_supply_format || 'unknown'):format;
   const dieselFormat=format==='split'?(d.dieselSupplyFormat || d.diesel_supply_format || 'unknown'):format;
-  const gasPrice=benchmarkFor(gasFormat,'gasoline');
-  const dieselPrice=benchmarkFor(dieselFormat,'diesel');
+  const gasPrice=benchmarkFor(gasFormat,'gasoline',d);
+  const dieselPrice=benchmarkFor(dieselFormat,'diesel',d);
   let marketValue=0;
   if(fuelType==='gasoline'){
     if(!(gasolineVolume>0) || !(gasPrice>0)) return null;
@@ -346,6 +364,11 @@ analyzeBtn.addEventListener('click', async()=>{
 });
 
 function renderReview(data){
+  document.getElementById('reviewGasolineProduct').value='unknown';
+  document.getElementById('reviewDieselProduct').value='unknown';
+  const products=data.fuel_products;
+  document.getElementById('fuelProductEvidence').textContent=products?['gasoline','diesel'].flatMap(f=>(products[f]?.items||[]).map(p=>p.source_text)).join('; '):'Сервер не передав підтверджений профіль продукту. Потрібне оновлення сервера; стандартні ціни не застосовуються.';
+  document.getElementById('fuelPriceVerification').textContent=['gasoline','diesel'].map(f=>data.market_reference_candidates?.[f]?.check?.reason).filter(Boolean).join(' ');
   reviewSection.classList.remove('hidden');
   document.getElementById('reviewState').textContent='ПОТРІБНЕ ПІДТВЕРДЖЕННЯ';
   document.getElementById('reviewState').classList.remove('accepted');
@@ -405,6 +428,8 @@ function fillList(id,items,fallback){
 function reviewValues(){
   return {
     fuelType:document.getElementById('reviewFuelType').value,
+    gasoline_product:document.getElementById('reviewGasolineProduct').value,
+    diesel_product:document.getElementById('reviewDieselProduct').value,
     expectedValue:parseGroupedNumber(document.getElementById('reviewExpectedValue').value),
     gasolineVolume:parseGroupedNumber(document.getElementById('reviewGasolineVolume').value),
     dieselVolume:parseGroupedNumber(document.getElementById('reviewDieselVolume').value),
@@ -438,6 +463,11 @@ function validateReview(v){
   if(v.fuelType==='gasoline' && v.gasolineVolume<=0) return 'Вкажіть обсяг бензину.';
   if(v.fuelType==='diesel' && v.dieselVolume<=0) return 'Вкажіть обсяг дизеля.';
   if(v.fuelType==='mixed' && (v.gasolineVolume<=0 || v.dieselVolume<=0)) return 'Для змішаного тендера потрібні окремі обсяги бензину та дизеля.';
+  for(const family of ['gasoline','diesel']){
+    if(v.fuelType!==family&&v.fuelType!=='mixed')continue;
+    const selected=selectedProduct(family,v);
+    if(['a95_regular','diesel_regular'].includes(selected)&&!standardProductConfirmed(family,v))return 'Вибір звичайного продукту суперечить позиціям тендера або сервер не підтвердив їх. Перевірте марку, преміальність і сезонність; оберіть відповідний продукт або залиште його непідтвердженим.';
+  }
   return '';
 }
 
@@ -450,6 +480,8 @@ acceptBtn.addEventListener('click',()=>{
   confirmedData={
     ...lastExtraction,
     fuel_type:v.fuelType,
+    gasoline_product:v.gasoline_product,
+    diesel_product:v.diesel_product,
     expected_value_uah:v.expectedValue,
     gasoline_volume_l:v.gasolineVolume,
     diesel_volume_l:v.dieselVolume,
@@ -469,6 +501,7 @@ acceptBtn.addEventListener('click',()=>{
     named_network:v.named_network
   };
 
+  document.getElementById('confirmedFuelProducts').textContent='Підтверджений продукт: бензин — '+productLabel('gasoline',confirmedData)+'; дизель — '+productLabel('diesel',confirmedData)+'.';
   validation.textContent='Показники підтверджено і передано в калькулятор.';
   validation.classList.remove('error-text');
   document.getElementById('reviewState').textContent='ПІДТВЕРДЖЕНО';
@@ -645,8 +678,12 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const cautiousBid=expected*(1-cfg.discounts[0]/100);
   const cautiousMargin=(cautiousBid-full)/cautiousBid*100;
   const stop=cautiousMargin<minMargin;
-  const recommendation=Euro5BuyerCompetition.recommendation(recommendationFromScore(total,stop),buyerCompetition,stop);
+  let recommendation=Euro5BuyerCompetition.recommendation(recommendationFromScore(total,stop),buyerCompetition,stop);
 
+  if(!productRiskSupported()){
+    if(!stop&&recommendation.tone!=='bad')recommendation={...recommendation,title:'Попередня оцінка — перевірте продукт і ціновий ризик',tone:'warn'};
+    recommendation.summary+=' Марка або різновид не підтверджені чи не мають окремого цінового ряду. Ризик — нейтральні 7,5/15; історична конкурентність узагальнена.';
+  }
   return {
     total:Math.round(total),base:round1(base),conditions,discount50,margin50,marginDelta,
     marginScore:round1(marginScore),budgetScore:round1(budgetScore),sizeScore,
@@ -933,7 +970,7 @@ function buildPdfReport(){
     <p>${escapeHtml(document.getElementById('historicalRecommendation').textContent)}</p>
     <h3>Картка 2 · Монте-Карло: стійкість прибутку</h3>
     ${document.getElementById('forecastContent').innerHTML}
-    <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()}</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()} Підтверджений продукт: бензин — ${productLabel("gasoline")}; дизель — ${productLabel("diesel")}.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
@@ -979,3 +1016,10 @@ window.onBuyerHistoryLoaded=(data,history)=>{
  if(wasCurrent)document.getElementById('calculateStatus').textContent='Історію конкурентності оновлено. Натисніть «Розрахувати», щоб оновити рейтинг і рекомендацію.';
 };
 
+
+
+['reviewGasolineProduct','reviewDieselProduct'].forEach(id=>document.getElementById(id).addEventListener('change',()=>{
+ confirmedData=null;invalidateCalculation();calculatorSection.classList.add('hidden');
+ document.getElementById('reviewState').textContent='ПОТРІБНЕ ПІДТВЕРДЖЕННЯ';
+ renderReviewMarket();
+}));

@@ -21,7 +21,7 @@ for(const d of ['',null,'2026-02-30','not a date'])assert.equal(risk.riskPeriod(
 
 const archive=JSON.parse(fs.readFileSync('data/market-series.json','utf8'));
 context.historyFixture={ready:true,as_of:'2026-10-23',records:archive.records};
-vm.runInContext('lastExtraction={price_risk_history:historyFixture};',context);
+vm.runInContext(`lastExtraction={price_risk_history:historyFixture,fuel_type:'mixed',gasoline_product:'a95_regular',diesel_product:'diesel_regular',fuel_products:{gasoline:{grade:'95',tier:'unspecified',items:[{grade:'95'}]},diesel:{tier:'unspecified',season:'unspecified',items:[{}]}},market_reference_candidates:{policy:'fuel-quality-v1'}};`,context);
 element('submissionDate').value='2026-10-13';
 const m13=vm.runInContext('submissionRiskModel(100,40)',context);
 assert(m13.ready);

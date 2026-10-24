@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="euro5-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20261023-participation-decisions" />
+  <link rel="stylesheet" href="styles.css?v=20261024-fuel-quality" />
 </head>
 <body>
   <main class="shell">
@@ -130,6 +130,17 @@
       </div>
 
       <div id="volumeNote" class="notice hidden"></div>
+      <article class="notice" id="fuelProductReview">
+        <h3>Марка та різновид пального</h3>
+        <p id="fuelProductEvidence"></p>
+        <div class="two-col">
+          <div class="field"><label for="reviewGasolineProduct">Бензин за документацією</label><select id="reviewGasolineProduct"><option value="unknown">Не підтверджено</option><option value="a95_regular">А-95 звичайний</option><option value="a92">А-92</option><option value="a98">А-98 або А-100</option><option value="premium">Преміальний або брендований</option><option value="other">Кілька марок або інший продукт</option></select></div>
+          <div class="field"><label for="reviewDieselProduct">Дизель за документацією</label><select id="reviewDieselProduct"><option value="unknown">Не підтверджено</option><option value="diesel_regular">ДП звичайний без спеціальних вимог до сезонності</option><option value="premium">Преміальний або брендований</option><option value="winter">Зимовий</option><option value="arctic">Арктичний</option><option value="other">Інший або кілька різновидів</option></select></div>
+        </div>
+        <p>Євро-5 — екологічний клас, а не ознака преміальності. Звірте продукт із документацією. Для непідтвердженого продукту, А-92, А-98, преміального, зимового або арктичного пального стандартна ціна та стандартна модель цінового ризику не застосовуються. Економіку можна розрахувати за власною собівартістю.</p>
+        <p id="fuelPriceVerification"></p>
+      </article>
+
       <div id="marketComparisonReview" class="market-comparison hidden">
         <span>Бюджет замовника до ринку</span>
         <strong id="marketComparisonReviewValue">—</strong>
@@ -248,6 +259,7 @@
           <div class="accepted-note">Нижче вже стоять показники, підтверджені на Кроці 2. У калькуляторі ви додаєте лише внутрішню економіку ЄВРО5.</div>
           <div class="field"><label for="fuelType">Тип закупівлі</label><select id="fuelType" disabled><option value="diesel">Дизельне паливо</option><option value="gasoline">Бензин</option><option value="mixed">Бензин + дизель</option></select></div>
           <div class="field"><label for="confirmedSupplyFormat">Підтверджений формат постачання</label><input id="confirmedSupplyFormat" type="text" readonly /></div>
+          <p id="confirmedFuelProducts" class="hint"></p>
           <div class="field"><label for="expectedValue">Очікувана вартість, грн без ПДВ</label><input id="expectedValue" type="text" inputmode="numeric" readonly /><div id="scopeWarning" class="hint error hidden">Розрахунок застосовується до тендерів від 1 млн грн без ПДВ.</div></div>
           <div class="two-col">
             <div class="field"><label for="gasolineVolume">Обсяг бензину, л</label><input id="gasolineVolume" type="text" inputmode="numeric" readonly /></div>
@@ -322,7 +334,7 @@
       </section>
 
       <section id="resultsCard" class="card results-card hidden">
-        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КАРТКА 1 · PROZORRO BI</div><h2>Історична конкурентність</h2><p>У якій частці завершених схожих тендерів наша ціна була б не вищою за ціну переможця? Це не ймовірність перемоги.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
+        <div class="section-head"><div><div class="eyebrow ai-eyebrow">КАРТКА 1 · PROZORRO BI</div><h2>Історична конкурентність</h2><p>У якій частці завершених схожих тендерів наша ціна була б не вищою за ціну переможця? Це не ймовірність перемоги. Статистична модель об’єднує різні марки, преміальність і сезонність; точність для окремого різновиду не підтверджена.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
         <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
         <div class="notice"><strong>Рекомендація:</strong> <span id="historicalRecommendation"></span></div>
@@ -385,10 +397,11 @@
   <script src="price-risk.js?v=20261023-buyer-competition"></script>
   <script src="buyer-competition.js?v=20261023-buyer-competition"></script>
   <script src="buyer-card.js?v=20261023-buyer-competition"></script>
-  <script src="memory.js?v=20261023-participation-decisions"></script>
-  <script src="app.js?v=20261023-participation-decisions"></script>
+  <script src="memory.js?v=20261024-fuel-quality"></script>
+  <script src="app.js?v=20261024-fuel-quality"></script>
 </body>
 </html>
+
 
 
 

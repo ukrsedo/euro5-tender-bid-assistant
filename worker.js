@@ -334,6 +334,32 @@ function classifyFuelItem(item) {
   return null;
 }
 
+// Product identity is independent of EURO emissions and marketing names.
+function fuelProductProfile(text,family){
+ const s=String(text||'').normalize('NFKC').toLowerCase();
+ const grades=family==='gasoline'?[...s.matchAll(/(?:[аa](?:[іиi])?\s*[-–]?\s*|бензин\s*)9([2458])(?!\d)/g)].map(m=>'9'+m[1]):[];
+ const gradeSet=[...new Set(grades)];
+ const premiumText=s.replace(/не[ -]*прем[іи](?:ум|альн)[\wа-яіїєґ]*/g,'');
+ const premium=/прем[іи](?:ум|альн)|premium|mustang|pulls|v[ -]?power|ultimate|ecto|ventus|nano/.test(premiumText);
+ const regular=/звичайн|обычн|не[ -]*прем|стандартн|regular|standard/.test(s);
+ const seasons=[['arctic',/аркти|arctic/],['winter',/зимов|зимн|winter/],['summer',/літн|летн|summer/],['transition',/міжсезон|межсезон/]].filter(x=>x[1].test(s)).map(x=>x[0]);
+ const euro=[...s.matchAll(/(?:євро|евро|euro)\s*[-–]?\s*([456])(?!\d)/g)].map(m=>m[1]);
+ return {family,grade:gradeSet.length===1?gradeSet[0]:null,grades:gradeSet,tier:premium&&regular?'ambiguous':premium?'premium':regular?'regular':'unspecified',season:seasons.length===1?seasons[0]:seasons.length?'ambiguous':'unspecified',euro_class:[...new Set(euro)],source_text:String(text||'')};
+}
+function tenderFuelProducts(data){
+ const result={};
+ for(const family of ['gasoline','diesel']){
+  const items=(data?.items||[]).filter(i=>classifyFuelItem(i)===family);
+  const profiles=items.map(i=>fuelProductProfile(i.description,family));
+  const grades=[...new Set(profiles.flatMap(p=>p.grades))],tiers=[...new Set(profiles.map(p=>p.tier))],seasons=[...new Set(profiles.map(p=>p.season))];
+  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,requires_confirmation:true};
+ }
+ return result;
+}
+function qualityAllowsStandard(p,family){
+ return !!p&&p.tier==='regular'&&(family!=='gasoline'||p.grade==='95')&&(family!=='diesel'||['unspecified','summer'].includes(p.season));
+}
+
 function isLitres(item) {
   const unit = item?.unit || {};
   const text = [unit?.code, unit?.name, unit?.name?.uk, unit?.name?.en].filter(Boolean).join(" ").toLowerCase();
@@ -679,7 +705,7 @@ function chooseMarketPrice(format, retailPrice, wholesalePrice, wholesaleUsable)
 const EURO5_RETAIL_URL='https://euro5.ua/tsiny-na-palne/';
 function parseEuro5Retail(html){
  const strip=s=>s.replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\s+/g,' ').trim();
- const result={},labels={'95':'a95','95 EURO':'a95premium','92':'a92','ДП':'dt','ДП EURO':'dtPremium','ГАЗ':'lpg'};
+ const result={},labels={'95':'a95','95 EURO':'a95Euro','92':'a92','ДП':'dt','ДП EURO':'dtEuro','ГАЗ':'lpg'};
  const chunks=String(html).split(/<div\b[^>]*class=["'][^"']*\bfuel__col\b[^"']*["'][^>]*>/i).slice(1);
  for(const block of chunks){
   const title=block.match(/<div\b[^>]*class=["'][^"']*\belementor-heading-title\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
@@ -710,10 +736,22 @@ function euro5RetailRecord(slug,targetDate,context){
  return {source:live!==null&&live!==undefined?'Євро5 — поточна стела':'Євро5 — архів стели',date:key.split('-').reverse().join('.'),priceWithVat:Number(price),priceWithoutVat:Number(price)/(1+UKRAINE_STANDARD_VAT)};
 }
 async function fetchRetailPrice(slug,targetDate,context){
- const own=euro5RetailRecord(slug,targetDate,context);
- if(own)return own;
- // EURO5 takes priority; Minfin is the fallback for every requested date.
- return fetchMinfinPrice(slug,targetDate);
+ // A same-date independent check is required. EURO labels have no verified tier mapping.
+ const minfin=await fetchMinfinPrice(slug,targetDate),own=euro5RetailRecord(slug,targetDate,context);
+ const exact=formatUaDate(targetDate);
+ const reference=minfin?.date===exact?minfin:null;
+ const entry=context.archive.find(x=>x.date===euro5ObservationDate(targetDate));
+ const raw=entry?.prices_uah_l_with_vat||{};
+ const current=euro5ObservationDate(targetDate)===context.today?context.live:null;
+ const euroPrice=slug==='a95'?(current?.a95Euro??raw.a95Euro??raw.a95premium):(current?.dtEuro??raw.dtEuro??raw.dtPremium);
+ const difference=reference&&own?Math.abs(own.priceWithVat/reference.priceWithVat-1)*100:null;
+ const ambiguous=Number(euroPrice)>0;
+ let chosen=null,reason='Немає незалежної ціни Minfin на ту саму дату. Орієнтир не підтверджено.';
+ if(reference){
+  if(own&&!ambiguous&&difference<=5){chosen=own;reason='Ціну ЄВРО5 звірено з Minfin на ту саму дату; відхилення не перевищує 5%.';}
+  else {chosen=reference;reason=ambiguous?'У прайсі ЄВРО5 є окрема позиція EURO без підтвердженої відповідності продукту. Використано стандартний орієнтир Minfin.':own?'Ціна ЄВРО5 відрізняється від Minfin більш ніж на 5%. Використано Minfin.':'Архів ЄВРО5 відсутній; використано Minfin.';}
+ }
+ return {...(chosen||{}),priceWithVat:chosen?.priceWithVat??null,priceWithoutVat:chosen?.priceWithoutVat??null,check:{status:chosen?'reference_only':'unavailable',reason,difference_pct:difference,own_price_with_vat:own?.priceWithVat??null,minfin_price_with_vat:reference?.priceWithVat??null,euro_label_price_with_vat:Number(euroPrice)>0?Number(euroPrice):null,euro_label_tier:'unverified',limit_pct:5}};
 }
 
 /**
@@ -735,6 +773,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const trendDate = recentTender ? now : tenderDate;
   const pastDate = new Date(trendDate.getTime() - 30 * 86400000);
 
+  const products=tenderFuelProducts(data);
   const fuelType = parsed?.fuel_type;
   const gasVol = Number(parsed?.gasoline_volume_l);
   const dieselVol = Number(parsed?.diesel_volume_l);
@@ -766,8 +805,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const crossGas = percentDifference(enkorr?.gasoline?.retail, enkorrMinfinGas?.priceWithVat);
   const crossDiesel = percentDifference(enkorr?.diesel?.retail, enkorrMinfinDiesel?.priceWithVat);
   const crossCheckLimitPct = 5;
-  const gasWholesaleParsedOk = !!enkorr?.gasoline?.wholesale && (crossGas === null || crossGas <= crossCheckLimitPct);
-  const dieselWholesaleParsedOk = !!enkorr?.diesel?.wholesale && (crossDiesel === null || crossDiesel <= crossCheckLimitPct);
+  const gasWholesaleParsedOk = !!enkorr?.gasoline?.wholesale && (enkorrMinfinGas?.date===formatUaDate(enkorr.date) && crossGas !== null && Math.abs(crossGas) <= crossCheckLimitPct);
+  const dieselWholesaleParsedOk = !!enkorr?.diesel?.wholesale && (enkorrMinfinDiesel?.date===formatUaDate(enkorr.date) && crossDiesel !== null && Math.abs(crossDiesel) <= crossCheckLimitPct);
   const wholesaleDateGap = enkorr?.date ? wholesaleBenchmarkAge(tenderDate, enkorr.date) : null;
   const wholesaleRecentEnough = wholesaleDateGap !== null && wholesaleDateGap <= 5;
 
@@ -782,8 +821,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const gasFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.gasolineSupplyFormat) : globalFormat;
   const dieselFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.dieselSupplyFormat) : globalFormat;
 
-  const gasSelected = chooseMarketPrice(gasFormat, retailGasNoVat, wholesaleGasNoVat, gasWholesaleUsable);
-  const dieselSelected = chooseMarketPrice(dieselFormat, retailDieselNoVat, wholesaleDieselNoVat, dieselWholesaleUsable);
+  const gasSelected = qualityAllowsStandard(products.gasoline,"gasoline") ? chooseMarketPrice(gasFormat, retailGasNoVat, wholesaleGasNoVat, gasWholesaleUsable) : null;
+  const dieselSelected = qualityAllowsStandard(products.diesel,"diesel") ? chooseMarketPrice(dieselFormat, retailDieselNoVat, wholesaleDieselNoVat, dieselWholesaleUsable) : null;
 
   let marketValue = null;
   if (fuelType === "gasoline" && gasVol > 0 && gasSelected > 0) {
@@ -828,6 +867,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
         : "не визначено";
 
   const common = {
+    fuelProducts:products,
+    referenceCandidates:{policy:'fuel-quality-v1',gasoline:{retail:retailGasNoVat,bulk:gasWholesaleUsable?wholesaleGasNoVat:null,check:retailGas?.check||null},diesel:{retail:retailDieselNoVat,bulk:dieselWholesaleUsable?wholesaleDieselNoVat:null,check:retailDiesel?.check||null}},
     available: marketValue > 0,
     benchmarkType: globalFormat,
     benchmarkLabel,
@@ -841,12 +882,12 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     trendEndDate: trendGas?.date || trendDiesel?.date || null,
 
     wholesaleReferenceDate: enkorr?.date ? formatUaDate(enkorr.date) : null,
-    retailGasolinePriceWithoutVat: retailGasNoVat,
-    retailDieselPriceWithoutVat: retailDieselNoVat,
-    wholesaleGasolinePriceWithoutVat: wholesaleGasNoVat,
-    wholesaleDieselPriceWithoutVat: wholesaleDieselNoVat,
-    wholesaleGasolineUsable: gasWholesaleUsable,
-    wholesaleDieselUsable: dieselWholesaleUsable,
+    retailGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline,"gasoline")?retailGasNoVat:null,
+    retailDieselPriceWithoutVat: qualityAllowsStandard(products.diesel,"diesel")?retailDieselNoVat:null,
+    wholesaleGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline,"gasoline")?wholesaleGasNoVat:null,
+    wholesaleDieselPriceWithoutVat: qualityAllowsStandard(products.diesel,"diesel")?wholesaleDieselNoVat:null,
+    wholesaleGasolineUsable: qualityAllowsStandard(products.gasoline,"gasoline")&&gasWholesaleUsable,
+    wholesaleDieselUsable: qualityAllowsStandard(products.diesel,"diesel")&&dieselWholesaleUsable,
     wholesaleCrosscheckNote: crossNotes.join("; ") || null,
     fuelTrend30dPct,
     trendStartDate: trendGasPast?.date || trendDieselPast?.date || formatUaDate(pastDate)
@@ -854,7 +895,9 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
 
   if (!(marketValue > 0)) {
     let note;
-    if (globalFormat === "unknown") {
+    if ((needGas&&!qualityAllowsStandard(products.gasoline,'gasoline'))||(needDiesel&&!qualityAllowsStandard(products.diesel,'diesel'))) {
+      note='Підтвердьте марку та різновид пального. А-92, А-98, преміальне, зимове та арктичне пальне не підміняються звичайним А-95 або ДП. Для непідтримуваного продукту порівняння не розраховується; у рейтингу — нейтральні 10/20.';
+    } else if (globalFormat === "unknown") {
       note = "Формат постачання не визначено. Оберіть «Налив» або «Талони / паливні картки», щоб розрахувати бюджет замовника до ринку.";
     } else if (!recentTender && (globalFormat === "bulk" || gasFormat === "bulk" || dieselFormat === "bulk")) {
       note = "Гуртовий орієнтир Enkorr на дату оголошення або не більш ніж за 5 робочих діб до неї недоступний. Пізніші ціни не використовуються. Порівняння не розраховано; у рейтингу — нейтральні 10/20 балів.";
@@ -1292,7 +1335,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.23-participation-decisions"
+        version: "2026.10.24-fuel-quality"
       }, 200, origin);
     }
 
@@ -1438,6 +1481,9 @@ response_format: { type: "json_object" }
       vat_rate: scope.expected.vatBasis === "з ПДВ" ? UKRAINE_STANDARD_VAT : 0,
       expected_value_uah: Number(scope.normalizedWithoutVat.toFixed(2)),
       normalization_note: scope.normalizationNote,
+      fuel_products: market.fuelProducts || tenderFuelProducts(source.data),
+      market_reference_candidates: market.referenceCandidates || null,
+      statistical_product_scope: 'Узагальнена модель без поділу за маркою, преміальністю та сезонністю. Точність для окремих різновидів не підтверджено.',
       market_comparison_available: market.available,
       market_reference_date: market.referenceDate ?? null,
       market_benchmark_type: market.benchmarkType ?? null,
@@ -1711,6 +1757,7 @@ export class Euro5CategoryAI extends Euro5CategoryWorkerEntrypoint {
   return {status:response.status,data:await response.json()};
  }
 };
+
 
 
 
