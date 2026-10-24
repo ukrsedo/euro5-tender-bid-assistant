@@ -109,3 +109,7 @@ console.log('Unified protected participation: real route saves/reads decision wi
 const beforeMimeFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('body',{headers:{'Content-Type':'text/plain'}});
 for(const [path,type] of [['/','text/html'],['/index.html','text/html'],['/app.js','application/javascript'],['/memory.js','application/javascript'],['/styles.css','text/css'],['/euro5-logo.png','image/png']]){const result=await handle(signed(path),env);assert.equal(result.status,200,path);assert(result.headers.get('Content-Type').startsWith(type),path);}
 globalThis.fetch=beforeMimeFetch;console.log('Shared raw source: correct HTML/JS/CSS/image MIME and cache-independent source requests passed.');
+
+// Public readiness probe reveals no application content, user data or credentials.
+const probeFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('private shared HTML body',{headers:{'Content-Type':'text/plain'}});
+const ready=await handle(request('/login?check=frontend'),env);assert.equal(ready.status,200);const readiness=await ready.json();assert.equal(readiness.frontend,'ready');assert(!JSON.stringify(readiness).includes('private shared'));globalThis.fetch=probeFetch;
