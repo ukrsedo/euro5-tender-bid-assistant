@@ -27,10 +27,10 @@ const identity=await (await handle(signed('/session'),env)).json();assert.equal(
 const originalAssetFetch=globalThis.fetch;let assetRequest;
 globalThis.fetch=async(url,options)=>{assetRequest={url,options};return new Response('shared main asset',{headers:{'Content-Type':'application/javascript'}});};
 assert.equal(await (await handle(signed('/app.js?v=current'),env)).text(),'shared main asset');
-assert.equal(assetRequest.url,'https://ukrsedo.github.io/euro5-tender-bid-assistant/app.js?v=current');
+assert.equal(new URL(assetRequest.url).origin,'https://raw.githubusercontent.com');assert.equal(new URL(assetRequest.url).pathname,'/ukrsedo/euro5-tender-bid-assistant/main/app.js');assert.equal(new URL(assetRequest.url).searchParams.get('release'),'current');
 assert.equal(assetRequest.options.headers.Cookie,undefined);
 assert.equal(assetRequest.options.headers.Authorization,undefined);
-assert.equal(assetRequest.options.cache,'no-store');
+assert.equal(assetRequest.options.headers['Cache-Control'],'no-cache');assert.equal(assetRequest.options.cf,undefined);
 assert.equal((await handle(signed('/worker.js'),env)).status,404);
 assert.equal((await handle(signed('/auth/session.js'),env)).status,404);
 const config=await (await handle(signed('/config.js'),env)).text();assert(config.includes("authMode: 'session'"));assert(config.includes('window.location.origin'));
@@ -104,3 +104,8 @@ const saved=await handle(decisionRequest('/memory/participation'),{...env,MEMORY
 assert.equal(saved.status,200);const savedBody=await saved.json();assert.equal(savedBody.actor,'test-team');assert.equal(savedBody.decision.choice,'decline');
 const found=await (await handle(decisionRequest('/memory/participation/current'),{...env,MEMORY_ENABLED:'1'}, {},realWorker)).json();assert.equal(found.decision.choice,'decline');
 console.log('Unified protected participation: real route saves/reads decision with authenticated tester identity.');
+
+// Raw repository responses are text/plain; every shared asset needs its actual browser MIME type.
+const beforeMimeFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('body',{headers:{'Content-Type':'text/plain'}});
+for(const [path,type] of [['/','text/html'],['/index.html','text/html'],['/app.js','application/javascript'],['/memory.js','application/javascript'],['/styles.css','text/css'],['/euro5-logo.png','image/png']]){const result=await handle(signed(path),env);assert.equal(result.status,200,path);assert(result.headers.get('Content-Type').startsWith(type),path);}
+globalThis.fetch=beforeMimeFetch;console.log('Shared raw source: correct HTML/JS/CSS/image MIME and cache-independent source requests passed.');

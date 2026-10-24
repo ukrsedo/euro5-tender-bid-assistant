@@ -1,9 +1,9 @@
 # One assistant with authenticated access
 
-The public site and the protected tester address now use the **same published interface**:
-https://ukrsedo.github.io/euro5-tender-bid-assistant/.
+The public site and the protected tester address now use the **same source interface**:
+https://github.com/ukrsedo/euro5-tender-bid-assistant/tree/main.
 
-`access-worker.js` is an authentication gateway. After verifying the session it fetches an explicit allowlist of frontend files from that site without browser cookies or credentials. There is no `protected-public` directory, `ASSETS` binding or separately edited HTML/JavaScript. Once a main-interface update is published, a reload through the tester address uses it too. If the shared source is unavailable, the gateway reports an error instead of serving an old private copy.
+`access-worker.js` is an authentication gateway. After verifying the session it fetches an explicit allowlist of frontend files directly from the main repository through raw.githubusercontent.com without browser cookies or credentials. There is no `protected-public` directory, `ASSETS` binding or separately edited HTML/JavaScript. Once a main-interface update reaches main, a reload through the tester address uses it too. If the shared source is unavailable, the gateway reports an error instead of serving an old private copy.
 
 Only `/config.js` is supplied by the gateway: it selects the same-origin API and session authentication. The shared `memory.js` automatically connects authenticated users and preserves the explicit participation decision, optional comment, actor attribution, revisions and latest-decision lookup. The public site retains its existing key-based access to memory. Calculation, product selectors, ratings and reports use the same frontend files.
 
@@ -36,4 +36,4 @@ Run `node scripts/test-protected-auth.mjs`, `node scripts/test-session-participa
 
 After the build succeeds, sign in with the existing tester password, load a tender and check “Марка та різновид пального”, “Рішення закупівельника”, automatic memory connection and logout. The gateway marks shared asset responses with `X-Euro5-Frontend: shared-main`. A loaded page must be reloaded to receive a later frontend release.
 
-Do not disable the public frontend source while this gateway uses it. Public source code is not a confidential data store. This update does not alter the existing decision to keep the public entry available during testing.
+Keep the main repository source available while the gateway uses it. Public source code is not a confidential data store. This update does not alter the existing decision to keep the public entry available during testing.
