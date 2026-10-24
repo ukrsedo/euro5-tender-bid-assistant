@@ -25,7 +25,7 @@ assert(first.headers.get('Set-Cookie').includes('HttpOnly'));assert(first.header
 const signed=path=>request(path,{headers:{Cookie:sessionCookie}});
 const identity=await (await handle(signed('/session'),env)).json();assert.equal(identity.id,'test-team');assert.equal(identity.role,'editor');assert.equal(identity.shared,true);
 const originalAssetFetch=globalThis.fetch;let assetRequest;
-globalThis.fetch=async(url,options)=>{assetRequest={url,options};return new Response('shared main asset',{headers:{'Content-Type':'application/javascript'}});};
+globalThis.fetch=async(url,options)=>{assert.equal(options.redirect,'manual','Workers supports manual redirect handling; error mode must never be sent');assetRequest={url,options};return new Response('shared main asset',{headers:{'Content-Type':'application/javascript'}});};
 assert.equal(await (await handle(signed('/app.js?v=current'),env)).text(),'shared main asset');
 assert.equal(new URL(assetRequest.url).origin,'https://raw.githubusercontent.com');assert.equal(new URL(assetRequest.url).pathname,'/ukrsedo/euro5-tender-bid-assistant/main/app.js');assert.equal(new URL(assetRequest.url).searchParams.get('release'),'current');
 assert.equal(assetRequest.options.headers.Cookie,undefined);
@@ -113,3 +113,6 @@ globalThis.fetch=beforeMimeFetch;console.log('Shared raw source: correct HTML/JS
 // Public readiness probe reveals no application content, user data or credentials.
 const probeFetch=globalThis.fetch;globalThis.fetch=async()=>new Response('private shared HTML body',{headers:{'Content-Type':'text/plain'}});
 const ready=await handle(request('/login?check=frontend'),env);assert.equal(ready.status,200);const readiness=await ready.json();assert.equal(readiness.frontend,'ready');assert(!JSON.stringify(readiness).includes('private shared'));globalThis.fetch=probeFetch;
+
+// A redirect is rejected by the status check without following it.
+const redirectFetch=globalThis.fetch;globalThis.fetch=async()=>new Response(null,{status:302,headers:{Location:'https://untrusted.example/'}});assert.equal((await handle(signed('/app.js'),env)).status,502);globalThis.fetch=redirectFetch;
