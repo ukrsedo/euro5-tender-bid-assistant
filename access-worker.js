@@ -67,8 +67,24 @@ export async function handle(request,env,ctx,application=app){
     // The existing backend keeps its own AI secrets. Only this authenticated route may call it.
     // Forward the analysis payload without browser session, Access assertions or credentials.
     const headers=new Headers({'Content-Type':'application/json'});
-    try{return await env.TENDER_AI.fetch(new Request('https://internal.euro5/tender-check',{method:'POST',headers,body:request.body,duplex:'half'}));}
-    catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
+    try{
+      const upstream=await env.TENDER_AI.fetch(new Request('https://internal.euro5/tender-check',{method:'POST',headers,body:request.body,duplex:'half'}));
+      if(!upstream.ok)return upstream;
+      // The AI service is deployed independently and may not yet include the
+      // buyer-history metadata added to this protected Worker. The official
+      // tender identifier provides a conservative pre-announcement cutoff.
+      const data=await upstream.clone().json().catch(()=>null);
+      if(!data||typeof data!=='object'||Array.isArray(data))return upstream;
+      if(!data.buyer_history_as_of){
+        const match=String(data.tender_id||'').match(/^UA-(\\d{4}-\\d{2}-\\d{2})-\\d+-[a-z]$/i);
+        if(match){
+          const day=new Date(match[1]+'T12:00:00Z');
+          if(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===match[1]&&day.getTime()<=Date.now())
+            data.buyer_history_as_of=match[1];
+        }
+      }
+      return json(data,upstream.status);
+    }catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
   }
   if(['/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
     // Identity is a trusted internal object, never a client header or selected profile ID.
