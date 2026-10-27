@@ -30,7 +30,7 @@
  }
  async function load(data,api){
   const ticket=++sequence,card=document.getElementById('buyerHistoryCard');if(!card)return;card.classList.remove('hidden');card.innerHTML=html(null,data.buyer_name,data.buyer_code);
-  if(!data.buyer_code||!data.buyer_history_as_of){const reason=!data.buyer_code?'Prozorro не повернув підтверджений код ЄДРПОУ замовника.':'Не вдалося підтвердити дату оголошення за ID та датою створення тендера в Prozorro. Історію до оголошення не можна розрахувати без цієї дати.';card.innerHTML=html({reason},data.buyer_name);return}
+  if(!data.buyer_code||!data.buyer_history_as_of){const reason=!data.buyer_code?'Prozorro не повернув підтверджений код ЄДРПОУ замовника.':'Не вдалося визначити дату оголошення за офіційним ID тендера Prozorro. Історію до оголошення не можна розрахувати без цієї дати.';card.innerHTML=html({reason},data.buyer_name);return}
   let h;try{const r=await fetch(api+'/buyer-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({buyerCode:data.buyer_code,asOf:data.buyer_history_as_of,excludeTenderId:data.tender_id}),signal:AbortSignal.timeout(120000)});h=await r.json();if(!r.ok)throw Error(r.status===404?'Потрібне оновлення Worker для картки замовника.':h.error||h.reason||'Історія недоступна.');if(h.ready&&h.history_version!==2)throw Error('Оновіть Worker: поточна версія не підтверджує історію до дати оголошення.')}catch(e){h={ready:false,reason:'Історія замовника недоступна: '+e.message}}
   if(ticket!==sequence)return;data.buyer_profile=h;card.innerHTML=html(h,data.buyer_name,data.buyer_code);window.onBuyerHistoryLoaded?.(data,h);
  }
