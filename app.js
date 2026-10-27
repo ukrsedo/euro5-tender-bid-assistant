@@ -314,9 +314,9 @@ function renderReviewMarket(){
     return;
   }
   box.classList.remove('hidden');
-  document.getElementById('marketComparisonReviewValue').textContent=`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
-  document.getElementById('marketComparisonReviewText').textContent=marketGapText(cmp.gap);
-  document.getElementById('marketBenchmarkSource').textContent=cmp.source || '';
+  document.getElementById('marketComparisonReviewValue').textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
+  document.getElementById('marketComparisonReviewText').textContent=(cmp.indicative?'Орієнтовна оцінка за вибраним звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap);
+  document.getElementById('marketBenchmarkSource').textContent=(cmp.indicative?'Марку не підтверджено автоматично. ':'')+(cmp.source || '');
 }
 
 
