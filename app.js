@@ -342,8 +342,23 @@ function renderReviewMarket(){
 function renderCompetitionForecast(data){
   const box=document.getElementById('competitionForecast');
   const fc=data?.competition_forecast;
-  if(!fc || !Number.isFinite(Number(fc.one_participant_pct)) || !Number.isFinite(Number(fc.two_plus_participants_pct))){
-    box.classList.add('hidden');
+  const oneValid=typeof fc?.one_participant_pct==='number'&&Number.isFinite(fc.one_participant_pct);
+  const twoValid=typeof fc?.two_plus_participants_pct==='number'&&Number.isFinite(fc.two_plus_participants_pct);
+  const valid=oneValid&&twoValid&&fc.one_participant_pct>=0&&fc.two_plus_participants_pct>=0&&
+    fc.one_participant_pct<=100&&fc.two_plus_participants_pct<=100&&
+    Math.abs(fc.one_participant_pct+fc.two_plus_participants_pct-100)<1;
+  box.classList.remove('hidden');
+  if(!valid){
+    document.getElementById('competitionConclusion').textContent='Прогноз поки недоступний';
+    document.getElementById('competitionOnePct').textContent='—';
+    document.getElementById('competitionTwoPct').textContent='—';
+    document.getElementById('competitionOneBar').style.width='0%';
+    document.getElementById('competitionTwoBar').style.width='0%';
+    document.getElementById('competitionHistoryNote').textContent=
+      'Статистичний прогноз не надійшов із сервера або закупівля поза умовами моделі (від 1 млн грн без ПДВ). Відсотки не вигадуються.';
+    document.getElementById('reviewCompetitionMode').value='market';
+    document.getElementById('competitionModeReason').textContent=
+      'Оберіть режим конкуренції вручну. Автоматичної рекомендації наразі немає.';
     return;
   }
   const one=Number(fc.one_participant_pct);
