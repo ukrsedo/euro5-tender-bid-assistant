@@ -342,8 +342,7 @@ function fuelProductProfile(text,family){
  const premiumText=s.replace(/не[ -]*прем[іи](?:ум|альн)[\wа-яіїєґ]*/g,'');
  const premium=/прем[іи](?:ум|альн)|premium|mustang|pulls|v[ -]?power|ultimate|ecto|ventus|nano/.test(premiumText);
  const regular=/звичайн|обычн|не[ -]*прем|стандартн|regular|standard/.test(s);
- /** @type {Array<[string, RegExp]>} */
- const seasons=[['arctic',/аркти|arctic/],['winter',/зимов|зимн|winter/],['summer',/літн|летн|summer/],['transition',/міжсезон|межсезон/]].filter(x=>x[1].test(s)).map(x=>x[0]);
+ const seasons=(/** @type {Array<[string, RegExp]>} */ ([['arctic',/аркти|arctic/],['winter',/зимов|зимн|winter/],['summer',/літн|летн|summer/],['transition',/міжсезон|межсезон/]])).filter(x=>x[1].test(s)).map(x=>x[0]);
  const euro=[...s.matchAll(/(?:євро|евро|euro)\s*[-–]?\s*([456])(?!\d)/g)].map(m=>m[1]);
  return {family,grade:gradeSet.length===1?gradeSet[0]:null,grades:gradeSet,tier:premium&&regular?'ambiguous':premium?'premium':regular?'regular':'unspecified',season:seasons.length===1?seasons[0]:seasons.length?'ambiguous':'unspecified',euro_class:[...new Set(euro)],source_text:String(text||'')};
 }
