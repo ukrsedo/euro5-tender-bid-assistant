@@ -237,6 +237,7 @@ function benchmarkFor(format,fuel,d=activeTenderData(),indicative=false){
   if(indicative){
     if(selectedProduct(fuel,d)!==(fuel==='gasoline'?'a95_regular':'diesel_regular')||standardProductContradicted(fuel,d)||!lastExtraction?.tender_announcement_date)return null;
   }else if(!standardProductConfirmed(fuel,d))return null;
+  if(lastExtraction?.market_reference_candidates?.policy!=='fuel-quality-v1')return null;
   const candidate=lastExtraction.market_reference_candidates[fuel];
   if(format==='retail')return candidate?.retail>0?candidate.retail:null;
   if(format==='bulk')return candidate?.bulk>0?candidate.bulk:null;
