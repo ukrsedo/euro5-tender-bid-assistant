@@ -983,7 +983,7 @@ function buildPdfReport(){
       <div><span>Формат конкуренції</span><strong>${escapeHtml(modeLabel)}</strong></div>
       <div><span>Бюджет замовника до ринку</span><strong>${displayCmp?`${displayCmp.indicative?'≈ ':''}${displayCmp.gap>=0?'+':''}${num.format(displayCmp.gap)}%`:'—'}</strong></div>
     </div>
-    ${cmp?`<p class="pdf-market">${escapeHtml(marketGapText(cmp.gap))} ${escapeHtml(cmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
+    ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
     <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${listHtml(lastExtraction?.conditions,'Нетипових або суттєвих умов не виявлено.')}</div><div><h4>Що потрібно зробити перед участю</h4>${listHtml(lastExtraction?.actions,'Додаткових перевірок за завантаженими даними не потрібно.')}</div></div>
     <h3>Економіка ЄВРО5</h3>
