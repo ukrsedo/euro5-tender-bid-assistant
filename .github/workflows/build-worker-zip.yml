@@ -33,7 +33,7 @@ jobs:
           node --check dist/euro5-tender-test.js
           node --check app.js
           node --check buyer-card.js
-          npx --yes --package typescript@5.9.3 tsc --allowJs --checkJs --noEmit --skipLibCheck --lib es2022,dom --target es2022 --module esnext worker.js
+          npx --yes --package typescript@5.9.3 tsc --allowJs --checkJs --noEmit --skipLibCheck --lib es2022,dom --target es2022 --module esnext worker.js access-worker.js
           node --test tests/market-indicative.test.mjs
           node - <<'NODE'
           const fs=require('fs');
