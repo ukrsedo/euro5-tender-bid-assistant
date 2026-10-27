@@ -34,10 +34,8 @@ jobs:
           if(!code.includes('origin && origin !== url.origin') && !code.includes('origin&&origin!==url.origin')) process.exit(1);
           console.log('Bundle syntax and required fields OK');
           NODE
-      - name: Package ZIP
-        run: cd dist && zip -9 euro5-tender-test.zip euro5-tender-test.js
       - uses: actions/upload-artifact@v4
         with:
           name: euro5-tender-test-clean
-          path: dist/euro5-tender-test.zip
+          path: dist/euro5-tender-test.js
           retention-days: 30
