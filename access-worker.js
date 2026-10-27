@@ -93,7 +93,7 @@ export async function handle(request,env,ctx,application=app){
         try{
           const sourceUrl=new URL(data.api_url);
           if(sourceUrl.protocol==='https:'&&sourceUrl.hostname==='public-api.prozorro.gov.ua'&&
-             /^\\/api\\/2\\.5\\/tenders\\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
+             /^\/api\/2\.5\/tenders\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
             const source=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'}});
             if(source.ok){
               const payload=await source.json();
