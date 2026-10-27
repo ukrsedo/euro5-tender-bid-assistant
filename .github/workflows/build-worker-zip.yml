@@ -1,0 +1,43 @@
+name: Build clean Cloudflare Worker ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'access-worker.js'
+      - 'worker.js'
+      - 'auth/**'
+      - '.github/workflows/build-worker-zip.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bundle into a single JavaScript file
+        run: |
+          mkdir -p dist
+          npx --yes esbuild@0.25.12 access-worker.js --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/euro5-tender-test.js
+      - name: Check syntax and required fixes
+        run: |
+          node --check dist/euro5-tender-test.js
+          node - <<'NODE'
+          const fs=require('fs');
+          const code=fs.readFileSync('dist/euro5-tender-test.js','utf8');
+          if(!code.includes('wholesaleGasolinePriceWithoutVat') || !code.includes('retailSource')) process.exit(1);
+          if(!code.includes('origin && origin !== url.origin') && !code.includes('origin&&origin!==url.origin')) process.exit(1);
+          console.log('Bundle syntax and required fields OK');
+          NODE
+      - name: Package ZIP
+        run: cd dist && zip -9 euro5-tender-test.zip euro5-tender-test.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: euro5-tender-test-clean
+          path: dist/euro5-tender-test.zip
+          retention-days: 30
