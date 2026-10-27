@@ -955,6 +955,7 @@ function buildPdfReport(){
   const logistics=litres*value('logistics');
   const full=fuelCost+risk+logistics;
   const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
+  const displayCmp=cmp||marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData(),true);
   const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
