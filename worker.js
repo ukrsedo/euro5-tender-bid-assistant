@@ -511,21 +511,16 @@ function detectSupplyFormat(data, parsed, fuelType) {
 }
 
 function tenderAnnouncementDate(data) {
-  // The official UA tender ID encodes the announcement day. Confirm it against
-  // the creation timestamp, not the optional enquiry period: RFQ and other
-  // Prozorro procedures can have no enquiry period or one beginning later.
-  // Never substitute bid submission, modification or status-change dates.
+  // Prozorro's official UA tender identifier encodes the announcement day.
+  // dateCreated is not necessarily the same day (imports, RFQ procedures and
+  // later revisions), so a mismatch must not suppress a valid market cutoff.
   if (data?.status === "draft") return null;
-  const idMatch = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
-  if (!idMatch) return null;
-  const idDate = new Date(idMatch[1] + "T12:00:00Z");
-  if (!Number.isFinite(idDate.getTime()) || idDate.toISOString().slice(0, 10) !== idMatch[1]) return null;
-  const created = typeof data?.dateCreated === "string" ? new Date(data.dateCreated) : null;
-  if (!created || !Number.isFinite(created.getTime())) return null;
-  if (euro5ObservationDate(created) !== idMatch[1]) return null;
-  return idDate;
+  const match = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
+  if (!match) return null;
+  const date = new Date(match[1] + "T12:00:00Z");
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==match[1] || date.getTime()>Date.now()) return null;
+  return date;
 }
-
 // Buyer history only needs a conservative cutoff before the tender's official
 // announcement day. The UA identifier carries that day even when Prozorro
 // omits dateCreated or the enquiry period starts on a different day.
@@ -772,7 +767,7 @@ async function fetchRetailPrice(slug,targetDate,context){
  * Optional market fields are absent when reference data is unavailable.
  * @returns {Promise<Record<string, unknown> & {available: boolean}>}
  */
-async function buildMarketReference(data, parsed, scope, supplyInfo) {
+export async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const tenderDate = tenderAnnouncementDate(data);
   if (!tenderDate) return {
     available: false,
