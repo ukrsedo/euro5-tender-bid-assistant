@@ -526,6 +526,21 @@ function tenderAnnouncementDate(data) {
   return idDate;
 }
 
+// Buyer history only needs a conservative cutoff before the tender's official
+// announcement day. The UA identifier carries that day even when Prozorro
+// omits dateCreated or the enquiry period starts on a different day.
+// This does not relax the stricter evidence checks used for market benchmarks.
+function buyerHistoryAnnouncementDay(data, tenderId) {
+  if (data?.status === "draft") return null;
+  const officialId = String(data?.tenderID || tenderId || "");
+  const match = officialId.match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
+  if (!match) return null;
+  const date = new Date(match[1] + "T12:00:00Z");
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) return null;
+  if (date.getTime() > Date.now()) return null;
+  return match[1];
+}
+
 function monthPath(date) {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -1503,7 +1518,7 @@ response_format: { type: "json_object" }
     return json({
       ...parsed,
       buyer_code: buyerCode(source.data),
-      buyer_history_as_of: tenderAnnouncementDate(source.data) ? euro5ObservationDate(tenderAnnouncementDate(source.data)) : null,
+      buyer_history_as_of: buyerHistoryAnnouncementDay(source.data, normalized.parent),
       buyer_name: source.data?.procuringEntity?.name || null,
       tender_id: normalized.parent,
       entered_id: normalized.entered,
