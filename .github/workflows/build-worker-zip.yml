@@ -23,7 +23,7 @@ jobs:
       - name: Bundle into a single JavaScript file
         run: |
           mkdir -p dist
-          npx --yes esbuild@0.25.12 access-worker.js --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/euro5-tender-test.js
+          npx --yes esbuild@0.25.12 access-worker.js --bundle --format=esm --platform=browser --external:cloudflare:workers --target=es2022 --outfile=dist/euro5-tender-test.js
       - name: Check syntax and required fixes
         run: |
           node --check dist/euro5-tender-test.js
