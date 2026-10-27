@@ -9,10 +9,14 @@ function between(start,end){
   assert.ok(a>=0&&b>a,'Required function missing: '+start);
   return source.slice(a,b);
 }
-const code=between('function benchmarkFor(','function benchmarkDescription(')+
+const code=between('function indicativeStandardProductSupported(','function benchmarkDescription(')+
   between('function marketComparison(','function marketGapText(');
 const ctx={
   lastExtraction:{tender_announcement_date:'22.10.2026',
+    fuel_products:{
+      gasoline:{grade:'95',tier:'unspecified',items:[{grade:'95',tier:'unspecified',source_text:'Бензин А-95 (Євро 5), талон'}]},
+      diesel:{season:'unspecified',tier:'unspecified',items:[{season:'unspecified',tier:'unspecified',source_text:'Дизельне паливо (Євро 5), талон'}]}
+    },
     market_reference_candidates:{policy:'fuel-quality-v1',
       gasoline:{retail:50,bulk:40},diesel:{retail:45,bulk:35}}},
   selectedProduct:(fuel,d)=>d[fuel+'_product'],
@@ -32,6 +36,25 @@ test('manual standard products permit a labelled indicative market estimate',()=
   assert.equal(c.indicative,true);
   assert.equal(c.marketValue,950);
   assert.ok(Math.abs(c.gap-20)<1e-9);
+});
+test('unconfirmed dropdowns still display an indicative price for evidenced A-95 and diesel',()=>{
+  const c=displayMarketComparison(1140,10,10,'mixed',{
+    ...data,gasoline_product:'unknown',diesel_product:'unknown'
+  });
+  assert.equal(c.indicative,true);
+  assert.equal(c.marketValue,950);
+});
+test('unknown grade cannot be guessed from a generic gasoline description',()=>{
+  const old=ctx.lastExtraction.fuel_products.gasoline;
+  ctx.lastExtraction.fuel_products.gasoline={...old,grade:null,items:[{grade:null,tier:'unspecified'}]};
+  assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
+  ctx.lastExtraction.fuel_products.gasoline=old;
+});
+test('explicit premium fuel blocks a generic benchmark',()=>{
+  const old=ctx.lastExtraction.fuel_products.diesel;
+  ctx.lastExtraction.fuel_products.diesel={...old,tier:'premium'};
+  assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
+  ctx.lastExtraction.fuel_products.diesel=old;
 });
 test('missing announcement day prevents indicative comparisons',()=>{
   ctx.lastExtraction.tender_announcement_date=null;
