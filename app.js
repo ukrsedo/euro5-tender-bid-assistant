@@ -233,9 +233,27 @@ function productRiskSupported(){
  const d=activeTenderData(),type=d?.fuel_type;
  return (type==='diesel'||standardProductConfirmed('gasoline',d))&&(type==='gasoline'||standardProductConfirmed('diesel',d))&&['gasoline','diesel','mixed'].includes(type);
 }
+function indicativeStandardProductSupported(fuel,d){
+  const standard=fuel==='gasoline'?'a95_regular':'diesel_regular';
+  const selection=selectedProduct(fuel,d);
+  // A deliberate non-standard selection always overrides any automatic guess.
+  if(selection!=='unknown'&&selection!==standard)return false;
+  const profile=lastExtraction?.fuel_products?.[fuel];
+  if(!profile?.items?.length||profile.tier==='premium'||profile.tier==='ambiguous')return false;
+  if(profile.items.some(item=>item.tier==='premium'||item.tier==='ambiguous'))return false;
+  // Check contradictions as if the operator had chosen the standard grade.
+  const checked={...d,[fuel==='gasoline'?'gasoline_product':'diesel_product']:standard};
+  if(standardProductContradicted(fuel,checked))return false;
+  if(fuel==='gasoline'){
+    return profile.grade==='95'&&profile.items.every(item=>item.grade==='95');
+  }
+  return ['unspecified','summer'].includes(profile.season)&&
+    profile.items.every(item=>['unspecified','summer'].includes(item.season));
+}
+
 function benchmarkFor(format,fuel,d=activeTenderData(),indicative=false){
   if(indicative){
-    if(selectedProduct(fuel,d)!==(fuel==='gasoline'?'a95_regular':'diesel_regular')||standardProductContradicted(fuel,d)||!lastExtraction?.tender_announcement_date)return null;
+    if(!indicativeStandardProductSupported(fuel,d)||!lastExtraction?.tender_announcement_date)return null;
   }else if(!standardProductConfirmed(fuel,d))return null;
   if(lastExtraction?.market_reference_candidates?.policy!=='fuel-quality-v1')return null;
   const candidate=lastExtraction.market_reference_candidates[fuel];
