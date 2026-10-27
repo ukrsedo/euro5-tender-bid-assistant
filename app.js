@@ -291,6 +291,11 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
   return {gap,marketValue,format,gasFormat,dieselFormat,indicative,source:benchmarkDescription(format,gasFormat,dieselFormat)};
 }
 
+function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
+  return marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData)||
+    marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData,true);
+}
+
 function marketGapText(gap){
   const a=Math.abs(gap);
   if(a<0.05) return 'Очікувана вартість практично відповідає ринковій вартості такого обсягу на дату оголошення.';
