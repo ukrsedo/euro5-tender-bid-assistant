@@ -6,6 +6,7 @@ on:
     paths:
       - 'access-worker.js'
       - 'app.js'
+      - 'index.html'
       - 'buyer-card.js'
       - 'tests/**'
       - 'worker.js'
