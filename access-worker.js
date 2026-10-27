@@ -29,7 +29,7 @@ export async function handle(request,env,ctx,application=app){
   if(url.protocol!=='https:')return json({error:'HTTPS required'},400);
   if(!env.SESSION_SECRET||env.SESSION_SECRET.length<48)return json({error:'Вхід ще не налаштовано.'},503);
   if(!['GET','HEAD','POST'].includes(request.method))return json({error:'Method not allowed'},405);
-  if(request.method==='POST'&&origin!==url.origin)return json({error:'Forbidden origin'},403);
+  if(request.method==='POST'&&origin&&origin!==url.origin)return json({error:'Forbidden origin'},403);
   if(path==='/login'&&request.method==='GET'){
     if(url.searchParams.get('check')==='frontend'){
       const probe=await sharedAsset(new Request(url.origin+'/'));
