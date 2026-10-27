@@ -206,7 +206,7 @@ function standardProductConfirmed(family,d=activeTenderData()){
   if(!lastExtraction?.market_reference_candidates||lastExtraction.market_reference_candidates.policy!=='fuel-quality-v1')return false;
   const selection=selectedProduct(family,d),profile=lastExtraction?.fuel_products?.[family];
   if(!profile?.items?.length)return false;
-  if(profile.tier==='premium'||profile.tier==='ambiguous')return false;
+  if(profile.tier==='premium'||profile.tier==='ambiguous'||standardProductContradicted(family,d))return false;
   if(family==='gasoline')return selection==='a95_regular'&&profile.grade==='95'&&profile.items.every(p=>p.grade==='95');
   return selection==='diesel_regular'&&['unspecified','summer'].includes(profile.season);
 }
@@ -482,11 +482,9 @@ function validateReview(v){
   if(v.fuelType==='gasoline' && v.gasolineVolume<=0) return 'Вкажіть обсяг бензину.';
   if(v.fuelType==='diesel' && v.dieselVolume<=0) return 'Вкажіть обсяг дизеля.';
   if(v.fuelType==='mixed' && (v.gasolineVolume<=0 || v.dieselVolume<=0)) return 'Для змішаного тендера потрібні окремі обсяги бензину та дизеля.';
-  for(const family of ['gasoline','diesel']){
-    if(v.fuelType!==family&&v.fuelType!=='mixed')continue;
-    const selected=selectedProduct(family,v);
-    if(['a95_regular','diesel_regular'].includes(selected)&&standardProductContradicted(family,v))return 'Вибраний звичайний продукт суперечить підтвердженим позиціям тендера (марка, преміальність або сезонність). Оберіть фактичний різновид пального.';
-  }
+  // Manual confirmation must not be blocked by the server's heuristic
+  // fuel-quality classifier. Any mismatch is reported as a warning below;
+  // strict quality verification still gates market benchmarks and price risk.
   return '';
 }
 
@@ -523,8 +521,10 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('confirmedFuelProducts').textContent='Підтверджений продукт: бензин — '+productLabel('gasoline',confirmedData)+'; дизель — '+productLabel('diesel',confirmedData)+'.';
   const unverified=['gasoline','diesel'].filter(family=>(v.fuelType===family||v.fuelType==='mixed')&&
     ['a95_regular','diesel_regular'].includes(selectedProduct(family,v))&&!standardProductConfirmed(family,v));
+  const contradicted=unverified.filter(family=>standardProductContradicted(family,v));
   validation.textContent=unverified.length
-    ? 'Показники передано в калькулятор. Для '+unverified.map(f=>f==='gasoline'?'бензину':'дизеля').join(' та ')+' стандартний продукт не підтверджено сервером: ринкові орієнтири та ціновий ризик для нього не застосовуються.'
+    ? 'Показники передано в калькулятор. '+(contradicted.length?'Увага: автоматична класифікація виявила можливу невідповідність марки або сезонності. ':'')+
+      'Для '+unverified.map(f=>f==='gasoline'?'бензину':'дизеля').join(' та ')+' стандартний продукт не підтверджено сервером: ринкові орієнтири та ціновий ризик для нього не застосовуються.'
     : 'Показники підтверджено і передано в калькулятор.';
   validation.classList.remove('error-text');
   document.getElementById('reviewState').textContent='ПІДТВЕРДЖЕНО';
