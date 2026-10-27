@@ -218,11 +218,16 @@ function standardProductContradicted(family,d){
   if(!profile?.items?.length)return false;
   if(family==='gasoline'&&selection!=='a95_regular')return false;
   if(family==='diesel'&&selection!=='diesel_regular')return false;
-  if(['premium','ambiguous'].includes(profile.tier))return true;
-  if(profile.items.some(item=>['premium','ambiguous'].includes(item.tier)))return true;
-  if(family==='gasoline')return (profile.grades||[]).some(grade=>grade!=='95');
-  return ['winter','arctic','transition','ambiguous'].includes(profile.season)||
-    profile.items.some(item=>['winter','arctic','transition','ambiguous'].includes(item.season));
+  // An ambiguous or missing server classification is NOT evidence that the
+  // operator selected the wrong product. Only explicit contradictory facts
+  // should block manual confirmation. Unverified market benchmarks stay off.
+  if(profile.tier==='premium'||profile.items.some(item=>item.tier==='premium'))return true;
+  if(family==='gasoline'){
+    const grades=[profile.grade,...(profile.grades||[]),...profile.items.map(item=>item.grade)].filter(Boolean);
+    return grades.some(grade=>!['95','A95','А95'].includes(String(grade).replace(/[\s-]/g,'')));
+  }
+  return ['winter','arctic'].includes(profile.season)||
+    profile.items.some(item=>['winter','arctic'].includes(item.season));
 }
 function productRiskSupported(){
  const d=activeTenderData(),type=d?.fuel_type;
