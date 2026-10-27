@@ -843,9 +843,9 @@ function recalc(){
   const budgetMarket=document.getElementById('budgetVsMarket');
   const marketNote=document.getElementById('marketComparisonNote');
   if(cmp){
-    budgetMarket.textContent=`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
-    budgetMarket.className=cmp.gap>=0?'market-positive':'market-negative';
-    marketNote.textContent=marketGapText(cmp.gap) + (cmp.source ? ` ${cmp.source}` : '');
+    budgetMarket.textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
+    budgetMarket.className=cmp.indicative?'':(cmp.gap>=0?'market-positive':'market-negative');
+    marketNote.textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap) + (cmp.source ? ` ${cmp.source}` : '');
   }else{
     budgetMarket.textContent='—';
     budgetMarket.className='';
