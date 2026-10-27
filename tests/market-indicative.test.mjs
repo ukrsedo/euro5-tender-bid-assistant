@@ -38,6 +38,12 @@ test('missing announcement day prevents indicative comparisons',()=>{
   assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
   ctx.lastExtraction.tender_announcement_date='22.10.2026';
 });
+test('missing market candidates do not crash the calculator',()=>{
+  const candidates=ctx.lastExtraction.market_reference_candidates;
+  ctx.lastExtraction.market_reference_candidates=null;
+  assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
+  ctx.lastExtraction.market_reference_candidates=candidates;
+});
 test('a different manually selected product is not silently priced as standard',()=>{
   assert.equal(displayMarketComparison(1140,10,10,'mixed',{...data,gasoline_product:'premium'}),null);
 });
