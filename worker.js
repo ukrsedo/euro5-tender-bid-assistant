@@ -75,7 +75,7 @@ function competitionProcedureCategory(data) {
   return "other";
 }
 
-function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat) {
+export function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat) {
   if (!(Number(expectedValueWithoutVat) >= 1000000)) return null;
 
   const state = competitionModelForAnnouncement(data);
