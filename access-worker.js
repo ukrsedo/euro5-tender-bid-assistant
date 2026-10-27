@@ -99,12 +99,14 @@ export async function handle(request,env,ctx,application=app){
               const payload=await source.json();
               const tender=payload?.data||payload;
               if(tender?.tenderID===data.tender_id){
-                const market=await buildMarketReference(
+                const marketResult=await buildMarketReference(
                   tender,
                   {fuel_type:data.fuel_type,gasoline_volume_l:data.gasoline_volume_l,diesel_volume_l:data.diesel_volume_l},
                   {normalizedWithoutVat:Number(data.expected_value_uah)},
                   {supplyFormat:data.supply_format,gasolineSupplyFormat:data.gasoline_supply_format,dieselSupplyFormat:data.diesel_supply_format}
                 );
+                // Preserve a complete shape for the short unavailable-market response.
+                const market=Object.assign({available:false,note:null,tenderDate:null,referenceCandidates:null,fuelProducts:null,referenceDate:null,retailReferenceDate:null,retailSource:null,wholesaleReferenceDate:null,marketValueWithoutVat:null,budgetVsMarketPct:null,text:null,fuelTrend30dPct:null},marketResult);
                 data.market_comparison_available=!!market.available;
                 data.market_comparison_note=market.note||'Ринкове порівняння не підтверджено.';
                 data.tender_announcement_date=market.tenderDate||null;
