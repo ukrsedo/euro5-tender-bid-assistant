@@ -13,7 +13,7 @@ export async function sharedAsset(request,fetcher=fetch){
   if(!ASSET_NAMES.has(name))return json({error:'Не знайдено'},404);
   try{
     const source=new URL(FRONTEND+name);source.searchParams.set('release',url.searchParams.get('v')||'current');source.searchParams.set('refresh',String(Math.floor(Date.now()/300000)));
-    const upstream=await fetcher(source.toString(),{method:request.method,redirect:'manual',headers:{Accept:'*/*','Cache-Control':'no-cache'}});
+    const upstream=await fetcher(source.toString(),{method:request.method,redirect:'manual',headers:{Accept:'*/*'},cf:{cacheEverything:true,cacheTtl:300}});
     if(!upstream.ok){console.error('Shared frontend HTTP',upstream.status,name);return json({error:'Не вдалося завантажити єдиний інтерфейс. Оновіть сторінку.',code:'shared_frontend_http_'+upstream.status},502);}
     const headers=new Headers({'Content-Type':ASSET_TYPES[name.split('.').at(-1)]});
     headers.set('X-Euro5-Frontend','shared-main');
