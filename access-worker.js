@@ -93,7 +93,7 @@ export async function handle(request,env,ctx,application=app){
         try{
           const sourceUrl=new URL(data.api_url);
           if(sourceUrl.protocol==='https:'&&sourceUrl.hostname==='public-api.prozorro.gov.ua'&&
-             new RegExp('^/api/2[.]5/tenders/[a-zA-Z0-9-]+
+             /^\/api\/2\.5\/tenders\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
             const source=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'}});
             if(source.ok){
               const payload=await source.json();
@@ -128,95 +128,20 @@ export async function handle(request,env,ctx,application=app){
           data.market_comparison_note='Дата оголошення визначена за офіційним ID тендера, але ринкові ціни на цю дату поки не підтверджені. Порівняння не розраховано.';
         }
       }
-      // Independently deployed TENDER_AI may omit competition_forecast.
-      // Recover the original statistical model from the official Prozorro
-      // record; never invent percentages or treat missing data as zero.
-      const forecast=data.competition_forecast;
-      const validForecast=forecast &&
-        Number.isFinite(forecast.one_participant_pct) &&
-        Number.isFinite(forecast.two_plus_participants_pct) &&
-        forecast.one_participant_pct>=0 && forecast.one_participant_pct<=100 &&
-        forecast.two_plus_participants_pct>=0 && forecast.two_plus_participants_pct<=100 &&
-        Math.abs(forecast.one_participant_pct+forecast.two_plus_participants_pct-100)<1;
-      if(!validForecast && data.api_url && Number(data.expected_value_uah)>=1000000){
+      // Recalculate missing probabilities from the official tender and
+      // the same statistical model as the current analysis Worker.
+      const fc=data.competition_forecast;
+      const valid=fc&&typeof fc.one_participant_pct==='number'&&
+        typeof fc.two_plus_participants_pct==='number'&&
+        Number.isFinite(fc.one_participant_pct)&&Number.isFinite(fc.two_plus_participants_pct)&&
+        fc.one_participant_pct>=0&&fc.one_participant_pct<=100&&
+        fc.two_plus_participants_pct>=0&&fc.two_plus_participants_pct<=100&&
+        Math.abs(fc.one_participant_pct+fc.two_plus_participants_pct-100)<1;
+      if(!valid&&data.api_url&&Number(data.expected_value_uah)>=1000000){
         try{
           const sourceUrl=new URL(data.api_url);
-          if(sourceUrl.protocol==='https:' && sourceUrl.hostname==='public-api.prozorro.gov.ua' &&
-             /^\\/api\\/2\\.5\\/tenders\\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
-            const response=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
-            if(response.ok){
-              const payload=await response.json();
-              const tender=payload?.data||payload;
-              if(tender?.tenderID===data.tender_id){
-                const recovered=buildCompetitionForecast(tender,data.fuel_type,Number(data.expected_value_uah));
-                if(recovered)data.competition_forecast=recovered;
-              }
-            }
-          }
-        }catch(e){console.error('Competition forecast recovery failed',e?.message);}
-      }
-      return json(data,upstream.status);
-    }catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
-  }
-  if(['/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
-    // Identity is a trusted internal object, never a client header or selected profile ID.
-    const headers=new Headers(request.headers);headers.delete('Origin');headers.delete('Authorization');
-    return application.fetch(new Request(request,{headers}),{...env,MEMORY_AUTH_MODE:'session',EURO5_SESSION_ACTOR:user},ctx);
-  }
-  if(request.method==='GET'||request.method==='HEAD')return sharedAsset(request);
-  return json({error:'Не знайдено'},404);
-}
-export default {async fetch(request,env,ctx){try{return secure(await handle(request,env,ctx));}catch{return secure(json({error:'Сервіс тимчасово недоступний.'},503));}}};
-).test(sourceUrl.pathname)){
-            const source=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'}});
-            if(source.ok){
-              const payload=await source.json();
-              const tender=payload?.data||payload;
-              if(tender?.tenderID===data.tender_id){
-                const marketResult=await buildMarketReference(
-                  tender,
-                  {fuel_type:data.fuel_type,gasoline_volume_l:data.gasoline_volume_l,diesel_volume_l:data.diesel_volume_l},
-                  {normalizedWithoutVat:Number(data.expected_value_uah)},
-                  {supplyFormat:data.supply_format,gasolineSupplyFormat:data.gasoline_supply_format,dieselSupplyFormat:data.diesel_supply_format}
-                );
-                // Preserve a complete shape for the short unavailable-market response.
-                const market=Object.assign({available:false,note:null,tenderDate:null,referenceCandidates:null,fuelProducts:null,referenceDate:null,retailReferenceDate:null,retailSource:null,wholesaleReferenceDate:null,marketValueWithoutVat:null,budgetVsMarketPct:null,text:null,fuelTrend30dPct:null},marketResult);
-                data.market_comparison_available=!!market.available;
-                data.market_comparison_note=market.note||'Ринкове порівняння не підтверджено.';
-                data.tender_announcement_date=market.tenderDate||null;
-                data.market_reference_candidates=market.referenceCandidates||null;
-                data.fuel_products=market.fuelProducts||data.fuel_products||null;
-                data.market_reference_date=market.referenceDate||null;
-                data.market_retail_reference_date=market.retailReferenceDate||null;
-                data.market_retail_source=market.retailSource||null;
-                data.market_wholesale_reference_date=market.wholesaleReferenceDate||null;
-                data.market_value_uah_without_vat=market.marketValueWithoutVat||null;
-                data.budget_vs_market_pct=market.budgetVsMarketPct??null;
-                data.budget_vs_market_text=market.text||null;
-                data.fuel_market_trend_30d_pct=market.fuelTrend30dPct??null;
-              }
-            }
-          }
-        }catch(e){console.error('Market reference fallback failed',e?.message);}
-        if(data.market_comparison_note.includes('Не вдалося підтвердити дату оприлюднення')){
-          data.market_comparison_note='Дата оголошення визначена за офіційним ID тендера, але ринкові ціни на цю дату поки не підтверджені. Порівняння не розраховано.';
-        }
-      }
-      // Independently deployed TENDER_AI may omit competition_forecast.
-      // Recover the original statistical model from the official Prozorro
-      // record; never invent percentages or treat missing data as zero.
-      const forecast=data.competition_forecast;
-      const validForecast=forecast &&
-        Number.isFinite(forecast.one_participant_pct) &&
-        Number.isFinite(forecast.two_plus_participants_pct) &&
-        forecast.one_participant_pct>=0 && forecast.one_participant_pct<=100 &&
-        forecast.two_plus_participants_pct>=0 && forecast.two_plus_participants_pct<=100 &&
-        Math.abs(forecast.one_participant_pct+forecast.two_plus_participants_pct-100)<1;
-      if(!validForecast && data.api_url && Number(data.expected_value_uah)>=1000000){
-        try{
-          const sourceUrl=new URL(data.api_url);
-          if(sourceUrl.protocol==='https:' && sourceUrl.hostname==='public-api.prozorro.gov.ua' &&
-             /^\\/api\\/2\\.5\\/tenders\\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
+          const officialPath=new RegExp('^/api/2[.]5/tenders/[a-zA-Z0-9-]+$');
+          if(sourceUrl.protocol==='https:'&&sourceUrl.hostname==='public-api.prozorro.gov.ua'&&officialPath.test(sourceUrl.pathname)){
             const response=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
             if(response.ok){
               const payload=await response.json();
