@@ -13,7 +13,7 @@ export async function sharedAsset(request,fetcher=fetch){
   if(!ASSET_NAMES.has(name))return json({error:'Не знайдено'},404);
   try{
     const source=new URL(FRONTEND+name);source.searchParams.set('release',url.searchParams.get('v')||'current');source.searchParams.set('refresh',String(Math.floor(Date.now()/300000)));
-    const upstream=await fetcher(source.toString(),{method:request.method,redirect:'manual',headers:{Accept:'*/*'},cf:{cacheEverything:true,cacheTtl:300}});
+    const upstream=await fetcher(source.toString(),/** @type {RequestInit & {cf:{cacheEverything:boolean,cacheTtl:number}}} */ ({method:request.method,redirect:'manual',headers:{Accept:'*/*'},cf:{cacheEverything:true,cacheTtl:300}}));
     if(!upstream.ok){console.error('Shared frontend HTTP',upstream.status,name);return json({error:'Не вдалося завантажити єдиний інтерфейс. Оновіть сторінку.',code:'shared_frontend_http_'+upstream.status},502);}
     const headers=new Headers({'Content-Type':ASSET_TYPES[name.split('.').at(-1)]});
     headers.set('X-Euro5-Frontend','shared-main');
@@ -69,7 +69,7 @@ export async function handle(request,env,ctx,application=app){
     // Forward the analysis payload without browser session, Access assertions or credentials.
     const headers=new Headers({'Content-Type':'application/json'});
     try{
-      const upstream=await env.TENDER_AI.fetch(new Request('https://internal.euro5/tender-check',{method:'POST',headers,body:request.body,duplex:'half'}));
+      const upstream=await env.TENDER_AI.fetch(new Request('https://internal.euro5/tender-check',/** @type {RequestInit & {duplex:'half'}} */ ({method:'POST',headers,body:request.body,duplex:'half'})));
       if(!upstream.ok)return upstream;
       // The AI service is deployed independently and may not yet include the
       // buyer-history metadata added to this protected Worker. The official
