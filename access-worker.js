@@ -76,7 +76,7 @@ export async function handle(request,env,ctx,application=app){
       const data=await upstream.clone().json().catch(()=>null);
       if(!data||typeof data!=='object'||Array.isArray(data))return upstream;
       if(!data.buyer_history_as_of){
-        const match=String(data.tender_id||'').match(/^UA-(\\d{4}-\\d{2}-\\d{2})-\\d+-[a-z]$/i);
+        const match=String(data.tender_id||'').match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
         if(match){
           const day=new Date(match[1]+'T12:00:00Z');
           if(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===match[1]&&day.getTime()<=Date.now())
