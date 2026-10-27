@@ -267,14 +267,14 @@ function invalidateCalculation(){
   if(status) status.textContent='Дані змінено. Натисніть «Розрахувати», щоб оновити результат.';
 }
 
-function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType, supplyData=null){
+function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType, supplyData=null, indicative=false){
   if(!lastExtraction) return null;
   const d=supplyData || activeTenderData() || {};
   const format=d.supplyFormat || d.supply_format || 'unknown';
   const gasFormat=format==='split'?(d.gasolineSupplyFormat || d.gasoline_supply_format || 'unknown'):format;
   const dieselFormat=format==='split'?(d.dieselSupplyFormat || d.diesel_supply_format || 'unknown'):format;
-  const gasPrice=benchmarkFor(gasFormat,'gasoline',d);
-  const dieselPrice=benchmarkFor(dieselFormat,'diesel',d);
+  const gasPrice=benchmarkFor(gasFormat,'gasoline',d,indicative);
+  const dieselPrice=benchmarkFor(dieselFormat,'diesel',d,indicative);
   let marketValue=0;
   if(fuelType==='gasoline'){
     if(!(gasolineVolume>0) || !(gasPrice>0)) return null;
@@ -288,7 +288,7 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
   } else return null;
   if(!(expectedValue>0) || !(marketValue>0)) return null;
   const gap=(expectedValue/marketValue-1)*100;
-  return {gap,marketValue,format,gasFormat,dieselFormat,source:benchmarkDescription(format,gasFormat,dieselFormat)};
+  return {gap,marketValue,format,gasFormat,dieselFormat,indicative,source:benchmarkDescription(format,gasFormat,dieselFormat)};
 }
 
 function marketGapText(gap){
