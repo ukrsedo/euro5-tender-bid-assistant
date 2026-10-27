@@ -14,7 +14,7 @@ on:
       - '.github/workflows/build-worker-zip.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -47,3 +47,15 @@ jobs:
           name: euro5-tender-test-clean
           path: dist/euro5-tender-test.js
           retention-days: 30
+      - name: Publish direct-download JS and ZIP in repository
+        run: |
+          mkdir -p downloads
+          cp dist/euro5-tender-test.js downloads/euro5-tender-test.js
+          zip -j -q downloads/euro5-tender-test.zip dist/euro5-tender-test.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f downloads/euro5-tender-test.js downloads/euro5-tender-test.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish verified Cloudflare Worker JS and ZIP [skip ci]"
+            git push origin HEAD:main
+          fi
