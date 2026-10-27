@@ -1476,7 +1476,7 @@ response_format: { type: "json_object" }
 
     // Every optional field is present even when market data is unavailable.
     // This keeps the response shape stable and avoids unsafe union property reads.
-    const market = {
+    const market = Object.assign({
       fuelProducts: null,
       referenceCandidates: null,
       available: false,
@@ -1506,9 +1506,8 @@ response_format: { type: "json_object" }
       note: null,
       fuelTrend30dPct: null,
       trendStartDate: null,
-      trendEndDate: null,
-      ...marketResult
-    };
+      trendEndDate: null
+    }, marketResult);
 
     return json({
       ...parsed,
