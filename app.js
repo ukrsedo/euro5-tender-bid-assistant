@@ -305,7 +305,7 @@ function marketGapText(gap){
 function renderReviewMarket(){
   const box=document.getElementById('marketComparisonReview');
   const v=reviewValues();
-  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
+  const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   if(!cmp){
     box.classList.remove('hidden');
     document.getElementById('marketComparisonReviewValue').textContent='—';
@@ -554,7 +554,7 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('logisticsAmount').textContent='—';
   document.getElementById('fullCost').textContent='—';
   document.getElementById('minBid').textContent='—';
-  const cmp=marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
+  const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
   document.getElementById('marketComparisonNote').textContent=cmp?marketGapText(cmp.gap):'Ринкове порівняння недоступне.';
   document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
