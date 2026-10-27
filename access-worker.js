@@ -17,6 +17,7 @@ export async function sharedAsset(request,fetcher=fetch){
     if(!upstream.ok){console.error('Shared frontend HTTP',upstream.status,name);return json({error:'Не вдалося завантажити єдиний інтерфейс. Оновіть сторінку.',code:'shared_frontend_http_'+upstream.status},502);}
     const headers=new Headers({'Content-Type':ASSET_TYPES[name.split('.').at(-1)]});
     headers.set('X-Euro5-Frontend','shared-main');
+    headers.set('Cache-Control','no-store, max-age=0');
     return new Response(request.method==='HEAD'?null:upstream.body,{status:200,headers});
   }catch(e){console.error('Shared frontend fetch failed',e?.message);return json({error:'Не вдалося завантажити єдиний інтерфейс. Оновіть сторінку.',code:'shared_frontend_fetch_failed'},502);}
 }
