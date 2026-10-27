@@ -233,8 +233,10 @@ function productRiskSupported(){
  const d=activeTenderData(),type=d?.fuel_type;
  return (type==='diesel'||standardProductConfirmed('gasoline',d))&&(type==='gasoline'||standardProductConfirmed('diesel',d))&&['gasoline','diesel','mixed'].includes(type);
 }
-function benchmarkFor(format,fuel,d=activeTenderData()){
-  if(!standardProductConfirmed(fuel,d))return null;
+function benchmarkFor(format,fuel,d=activeTenderData(),indicative=false){
+  if(indicative){
+    if(selectedProduct(fuel,d)!==(fuel==='gasoline'?'a95_regular':'diesel_regular')||standardProductContradicted(fuel,d)||!lastExtraction?.tender_announcement_date)return null;
+  }else if(!standardProductConfirmed(fuel,d))return null;
   const candidate=lastExtraction.market_reference_candidates[fuel];
   if(format==='retail')return candidate?.retail>0?candidate.retail:null;
   if(format==='bulk')return candidate?.bulk>0?candidate.bulk:null;
