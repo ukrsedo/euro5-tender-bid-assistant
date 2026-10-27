@@ -342,6 +342,7 @@ function fuelProductProfile(text,family){
  const premiumText=s.replace(/не[ -]*прем[іи](?:ум|альн)[\wа-яіїєґ]*/g,'');
  const premium=/прем[іи](?:ум|альн)|premium|mustang|pulls|v[ -]?power|ultimate|ecto|ventus|nano/.test(premiumText);
  const regular=/звичайн|обычн|не[ -]*прем|стандартн|regular|standard/.test(s);
+ /** @type {Array<[string, RegExp]>} */
  const seasons=[['arctic',/аркти|arctic/],['winter',/зимов|зимн|winter/],['summer',/літн|летн|summer/],['transition',/міжсезон|межсезон/]].filter(x=>x[1].test(s)).map(x=>x[0]);
  const euro=[...s.matchAll(/(?:євро|евро|euro)\s*[-–]?\s*([456])(?!\d)/g)].map(m=>m[1]);
  return {family,grade:gradeSet.length===1?gradeSet[0]:null,grades:gradeSet,tier:premium&&regular?'ambiguous':premium?'premium':regular?'regular':'unspecified',season:seasons.length===1?seasons[0]:seasons.length?'ambiguous':'unspecified',euro_class:[...new Set(euro)],source_text:String(text||'')};
@@ -1217,6 +1218,7 @@ function summarizeBuyerHistory(rows,code,period){
 class BuyerBiConnection{
  constructor(){this.seq=0;this.pending=new Map()}
  async connect(){
+  // @ts-ignore Cloudflare Workers Response.webSocket extension
   const response=await fetch('https://bi.prozorro.org/app/'+BUYER_BI_APP,{headers:{Upgrade:'websocket',Origin:'https://bi.prozorro.org'}});this.socket=response.webSocket;
   if(!this.socket)throw Error('BI не прийняв з’єднання.');this.socket.accept();
   this.socket.addEventListener('message',event=>{let r;try{r=JSON.parse(event.data)}catch{return}const p=this.pending.get(r.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(r.id);r.error?p.reject(Error(r.error.message||'Помилка BI')):p.resolve(r.result)});
@@ -1314,6 +1316,7 @@ async function buyerHistoryRoute(request,origin,ctx){
  const body=await request.json().catch(()=>({})),code=String(body.buyerCode||''),asOf=body.asOf;
  if(!/^\d{8,10}$/.test(code)||!validBuyerAsOf(asOf))return json({ready:false,reason:'Потрібні код замовника та дата оголошення тендера.'},400,origin);
  const excluded=String(body.excludeTenderId||'');
+ // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
  const key=new Request(new URL('/buyer-history-cache/v4/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
  try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
@@ -1780,6 +1783,7 @@ const Euro5Memory = (() => {
 // EURO5_MEMORY_END
 
 // APPEND this entire file to the existing fuel Worker. Do not replace its code.
+// @ts-ignore Cloudflare Workers runtime module is external to standard TypeScript DOM types
 import { WorkerEntrypoint as Euro5CategoryWorkerEntrypoint } from 'cloudflare:workers';
 const euro5CategoryAIInternal = (()=>{
 const string={type:'string'},ids={type:'array',items:string};
@@ -1800,11 +1804,13 @@ return {aiRoute};
 })();
 export class Euro5CategoryAI extends Euro5CategoryWorkerEntrypoint {
  async status(){
+  // @ts-ignore Cloudflare WorkerEntrypoint.env is provided at runtime
   const response=await euro5CategoryAIInternal.aiRoute(new Request('https://internal.invalid/api/ai/status'),this.env);
   return response.json();
  }
  async analyze(input){
   const request=new Request('https://internal.invalid/api/ai/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+  // @ts-ignore Cloudflare WorkerEntrypoint.env is provided at runtime
   const response=await euro5CategoryAIInternal.aiRoute(request,this.env);
   return {status:response.status,data:await response.json()};
  }
