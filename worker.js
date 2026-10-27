@@ -511,19 +511,18 @@ function detectSupplyFormat(data, parsed, fuelType) {
 }
 
 function tenderAnnouncementDate(data) {
-  // Do not substitute bid submission, last modification or status-change dates.
-  // Confirm the initial enquiry day against the immutable creation day and ID.
-  // If these signals disagree, do not claim a publication-date benchmark.
+  // The official UA tender ID encodes the announcement day. Confirm it against
+  // the creation timestamp, not the optional enquiry period: RFQ and other
+  // Prozorro procedures can have no enquiry period or one beginning later.
+  // Never substitute bid submission, modification or status-change dates.
   if (data?.status === "draft") return null;
   const idMatch = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
   if (!idMatch) return null;
   const idDate = new Date(idMatch[1] + "T12:00:00Z");
   if (!Number.isFinite(idDate.getTime()) || idDate.toISOString().slice(0, 10) !== idMatch[1]) return null;
   const created = typeof data?.dateCreated === "string" ? new Date(data.dateCreated) : null;
-  const enquiry = typeof data?.enquiryPeriod?.startDate === "string" ? new Date(data.enquiryPeriod.startDate) : null;
-  if (!created || !enquiry || !Number.isFinite(created.getTime()) || !Number.isFinite(enquiry.getTime())) return null;
-  if (euro5ObservationDate(created) !== idMatch[1] || euro5ObservationDate(enquiry) !== idMatch[1]) return null;
-  // Calendar day, anchored at noon UTC to keep Kyiv/UTC date handling stable.
+  if (!created || !Number.isFinite(created.getTime())) return null;
+  if (euro5ObservationDate(created) !== idMatch[1]) return null;
   return idDate;
 }
 
