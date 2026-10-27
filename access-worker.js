@@ -1,4 +1,4 @@
-import app, {buildMarketReference} from './worker.js';
+import app, {buildMarketReference,buildCompetitionForecast} from './worker.js';
 export { Euro5CategoryAI } from './worker.js';
 import {verifyAccess} from './auth/access.js';
 import {authenticate,issue,cookie,profiles,tester,hash,allowPasswordAttempt} from './auth/session.js';
@@ -127,6 +127,33 @@ export async function handle(request,env,ctx,application=app){
         if(data.market_comparison_note.includes('Не вдалося підтвердити дату оприлюднення')){
           data.market_comparison_note='Дата оголошення визначена за офіційним ID тендера, але ринкові ціни на цю дату поки не підтверджені. Порівняння не розраховано.';
         }
+      }
+      // Independently deployed TENDER_AI may omit competition_forecast.
+      // Recover the original statistical model from the official Prozorro
+      // record; never invent percentages or treat missing data as zero.
+      const forecast=data.competition_forecast;
+      const validForecast=forecast &&
+        Number.isFinite(forecast.one_participant_pct) &&
+        Number.isFinite(forecast.two_plus_participants_pct) &&
+        forecast.one_participant_pct>=0 && forecast.one_participant_pct<=100 &&
+        forecast.two_plus_participants_pct>=0 && forecast.two_plus_participants_pct<=100 &&
+        Math.abs(forecast.one_participant_pct+forecast.two_plus_participants_pct-100)<1;
+      if(!validForecast && data.api_url && Number(data.expected_value_uah)>=1000000){
+        try{
+          const sourceUrl=new URL(data.api_url);
+          if(sourceUrl.protocol==='https:' && sourceUrl.hostname==='public-api.prozorro.gov.ua' &&
+             /^\\/api\\/2\\.5\\/tenders\\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
+            const response=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
+            if(response.ok){
+              const payload=await response.json();
+              const tender=payload?.data||payload;
+              if(tender?.tenderID===data.tender_id){
+                const recovered=buildCompetitionForecast(tender,data.fuel_type,Number(data.expected_value_uah));
+                if(recovered)data.competition_forecast=recovered;
+              }
+            }
+          }
+        }catch(e){console.error('Competition forecast recovery failed',e?.message);}
       }
       return json(data,upstream.status);
     }catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
