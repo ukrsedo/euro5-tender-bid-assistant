@@ -839,7 +839,7 @@ function recalc(){
   document.getElementById('fullCost').textContent=complete?`${money.format(full)} грн`:'—';
   document.getElementById('minBid').textContent=complete&&Number.isFinite(minBid)?`${money.format(minBid)} грн`:'—';
 
-  const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
+  const cmp=displayMarketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const budgetMarket=document.getElementById('budgetVsMarket');
   const marketNote=document.getElementById('marketComparisonNote');
   if(cmp){
