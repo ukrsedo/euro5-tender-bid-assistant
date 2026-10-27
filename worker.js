@@ -1459,11 +1459,47 @@ response_format: { type: "json_object" }
 
     // Supply available price history; the calculator fits it at the user-confirmed
     // submission date. Never anchor price risk to the tender publication date.
-    const [market, fx, priceRiskHistory] = await Promise.all([
+    const [marketResult, fx, priceRiskHistory] = await Promise.all([
       buildMarketReference(source.data, parsed, scope, supplyInfo),
       buildFxTrend(source.data),
       fetchPriceRiskHistory(new Date())
     ]);
+
+    // Every optional field is present even when market data is unavailable.
+    // This keeps the response shape stable and avoids unsafe union property reads.
+    const market = {
+      fuelProducts: null,
+      referenceCandidates: null,
+      available: false,
+      referenceDate: null,
+      benchmarkType: null,
+      benchmarkLabel: null,
+      benchmarkContext: null,
+      tenderDate: null,
+      retailReferenceDate: null,
+      retailSource: null,
+      retailGasolineSource: null,
+      retailDieselSource: null,
+      fuelTrendNote: null,
+      wholesaleReferenceDate: null,
+      retailGasolinePriceWithoutVat: null,
+      retailDieselPriceWithoutVat: null,
+      wholesaleGasolinePriceWithoutVat: null,
+      wholesaleDieselPriceWithoutVat: null,
+      wholesaleGasolineUsable: false,
+      wholesaleDieselUsable: false,
+      wholesaleCrosscheckNote: null,
+      gasolinePriceWithoutVat: null,
+      dieselPriceWithoutVat: null,
+      marketValueWithoutVat: null,
+      budgetVsMarketPct: null,
+      text: null,
+      note: null,
+      fuelTrend30dPct: null,
+      trendStartDate: null,
+      trendEndDate: null,
+      ...marketResult
+    };
 
     return json({
       ...parsed,
