@@ -1,5 +1,6 @@
 // worker.js
 import { WorkerEntrypoint as Euro5CategoryWorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint as Euro5RoadmapWorkerEntrypoint } from "cloudflare:workers";
 var ALLOWED_ORIGINS = [
   "https://ukrsedo.github.io",
   "https://www.goodspending.com",
