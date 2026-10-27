@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - 'access-worker.js'
+      - 'app.js'
+      - 'buyer-card.js'
       - 'worker.js'
       - 'auth/**'
       - '.github/workflows/build-worker-zip.yml'
@@ -27,6 +29,8 @@ jobs:
       - name: Check syntax and required fixes
         run: |
           node --check dist/euro5-tender-test.js
+          node --check app.js
+          node --check buyer-card.js
           node - <<'NODE'
           const fs=require('fs');
           const code=fs.readFileSync('dist/euro5-tender-test.js','utf8');
