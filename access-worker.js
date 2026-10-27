@@ -1,4 +1,4 @@
-import app from './worker.js';
+import app, {buildMarketReference} from './worker.js';
 export { Euro5CategoryAI } from './worker.js';
 import {verifyAccess} from './auth/access.js';
 import {authenticate,issue,cookie,profiles,tester,hash,allowPasswordAttempt} from './auth/session.js';
@@ -82,6 +82,48 @@ export async function handle(request,env,ctx,application=app){
           const day=new Date(match[1]+'T12:00:00Z');
           if(Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===match[1]&&day.getTime()<=Date.now())
             data.buyer_history_as_of=match[1];
+        }
+      }
+      // The independently deployed TENDER_AI service can still run the old
+      // strict dateCreated check. Rebuild only its missing market reference in
+      // this authenticated Worker using the official Prozorro tender record.
+      if(typeof data.market_comparison_note==='string'&&
+         data.market_comparison_note.includes('Не вдалося підтвердити дату оприлюднення')&&
+         data.api_url&&Number(data.expected_value_uah)>0){
+        try{
+          const sourceUrl=new URL(data.api_url);
+          if(sourceUrl.protocol==='https:'&&sourceUrl.hostname==='public-api.prozorro.gov.ua'&&
+             /^\\/api\\/2\\.5\\/tenders\\/[a-zA-Z0-9-]+$/.test(sourceUrl.pathname)){
+            const source=await fetch(sourceUrl.toString(),{headers:{Accept:'application/json'}});
+            if(source.ok){
+              const payload=await source.json();
+              const tender=payload?.data||payload;
+              if(tender?.tenderID===data.tender_id){
+                const market=await buildMarketReference(
+                  tender,
+                  {fuel_type:data.fuel_type,gasoline_volume_l:data.gasoline_volume_l,diesel_volume_l:data.diesel_volume_l},
+                  {normalizedWithoutVat:Number(data.expected_value_uah)},
+                  {supplyFormat:data.supply_format,gasolineSupplyFormat:data.gasoline_supply_format,dieselSupplyFormat:data.diesel_supply_format}
+                );
+                data.market_comparison_available=!!market.available;
+                data.market_comparison_note=market.note||'Ринкове порівняння не підтверджено.';
+                data.tender_announcement_date=market.tenderDate||null;
+                data.market_reference_candidates=market.referenceCandidates||null;
+                data.fuel_products=market.fuelProducts||data.fuel_products||null;
+                data.market_reference_date=market.referenceDate||null;
+                data.market_retail_reference_date=market.retailReferenceDate||null;
+                data.market_retail_source=market.retailSource||null;
+                data.market_wholesale_reference_date=market.wholesaleReferenceDate||null;
+                data.market_value_uah_without_vat=market.marketValueWithoutVat||null;
+                data.budget_vs_market_pct=market.budgetVsMarketPct??null;
+                data.budget_vs_market_text=market.text||null;
+                data.fuel_market_trend_30d_pct=market.fuelTrend30dPct??null;
+              }
+            }
+          }
+        }catch(e){console.error('Market reference fallback failed',e?.message);}
+        if(data.market_comparison_note.includes('Не вдалося підтвердити дату оприлюднення')){
+          data.market_comparison_note='Дата оголошення визначена за офіційним ID тендера, але ринкові ціни на цю дату поки не підтверджені. Порівняння не розраховано.';
         }
       }
       return json(data,upstream.status);
