@@ -981,7 +981,7 @@ function buildPdfReport(){
       <div><span>Обсяг бензину</span><strong>${money.format(gasVol)} л</strong></div>
       <div><span>Обсяг дизеля</span><strong>${money.format(dieVol)} л</strong></div>
       <div><span>Формат конкуренції</span><strong>${escapeHtml(modeLabel)}</strong></div>
-      <div><span>Бюджет замовника до ринку</span><strong>${cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—'}</strong></div>
+      <div><span>Бюджет замовника до ринку</span><strong>${displayCmp?`${displayCmp.indicative?'≈ ':''}${displayCmp.gap>=0?'+':''}${num.format(displayCmp.gap)}%`:'—'}</strong></div>
     </div>
     ${cmp?`<p class="pdf-market">${escapeHtml(marketGapText(cmp.gap))} ${escapeHtml(cmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
