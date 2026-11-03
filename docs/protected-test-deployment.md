@@ -9,6 +9,12 @@ Only `/config.js` is supplied by the gateway: it selects the same-origin API and
 
 ## Deployment
 
+The repository publishes two distinct artifacts. Upload `downloads/euro5-tender-analysis.zip`
+only to the `euro5-tender-bid-assistant` Cloudflare Worker (the public API and
+`TENDER_AI` service binding). Upload `downloads/euro5-tender-test.zip` only to
+`euro5-tender-test` (the authenticated frontend gateway). Swapping them makes
+the public API return `Вхід ще не налаштовано` instead of a `/health` response.
+
 Existing Cloudflare Workers Builds is connected to `feature/access-email-login` for `euro5-tender-test`. Publish the unified source to that branch and deploy using the existing command:
 
 ```
