@@ -798,6 +798,12 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const wholesaleDieselNoVat = dieselWholesaleParsedOk ? enkorr.diesel.wholesale / (1 + UKRAINE_STANDARD_VAT) : null;
   const gasWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleGasNoVat;
   const dieselWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleDieselNoVat;
+  const currentWholesaleAge = enkorr?.date ? wholesaleBenchmarkAge(now, enkorr.date) : null;
+  const currentWholesaleUsable = daysOld <= 30 && currentWholesaleAge !== null && currentWholesaleAge <= 5;
+  const currentMarketCandidates = currentWholesaleUsable ? {
+    gasoline: gasWholesaleParsedOk ? wholesaleGasNoVat : null,
+    diesel: dieselWholesaleParsedOk ? wholesaleDieselNoVat : null
+  } : null;
   const globalFormat = normalizeSupplyFormat(supplyInfo?.supplyFormat);
   const gasFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.gasolineSupplyFormat) : globalFormat;
   const dieselFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.dieselSupplyFormat) : globalFormat;
@@ -834,6 +840,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const common = {
     fuelProducts: products,
     referenceCandidates: { policy: "fuel-quality-v1", gasoline: { retail: retailGasNoVat, bulk: gasWholesaleUsable ? wholesaleGasNoVat : null, check: retailGas?.check || null }, diesel: { retail: retailDieselNoVat, bulk: dieselWholesaleUsable ? wholesaleDieselNoVat : null, check: retailDiesel?.check || null } },
+    currentMarketCandidates,
+    currentMarketReferenceDate: currentMarketCandidates ? formatUaDate(enkorr.date) : null,
     available: marketValue > 0,
     benchmarkType: globalFormat,
     benchmarkLabel,
@@ -1525,6 +1533,8 @@ ${aiTenderPayload(source.data)}`
     const market = Object.assign({
       fuelProducts: null,
       referenceCandidates: null,
+      currentMarketCandidates: null,
+      currentMarketReferenceDate: null,
       available: false,
       referenceDate: null,
       benchmarkType: null,
@@ -1574,6 +1584,8 @@ ${aiTenderPayload(source.data)}`
       normalization_note: scope.normalizationNote,
       fuel_products: market.fuelProducts || tenderFuelProducts(source.data),
       market_reference_candidates: market.referenceCandidates || null,
+      current_market_candidates: market.currentMarketCandidates ?? null,
+      current_market_reference_date: market.currentMarketReferenceDate ?? null,
       statistical_product_scope: "\u0423\u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0435\u043D\u0430 \u043C\u043E\u0434\u0435\u043B\u044C \u0431\u0435\u0437 \u043F\u043E\u0434\u0456\u043B\u0443 \u0437\u0430 \u043C\u0430\u0440\u043A\u043E\u044E, \u043F\u0440\u0435\u043C\u0456\u0430\u043B\u044C\u043D\u0456\u0441\u0442\u044E \u0442\u0430 \u0441\u0435\u0437\u043E\u043D\u043D\u0456\u0441\u0442\u044E. \u0422\u043E\u0447\u043D\u0456\u0441\u0442\u044C \u0434\u043B\u044F \u043E\u043A\u0440\u0435\u043C\u0438\u0445 \u0440\u0456\u0437\u043D\u043E\u0432\u0438\u0434\u0456\u0432 \u043D\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043E.",
       market_comparison_available: market.available,
       market_reference_date: market.referenceDate ?? null,
