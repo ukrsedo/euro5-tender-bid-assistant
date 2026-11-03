@@ -48,6 +48,7 @@ jobs:
           path: dist/euro5-tender-test.js
           retention-days: 30
       - name: Publish direct-download JS and ZIP in repository
+        if: github.ref == 'refs/heads/main'
         run: |
           mkdir -p downloads
           cp dist/euro5-tender-test.js downloads/euro5-tender-test.js
