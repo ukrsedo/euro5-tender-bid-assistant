@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveTenderInternalId} from '../worker.js';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const source=fs.readFileSync('worker.js','utf8');
+const start=source.indexOf('function findInternalId(');
+const end=source.indexOf('async function fetchTenderData(',start);
+assert.ok(start>=0&&end>start,'Prozorro resolver block not found');
+const code=source.slice(start,end).replace(/\bexport\s+(?=async function)/g,'');
+const ctx={URL,Response,encodeURIComponent,console,fetch:()=>{throw new Error('unexpected default fetch')}};
+const {resolveTenderInternalId}=vm.runInNewContext(
+  code+';({resolveTenderInternalId})',
+  ctx
+);
 
 const TENDER='UA-2026-10-29-008698-a';
 const INTERNAL='1234567890abcdef1234567890abcdef';
