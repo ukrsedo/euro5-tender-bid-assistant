@@ -903,6 +903,14 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const wholesaleDieselNoVat = dieselWholesaleParsedOk ? enkorr.diesel.wholesale / (1 + UKRAINE_STANDARD_VAT) : null;
   const gasWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleGasNoVat;
   const dieselWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleDieselNoVat;
+  // A later Enkorr observation can describe today's market, but must never
+  // be backdated to the tender announcement or enter the historical score.
+  const currentWholesaleAge = enkorr?.date ? wholesaleBenchmarkAge(now, enkorr.date) : null;
+  const currentWholesaleUsable = daysOld <= 30 && currentWholesaleAge !== null && currentWholesaleAge <= 5;
+  const currentMarketCandidates = currentWholesaleUsable ? {
+    gasoline: gasWholesaleParsedOk ? wholesaleGasNoVat : null,
+    diesel: dieselWholesaleParsedOk ? wholesaleDieselNoVat : null
+  } : null;
 
   const globalFormat = normalizeSupplyFormat(supplyInfo?.supplyFormat);
   const gasFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.gasolineSupplyFormat) : globalFormat;
@@ -956,6 +964,8 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const common = {
     fuelProducts:products,
     referenceCandidates:{policy:'fuel-quality-v1',gasoline:{retail:retailGasNoVat,bulk:gasWholesaleUsable?wholesaleGasNoVat:null,check:retailGas?.check||null},diesel:{retail:retailDieselNoVat,bulk:dieselWholesaleUsable?wholesaleDieselNoVat:null,check:retailDiesel?.check||null}},
+    currentMarketCandidates,
+    currentMarketReferenceDate: currentMarketCandidates ? formatUaDate(enkorr.date) : null,
     available: marketValue > 0,
     benchmarkType: globalFormat,
     benchmarkLabel,
@@ -1559,6 +1569,8 @@ response_format: { type: "json_object" }
     const market = Object.assign({
       fuelProducts: null,
       referenceCandidates: null,
+      currentMarketCandidates: null,
+      currentMarketReferenceDate: null,
       available: false,
       referenceDate: null,
       benchmarkType: null,
@@ -1609,6 +1621,8 @@ response_format: { type: "json_object" }
       normalization_note: scope.normalizationNote,
       fuel_products: market.fuelProducts || tenderFuelProducts(source.data),
       market_reference_candidates: market.referenceCandidates || null,
+      current_market_candidates: market.currentMarketCandidates ?? null,
+      current_market_reference_date: market.currentMarketReferenceDate ?? null,
       statistical_product_scope: 'Узагальнена модель без поділу за маркою, преміальністю та сезонністю. Точність для окремих різновидів не підтверджено.',
       market_comparison_available: market.available,
       market_reference_date: market.referenceDate ?? null,
