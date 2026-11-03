@@ -191,30 +191,96 @@ function findInternalId(obj) {
   }
   return walk(obj);
 }
-async function resolveTenderInternalId(tenderId) {
-  const url = `https://prozorro.gov.ua/api/tenders/${encodeURIComponent(tenderId)}/summary`;
-  const res = await fetch(url, {
-    headers: {
-      "Accept": "application/json",
-      "User-Agent": "EURO5-Asystent-Tendernoi-Propozytsii/1.4 (+https://www.goodspending.com)"
-    },
-    redirect: "follow"
-  });
-  if (!res.ok) {
-    throw new Error(`\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u0437\u043D\u0430\u0439\u0442\u0438 \u0442\u0435\u043D\u0434\u0435\u0440 \u0437\u0430 ID \u0443 Prozorro (HTTP ${res.status})`);
-  }
-  const rawText = await res.text();
-  let summary;
+var PROZORRO_HEADERS = {
+  "Accept": "application/json",
+  "User-Agent": "EURO5-Asystent-Tendernoi-Propozytsii/1.4 (+https://www.goodspending.com)"
+};
+function safeProzorroFeedUrl(value) {
   try {
-    summary = JSON.parse(rawText);
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") url.protocol = "https:";
+    if (!(url.hostname === "prozorro.gov.ua" || url.hostname.endsWith(".prozorro.gov.ua"))) return null;
+    if (!/^\/api\/2\.5\/tenders(?:\?|$)/.test(url.pathname + (url.search ? "?" : ""))) return null;
+    return url.toString();
   } catch {
-    throw new Error("Prozorro \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0443 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u044C \u043F\u0456\u0434 \u0447\u0430\u0441 \u043F\u043E\u0448\u0443\u043A\u0443 \u0442\u0435\u043D\u0434\u0435\u0440\u0430.");
+    return null;
   }
-  const internalId = findInternalId(summary);
-  if (!internalId) {
-    throw new Error("Prozorro \u0437\u043D\u0430\u0439\u0448\u043E\u0432 \u0442\u0435\u043D\u0434\u0435\u0440, \u0430\u043B\u0435 \u043D\u0435 \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u0432\u043D\u0443\u0442\u0440\u0456\u0448\u043D\u0456\u0439 ID \u0434\u043B\u044F \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0435\u043D\u043D\u044F \u0434\u0430\u043D\u0438\u0445.");
+}
+async function resolveTenderInternalIdFromFeed(tenderId, fetcher = fetch) {
+  const target = String(tenderId || "").trim().toUpperCase();
+  let url = "https://public-api.prozorro.gov.ua/api/2.5/tenders?descending=1&limit=1000&opt_fields=tenderID,dateCreated";
+  const maxPages = 12;
+  for (let page = 0; page < maxPages; page++) {
+    const res = await fetcher(url, {
+      headers: PROZORRO_HEADERS,
+      redirect: "follow"
+    });
+    if (!res.ok) {
+      throw new Error(`Public API feed \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 HTTP ${res.status}`);
+    }
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      throw new Error("Public API feed Prozorro \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 JSON");
+    }
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const hit = rows.find(
+      (row) => String(row?.tenderID || "").trim().toUpperCase() === target && typeof row?.id === "string" && /^[0-9a-f]{32}$/i.test(row.id)
+    );
+    if (hit) {
+      return {
+        internalId: hit.id,
+        summaryUrl: null,
+        feedUrl: url,
+        lookupSource: "public-api-feed"
+      };
+    }
+    const next = safeProzorroFeedUrl(payload?.next_page?.uri);
+    if (!next) break;
+    url = next;
   }
-  return { internalId, summaryUrl: url };
+  throw new Error(`\u0422\u0435\u043D\u0434\u0435\u0440 ${tenderId} \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0443 \u0440\u0435\u0437\u0435\u0440\u0432\u043D\u043E\u043C\u0443 \u043F\u043E\u0448\u0443\u043A\u0443 \u0441\u0435\u0440\u0435\u0434 \u043E\u0441\u0442\u0430\u043D\u043D\u0456\u0445 \u0437\u043C\u0456\u043D Public API`);
+}
+async function resolveTenderInternalId(tenderId, fetcher = fetch) {
+  const url = `https://prozorro.gov.ua/api/tenders/${encodeURIComponent(tenderId)}/summary`;
+  let summaryFailure = null;
+  try {
+    const res = await fetcher(url, {
+      headers: PROZORRO_HEADERS,
+      redirect: "follow"
+    });
+    if (res.ok) {
+      const rawText = await res.text();
+      let summary;
+      try {
+        summary = JSON.parse(rawText);
+      } catch {
+        summaryFailure = "\u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 JSON summary";
+      }
+      if (summary) {
+        const internalId = findInternalId(summary);
+        if (internalId) {
+          return { internalId, summaryUrl: url, feedUrl: null, lookupSource: "summary" };
+        }
+        summaryFailure = "summary \u043D\u0435 \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u0432\u043D\u0443\u0442\u0440\u0456\u0448\u043D\u0456\u0439 ID";
+      }
+    } else if (res.status === 404) {
+      throw new Error(`\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u0437\u043D\u0430\u0439\u0442\u0438 \u0442\u0435\u043D\u0434\u0435\u0440 \u0437\u0430 ID \u0443 Prozorro (HTTP 404)`);
+    } else {
+      summaryFailure = `HTTP ${res.status}`;
+    }
+  } catch (error) {
+    if (/HTTP 404/.test(String(error?.message || ""))) throw error;
+    summaryFailure = error?.message || "\u043F\u043E\u043C\u0438\u043B\u043A\u0430 \u0437'\u0454\u0434\u043D\u0430\u043D\u043D\u044F";
+  }
+  try {
+    return await resolveTenderInternalIdFromFeed(tenderId, fetcher);
+  } catch (fallbackError) {
+    throw new Error(
+      `\u0422\u0435\u043D\u0434\u0435\u0440 \u043D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0438\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 \u0442\u0438\u043C\u0447\u0430\u0441\u043E\u0432\u0443 \u043F\u043E\u043C\u0438\u043B\u043A\u0443 Prozorro. \u041E\u0441\u043D\u043E\u0432\u043D\u0438\u0439 lookup: ${summaryFailure || "\u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0438\u0439"}; \u0440\u0435\u0437\u0435\u0440\u0432\u043D\u0438\u0439 Public API: ${fallbackError?.message || "\u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0438\u0439"}`
+    );
+  }
 }
 async function fetchTenderData(tenderId) {
   const resolved = await resolveTenderInternalId(tenderId);
