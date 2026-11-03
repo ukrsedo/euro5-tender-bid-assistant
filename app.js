@@ -312,13 +312,38 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
 
 function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
   return marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData)||
-    marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData,true);
+    marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData,true)||
+    currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData);
 }
 
-function marketGapText(gap){
+function currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
+  const d=supplyData||activeTenderData()||{};
+  const format=d.supplyFormat||d.supply_format||'unknown';
+  const gasFormat=format==='split'?(d.gasolineSupplyFormat||d.gasoline_supply_format):format;
+  const dieselFormat=format==='split'?(d.dieselSupplyFormat||d.diesel_supply_format):format;
+  const candidates=lastExtraction?.current_market_candidates;
+  const date=lastExtraction?.current_market_reference_date;
+  if(!candidates||!date||!(expectedValue>0))return null;
+  let marketValue=0;
+  if(fuelType==='gasoline'){
+    if(gasFormat!=='bulk'||!indicativeStandardProductSupported('gasoline',d)||!(gasolineVolume>0)||!(candidates.gasoline>0))return null;
+    marketValue=gasolineVolume*candidates.gasoline;
+  }else if(fuelType==='diesel'){
+    if(dieselFormat!=='bulk'||!indicativeStandardProductSupported('diesel',d)||!(dieselVolume>0)||!(candidates.diesel>0))return null;
+    marketValue=dieselVolume*candidates.diesel;
+  }else if(fuelType==='mixed'){
+    if(gasFormat!=='bulk'||dieselFormat!=='bulk'||!indicativeStandardProductSupported('gasoline',d)||!indicativeStandardProductSupported('diesel',d)||!(gasolineVolume>0)||!(dieselVolume>0)||!(candidates.gasoline>0)||!(candidates.diesel>0))return null;
+    marketValue=gasolineVolume*candidates.gasoline+dieselVolume*candidates.diesel;
+  }else return null;
+  return {gap:(expectedValue/marketValue-1)*100,marketValue,format,gasFormat,dieselFormat,
+    indicative:true,referenceContext:'current',source:`Поточний гуртовий орієнтир Enkorr (${date}); ціна після оголошення тендера.`};
+}
+
+function marketGapText(gap,referenceContext='announcement'){
   const a=Math.abs(gap);
-  if(a<0.05) return 'Очікувана вартість практично відповідає ринковій вартості такого обсягу на дату оголошення.';
-  return `Очікувана вартість на ${num.format(a)}% ${gap>0?'вища':'нижча'} за ринкову вартість такого обсягу на дату оголошення.`;
+  const when=referenceContext==='current'?'за поточним гуртовим орієнтиром (після оголошення)':'на дату оголошення';
+  if(a<0.05) return `Очікувана вартість практично відповідає ринковій вартості такого обсягу ${when}.`;
+  return `Очікувана вартість на ${num.format(a)}% ${gap>0?'вища':'нижча'} за ринкову вартість такого обсягу ${when}.`;
 }
 
 function renderReviewMarket(){
@@ -334,7 +359,7 @@ function renderReviewMarket(){
   }
   box.classList.remove('hidden');
   document.getElementById('marketComparisonReviewValue').textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
-  document.getElementById('marketComparisonReviewText').textContent=(cmp.indicative?'Орієнтовна оцінка за вибраним звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap);
+  document.getElementById('marketComparisonReviewText').textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext);
   document.getElementById('marketBenchmarkSource').textContent=(cmp.indicative?'Марку не підтверджено автоматично. ':'')+(cmp.source || '');
 }
 
@@ -590,7 +615,7 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('minBid').textContent='—';
   const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
-  document.getElementById('marketComparisonNote').textContent=cmp?(cmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':'')+marketGapText(cmp.gap):'Ринкове порівняння недоступне.';
+  document.getElementById('marketComparisonNote').textContent=cmp?(cmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext)+' '+(cmp.referenceContext==='current'?cmp.source:''):'Ринкове порівняння недоступне.';
   document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
 
   recommendationCard.classList.add('hidden');
@@ -879,7 +904,7 @@ function recalc(){
   if(cmp){
     budgetMarket.textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
     budgetMarket.className=cmp.indicative?'':(cmp.gap>=0?'market-positive':'market-negative');
-    marketNote.textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap) + (cmp.source ? ` ${cmp.source}` : '');
+    marketNote.textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext) + (cmp.source ? ` ${cmp.source}` : '');
   }else{
     budgetMarket.textContent='—';
     budgetMarket.className='';
@@ -989,7 +1014,7 @@ function buildPdfReport(){
   const logistics=litres*value('logistics');
   const full=fuelCost+risk+logistics;
   const cmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
-  const displayCmp=cmp||marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData(),true);
+  const displayCmp=displayMarketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
@@ -1017,7 +1042,7 @@ function buildPdfReport(){
       <div><span>Формат конкуренції</span><strong>${escapeHtml(modeLabel)}</strong></div>
       <div><span>Бюджет замовника до ринку</span><strong>${displayCmp?`${displayCmp.indicative?'≈ ':''}${displayCmp.gap>=0?'+':''}${num.format(displayCmp.gap)}%`:'—'}</strong></div>
     </div>
-    ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
+    ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap,displayCmp.referenceContext))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
     <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${listHtml(lastExtraction?.conditions,'Нетипових або суттєвих умов не виявлено.')}</div><div><h4>Що потрібно зробити перед участю</h4>${listHtml(lastExtraction?.actions,'Додаткових перевірок за завантаженими даними не потрібно.')}</div></div>
     <h3>Економіка ЄВРО5</h3>

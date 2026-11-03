@@ -79,3 +79,27 @@ test('confirmed price takes priority and is not marked indicative',()=>{
   ctx.standardProductConfirmed=()=>true;
   assert.equal(displayMarketComparison(1140,10,10,'mixed',data).indicative,false);
 });
+test('later Enkorr wholesale observation is displayed as a current estimate only',()=>{
+  const previous=ctx.lastExtraction.market_reference_candidates;
+  ctx.standardProductConfirmed=()=>false;
+  ctx.lastExtraction.market_reference_candidates={policy:'fuel-quality-v1',gasoline:{retail:50,bulk:null},diesel:{retail:45,bulk:null}};
+  ctx.lastExtraction.current_market_candidates={gasoline:87.68/1.2,diesel:101.78/1.2};
+  ctx.lastExtraction.current_market_reference_date='02.11.2026';
+  const bulk={...data,supply_format:'bulk'};
+  assert.equal(marketComparison(1245000,5000,10000,'mixed',bulk),null);
+  const estimate=displayMarketComparison(1245000,5000,10000,'mixed',bulk);
+  assert.equal(estimate.referenceContext,'current');
+  assert.equal(estimate.indicative,true);
+  assert.equal(estimate.marketValue,1213500);
+  assert.ok(Math.abs(estimate.gap-2.595797280593315)<1e-8);
+  assert.match(estimate.source,/02\.11\.2026/);
+  ctx.lastExtraction.market_reference_candidates=previous;
+  delete ctx.lastExtraction.current_market_candidates;
+  delete ctx.lastExtraction.current_market_reference_date;
+});
+test('a current wholesale quote never substitutes for retail supply',()=>{
+  ctx.lastExtraction.current_market_candidates={gasoline:70,diesel:80};
+  ctx.lastExtraction.current_market_reference_date='02.11.2026';
+  ctx.lastExtraction.market_reference_candidates={policy:'fuel-quality-v1',gasoline:{retail:null,bulk:null},diesel:{retail:null,bulk:null}};
+  assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
+});
