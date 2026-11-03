@@ -25,6 +25,7 @@ const ctx={
     : null,
   fetchEnkorrCurrentPrices:async()=>({date:new FixedDate('2026-11-02T12:00:00Z'),
     gasoline:{wholesale:87.68,retail:90.08},diesel:{wholesale:101.78,retail:104.5}}),
+  fetchArchivedEnkorrPrices:async()=>null,
   percentDifference:(a,b)=>a>0&&b>0?Math.abs(a/b-1)*100:null,
   wholesaleBenchmarkAge:(t,p)=>{
     const end=Date.parse(day(t)+'T00:00:00Z'),start=Date.parse(day(p)+'T00:00:00Z');
@@ -48,4 +49,23 @@ test('29 October bulk tender exposes 2 November prices only as current context',
   assert.equal(result.currentMarketReferenceDate,'02.11.2026');
   assert.ok(Math.abs(result.currentMarketCandidates.gasoline-87.68/1.2)<1e-9);
   assert.ok(Math.abs(result.currentMarketCandidates.diesel-101.78/1.2)<1e-9);
+});
+
+test('archived quote for the announcement day drives historical bulk candidates, later live quote stays current',async()=>{
+  ctx.fetchArchivedEnkorrPrices=async()=>({date:new FixedDate('2026-10-29T12:00:00Z'),
+    gasoline:{wholesale:80,retail:82},diesel:{wholesale:95,retail:98}});
+  const previousFetch=ctx.fetchMinfinPrice;
+  ctx.fetchMinfinPrice=async(slug,date)=>day(date)==='2026-10-29'
+    ? {date:'29.10.2026',priceWithVat:slug==='a95'?82:98}
+    : previousFetch(slug,date);
+  const result=await buildMarketReference({tenderID:'UA-2026-10-29-008698-a'},
+    {fuel_type:'mixed',gasoline_volume_l:5000,diesel_volume_l:10000},
+    {normalizedWithoutVat:1245000},{supplyFormat:'bulk'});
+  assert.equal(result.wholesaleReferenceDate,'29.10.2026');
+  assert.ok(Math.abs(result.referenceCandidates.gasoline.bulk-80/1.2)<1e-9);
+  assert.ok(Math.abs(result.referenceCandidates.diesel.bulk-95/1.2)<1e-9);
+  assert.equal(result.currentMarketReferenceDate,'02.11.2026');
+  assert.ok(Math.abs(result.currentMarketCandidates.diesel-101.78/1.2)<1e-9);
+  ctx.fetchArchivedEnkorrPrices=async()=>null;
+  ctx.fetchMinfinPrice=previousFetch;
 });
