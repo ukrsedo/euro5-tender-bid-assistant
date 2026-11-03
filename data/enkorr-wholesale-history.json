@@ -1,5 +1,21 @@
 {
   "schema_version": 1,
   "source_url": "https://enkorr.ua/",
-  "observations": []
+  "observations": [
+    {
+      "date": "2026-11-02",
+      "observed_at": "2026-11-03T08:32:24.173Z",
+      "source_url": "https://enkorr.ua/",
+      "prices_uah_l_with_vat": {
+        "a95": {
+          "wholesale": 87.68,
+          "retail": 90.08
+        },
+        "dt": {
+          "wholesale": 101.78,
+          "retail": 104.5
+        }
+      }
+    }
+  ]
 }
