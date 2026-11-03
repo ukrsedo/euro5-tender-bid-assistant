@@ -1,4 +1,4 @@
-name: Build clean Cloudflare Worker ZIP
+name: Build analysis and protected Cloudflare Worker ZIPs
 
 on:
   workflow_dispatch:
@@ -24,39 +24,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Bundle into a single JavaScript file
+      - name: Bundle both Cloudflare Worker services
         run: |
           mkdir -p dist
+          npx --yes esbuild@0.25.12 worker.js --bundle --format=esm --platform=browser --external:cloudflare:workers --target=es2022 --outfile=dist/euro5-tender-analysis.js
           npx --yes esbuild@0.25.12 access-worker.js --bundle --format=esm --platform=browser --external:cloudflare:workers --target=es2022 --outfile=dist/euro5-tender-test.js
       - name: Check syntax and required fixes
         run: |
           node --check dist/euro5-tender-test.js
+          node --check dist/euro5-tender-analysis.js
           node --check app.js
           node --check buyer-card.js
           npx --yes --package typescript@5.9.3 tsc --allowJs --checkJs --noEmit --skipLibCheck --lib es2022,dom --target es2022 --module esnext worker.js access-worker.js
           node --test tests/market-indicative.test.mjs tests/current-market.test.mjs tests/enkorr-archive.test.mjs tests/competition-panel.test.mjs tests/access-parity.test.mjs tests/prozorro-lookup-fallback.test.mjs
           node - <<'NODE'
           const fs=require('fs');
-          const code=fs.readFileSync('dist/euro5-tender-test.js','utf8');
-          if(!code.includes('wholesaleGasolinePriceWithoutVat') || !code.includes('retailSource')) process.exit(1);
-          if(!code.includes('origin && origin !== url.origin') && !code.includes('origin&&origin!==url.origin')) process.exit(1);
-          console.log('Bundle syntax and required fields OK');
+          const analysis=fs.readFileSync('dist/euro5-tender-analysis.js','utf8');
+          const protectedCode=fs.readFileSync('dist/euro5-tender-test.js','utf8');
+          if(!/worker_default as default/.test(analysis) || /access_worker_default as default/.test(analysis)) process.exit(1);
+          if(!/access_worker_default as default/.test(protectedCode)) process.exit(1);
+          if(!analysis.includes('enkorr-wholesale-history.json') || !analysis.includes('tender-check')) process.exit(1);
+          if(!protectedCode.includes('origin && origin !== url.origin') && !protectedCode.includes('origin&&origin!==url.origin')) process.exit(1);
+          console.log('Analysis and protected Worker entrypoints verified');
           NODE
       - uses: actions/upload-artifact@v4
         with:
-          name: euro5-tender-test-clean
-          path: dist/euro5-tender-test.js
+          name: euro5-worker-services
+          path: |
+            dist/euro5-tender-analysis.js
+            dist/euro5-tender-test.js
           retention-days: 30
       - name: Publish direct-download JS and ZIP in repository
         if: github.ref == 'refs/heads/main'
         run: |
           mkdir -p downloads
           cp dist/euro5-tender-test.js downloads/euro5-tender-test.js
+          cp dist/euro5-tender-analysis.js downloads/euro5-tender-analysis.js
           zip -j -q downloads/euro5-tender-test.zip dist/euro5-tender-test.js
+          zip -j -q downloads/euro5-tender-analysis.zip dist/euro5-tender-analysis.js
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f downloads/euro5-tender-test.js downloads/euro5-tender-test.zip
+          git add -f downloads/euro5-tender-analysis.js downloads/euro5-tender-analysis.zip downloads/euro5-tender-test.js downloads/euro5-tender-test.zip
           if ! git diff --cached --quiet; then
             git commit -m "Publish verified Cloudflare Worker JS and ZIP [skip ci]"
+            git pull --rebase origin main
             git push origin HEAD:main
           fi
