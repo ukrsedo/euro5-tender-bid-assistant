@@ -219,34 +219,112 @@ function findInternalId(obj) {
   return walk(obj);
 }
 
-async function resolveTenderInternalId(tenderId) {
-  const url = `https://prozorro.gov.ua/api/tenders/${encodeURIComponent(tenderId)}/summary`;
-  const res = await fetch(url, {
-    headers: {
-      "Accept": "application/json",
-      "User-Agent": "EURO5-Asystent-Tendernoi-Propozytsii/1.4 (+https://www.goodspending.com)"
-    },
-    redirect: "follow"
-  });
+const PROZORRO_HEADERS = {
+  "Accept": "application/json",
+  "User-Agent": "EURO5-Asystent-Tendernoi-Propozytsii/1.4 (+https://www.goodspending.com)"
+};
 
-  if (!res.ok) {
-    throw new Error(`Не вдалося знайти тендер за ID у Prozorro (HTTP ${res.status})`);
-  }
-
-  const rawText = await res.text();
-  let summary;
+function safeProzorroFeedUrl(value) {
   try {
-    summary = JSON.parse(rawText);
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") url.protocol = "https:";
+    if (!(url.hostname === "prozorro.gov.ua" || url.hostname.endsWith(".prozorro.gov.ua"))) return null;
+    if (!/^\/api\/2\.5\/tenders(?:\?|$)/.test(url.pathname + (url.search ? "?" : ""))) return null;
+    return url.toString();
   } catch {
-    throw new Error("Prozorro повернув некоректну відповідь під час пошуку тендера.");
+    return null;
+  }
+}
+
+export async function resolveTenderInternalIdFromFeed(tenderId, fetcher = fetch) {
+  const target = String(tenderId || "").trim().toUpperCase();
+  let url = "https://public-api.prozorro.gov.ua/api/2.5/tenders?descending=1&limit=1000&opt_fields=tenderID,dateCreated";
+  const maxPages = 12;
+
+  for (let page = 0; page < maxPages; page++) {
+    const res = await fetcher(url, {
+      headers: PROZORRO_HEADERS,
+      redirect: "follow"
+    });
+
+    if (!res.ok) {
+      throw new Error(`Public API feed повернув HTTP ${res.status}`);
+    }
+
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      throw new Error("Public API feed Prozorro повернув некоректний JSON");
+    }
+
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const hit = rows.find(row =>
+      String(row?.tenderID || "").trim().toUpperCase() === target &&
+      typeof row?.id === "string" &&
+      /^[0-9a-f]{32}$/i.test(row.id)
+    );
+
+    if (hit) {
+      return {
+        internalId: hit.id,
+        summaryUrl: null,
+        feedUrl: url,
+        lookupSource: "public-api-feed"
+      };
+    }
+
+    const next = safeProzorroFeedUrl(payload?.next_page?.uri);
+    if (!next) break;
+    url = next;
   }
 
-  const internalId = findInternalId(summary);
-  if (!internalId) {
-    throw new Error("Prozorro знайшов тендер, але не повернув внутрішній ID для завантаження даних.");
+  throw new Error(`Тендер ${tenderId} не знайдено у резервному пошуку серед останніх змін Public API`);
+}
+
+export async function resolveTenderInternalId(tenderId, fetcher = fetch) {
+  const url = `https://prozorro.gov.ua/api/tenders/${encodeURIComponent(tenderId)}/summary`;
+  let summaryFailure = null;
+
+  try {
+    const res = await fetcher(url, {
+      headers: PROZORRO_HEADERS,
+      redirect: "follow"
+    });
+
+    if (res.ok) {
+      const rawText = await res.text();
+      let summary;
+      try {
+        summary = JSON.parse(rawText);
+      } catch {
+        summaryFailure = "некоректний JSON summary";
+      }
+
+      if (summary) {
+        const internalId = findInternalId(summary);
+        if (internalId) {
+          return { internalId, summaryUrl: url, feedUrl: null, lookupSource: "summary" };
+        }
+        summaryFailure = "summary не повернув внутрішній ID";
+      }
+    } else if (res.status === 404) {
+      throw new Error(`Не вдалося знайти тендер за ID у Prozorro (HTTP 404)`);
+    } else {
+      summaryFailure = `HTTP ${res.status}`;
+    }
+  } catch (error) {
+    if (/HTTP 404/.test(String(error?.message || ""))) throw error;
+    summaryFailure = error?.message || "помилка з'єднання";
   }
 
-  return { internalId, summaryUrl: url };
+  try {
+    return await resolveTenderInternalIdFromFeed(tenderId, fetcher);
+  } catch (fallbackError) {
+    throw new Error(
+      `Тендер не вдалося завантажити через тимчасову помилку Prozorro. Основний lookup: ${summaryFailure || "недоступний"}; резервний Public API: ${fallbackError?.message || "недоступний"}`
+    );
+  }
 }
 
 async function fetchTenderData(tenderId) {
