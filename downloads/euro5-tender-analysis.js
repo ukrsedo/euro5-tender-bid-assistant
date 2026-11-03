@@ -208,39 +208,63 @@ function safeProzorroFeedUrl(value) {
 }
 async function resolveTenderInternalIdFromFeed(tenderId, fetcher = fetch) {
   const target = String(tenderId || "").trim().toUpperCase();
-  let url = "https://public-api.prozorro.gov.ua/api/2.5/tenders?descending=1&limit=1000&opt_fields=tenderID,dateCreated";
-  const maxPages = 12;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetcher(url, {
-      headers: PROZORRO_HEADERS,
-      redirect: "follow"
-    });
-    if (!res.ok) {
-      throw new Error(`Public API feed \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 HTTP ${res.status}`);
+  const day = target.match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[A-Z]$/)?.[1];
+  const dayStart = day ? Date.parse(day + "T00:00:00Z") : NaN;
+  const recent = Number.isFinite(dayStart) && dayStart - Date.now() <= 3 * 36e5 && Date.now() - dayStart <= 3 * 864e5;
+  const base = "https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=1000&opt_fields=tenderID,dateCreated";
+  const feeds = recent ? [
+    { url: base + "&offset=" + encodeURIComponent(new Date(dayStart - 3 * 36e5).toISOString().slice(0, 19)), maxPages: 40, bounded: true },
+    { url: base + "&descending=1", maxPages: 12, bounded: false }
+  ] : [{ url: base + "&descending=1", maxPages: 12, bounded: false }];
+  for (const feed of feeds) {
+    let url = feed.url;
+    for (let page = 0; page < feed.maxPages; page++) {
+      const res = await fetcher(url, {
+        headers: PROZORRO_HEADERS,
+        redirect: "follow"
+      });
+      if (!res.ok) {
+        throw new Error(`Public API feed \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 HTTP ${res.status}`);
+      }
+      let payload;
+      try {
+        payload = await res.json();
+      } catch {
+        throw new Error("Public API feed Prozorro \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 JSON");
+      }
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      const hit = rows.find(
+        (row) => String(row?.tenderID || "").trim().toUpperCase() === target && typeof row?.id === "string" && /^[0-9a-f]{32}$/i.test(row.id)
+      );
+      if (hit) {
+        return {
+          internalId: hit.id,
+          summaryUrl: null,
+          feedUrl: url,
+          lookupSource: "public-api-feed"
+        };
+      }
+      const next = safeProzorroFeedUrl(payload?.next_page?.uri);
+      if (!next || !rows.length) break;
+      if (feed.bounded && Number.parseFloat(new URL(next).searchParams.get("offset")) > (dayStart + 2 * 864e5) / 1e3) break;
+      url = next;
     }
-    let payload;
-    try {
-      payload = await res.json();
-    } catch {
-      throw new Error("Public API feed Prozorro \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 JSON");
-    }
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const hit = rows.find(
-      (row) => String(row?.tenderID || "").trim().toUpperCase() === target && typeof row?.id === "string" && /^[0-9a-f]{32}$/i.test(row.id)
-    );
-    if (hit) {
-      return {
-        internalId: hit.id,
-        summaryUrl: null,
-        feedUrl: url,
-        lookupSource: "public-api-feed"
-      };
-    }
-    const next = safeProzorroFeedUrl(payload?.next_page?.uri);
-    if (!next) break;
-    url = next;
   }
-  throw new Error(`\u0422\u0435\u043D\u0434\u0435\u0440 ${tenderId} \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0443 \u0440\u0435\u0437\u0435\u0440\u0432\u043D\u043E\u043C\u0443 \u043F\u043E\u0448\u0443\u043A\u0443 \u0441\u0435\u0440\u0435\u0434 \u043E\u0441\u0442\u0430\u043D\u043D\u0456\u0445 \u0437\u043C\u0456\u043D Public API`);
+  throw new Error(`\u0422\u0435\u043D\u0434\u0435\u0440 ${tenderId} \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0443 \u043C\u0435\u0436\u0430\u0445 \u0440\u0435\u0437\u0435\u0440\u0432\u043D\u043E\u0433\u043E \u043F\u043E\u0448\u0443\u043A\u0443 Public API; \u0446\u0435 \u043D\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0443\u0454 \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0441\u0442\u044C \u0442\u0435\u043D\u0434\u0435\u0440\u0430`);
+}
+async function resolveTenderInternalIdFromVerifiedIndex(tenderId, fetcher = fetch) {
+  const url = "https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/prozorro-verified-ids.json";
+  try {
+    const response = await fetcher(url, { signal: AbortSignal.timeout(5e3) });
+    if (!response.ok) return null;
+    const index = await response.json();
+    if (index.schema_version !== 1 || index.source !== "https://public-api.prozorro.gov.ua/api/2.5/tenders/") return null;
+    const internalId = index.tenders?.[tenderId];
+    if (typeof internalId === "string" && /^[0-9a-f]{32}$/i.test(internalId))
+      return { internalId, summaryUrl: null, feedUrl: null, lookupSource: "verified-index" };
+  } catch (_) {
+  }
+  return null;
 }
 async function resolveTenderInternalId(tenderId, fetcher = fetch) {
   const url = `https://prozorro.gov.ua/api/tenders/${encodeURIComponent(tenderId)}/summary`;
@@ -274,6 +298,8 @@ async function resolveTenderInternalId(tenderId, fetcher = fetch) {
     if (/HTTP 404/.test(String(error?.message || ""))) throw error;
     summaryFailure = error?.message || "\u043F\u043E\u043C\u0438\u043B\u043A\u0430 \u0437'\u0454\u0434\u043D\u0430\u043D\u043D\u044F";
   }
+  const verified = await resolveTenderInternalIdFromVerifiedIndex(tenderId, fetcher);
+  if (verified) return verified;
   try {
     return await resolveTenderInternalIdFromFeed(tenderId, fetcher);
   } catch (fallbackError) {
@@ -299,6 +325,9 @@ async function fetchTenderData(tenderId) {
   const data = payload?.data || payload;
   if (!data || typeof data !== "object") {
     throw new Error("Prozorro \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043F\u043E\u0440\u043E\u0436\u043D\u0456 \u0430\u0431\u043E \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0456 \u0434\u0430\u043D\u0456 \u0442\u0435\u043D\u0434\u0435\u0440\u0430.");
+  }
+  if (data.tenderID !== tenderId) {
+    throw new Error("\u0412\u043D\u0443\u0442\u0440\u0456\u0448\u043D\u0456\u0439 ID Prozorro \u043D\u0435 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u0454 \u0437\u0430\u043F\u0438\u0442\u0430\u043D\u043E\u043C\u0443 \u043D\u043E\u043C\u0435\u0440\u0443 \u0442\u0435\u043D\u0434\u0435\u0440\u0430.");
   }
   return {
     data,
