@@ -652,6 +652,30 @@ async function fetchEnkorrCurrentPrices() {
     return null;
   }
 }
+var ENKORR_ARCHIVE_URL = "https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/enkorr-wholesale-history.json";
+async function fetchArchivedEnkorrPrices(tenderDate) {
+  try {
+    const response = await fetch(ENKORR_ARCHIVE_URL, { signal: AbortSignal.timeout(1e4) });
+    if (!response.ok) return null;
+    const archive = await response.json();
+    if (archive.schema_version !== 1 || archive.source_url !== "https://enkorr.ua/" || !Array.isArray(archive.observations)) return null;
+    const cutoff = euro5ObservationDate(tenderDate);
+    const today = euro5ObservationDate();
+    for (const row of [...archive.observations].sort((a, b) => String(b.date).localeCompare(String(a.date)))) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || row.date > cutoff || row.date > today || row.source_url !== archive.source_url) continue;
+      if (!Number.isFinite(Date.parse(row.observed_at)) || row.observed_at > (/* @__PURE__ */ new Date()).toISOString()) continue;
+      if (wholesaleBenchmarkAge(tenderDate, /* @__PURE__ */ new Date(row.date + "T12:00:00Z")) > 5) continue;
+      const valid = (key2) => {
+        const pair = row.prices_uah_l_with_vat?.[key2];
+        return pair && [pair.wholesale, pair.retail].every((x) => typeof x === "number" && Number.isFinite(x) && x > 0 && x < 1e3) ? pair : null;
+      };
+      const gasoline = valid("a95"), diesel = valid("dt");
+      if (gasoline && diesel) return { source: "Enkorr (\u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043D\u0438\u0439 \u0440\u044F\u0434)", date: /* @__PURE__ */ new Date(row.date + "T12:00:00Z"), gasoline, diesel };
+    }
+  } catch (_) {
+  }
+  return null;
+}
 function percentDifference(a, b) {
   if (!(a > 0) || !(b > 0)) return null;
   return Math.abs(a / b - 1) * 100;
@@ -769,15 +793,19 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const needGas = fuelType === "gasoline" || fuelType === "mixed";
   const needDiesel = fuelType === "diesel" || fuelType === "mixed";
   const retailContext = await loadEuro5RetailContext(currentRetailBenchmark);
-  const [retailGas, retailDiesel, trendGas, trendGasPast, trendDiesel, trendDieselPast, enkorr] = await Promise.all([
+  const [retailGas, retailDiesel, trendGas, trendGasPast, trendDiesel, trendDieselPast, liveEnkorr, archivedEnkorr] = await Promise.all([
     needGas ? fetchRetailPrice("a95", benchmarkDate, retailContext) : null,
     needDiesel ? fetchRetailPrice("dt", benchmarkDate, retailContext) : null,
     needGas ? fetchMinfinPrice("a95", trendDate) : null,
     needGas ? fetchMinfinPrice("a95", pastDate) : null,
     needDiesel ? fetchMinfinPrice("dt", trendDate) : null,
     needDiesel ? fetchMinfinPrice("dt", pastDate) : null,
-    fetchEnkorrCurrentPrices()
+    fetchEnkorrCurrentPrices(),
+    fetchArchivedEnkorrPrices(tenderDate)
   ]);
+  const liveEligible = liveEnkorr?.date && wholesaleBenchmarkAge(tenderDate, liveEnkorr.date) !== null;
+  const enkorr = archivedEnkorr && (!liveEligible || archivedEnkorr.date >= liveEnkorr.date) ? archivedEnkorr : liveEligible ? liveEnkorr : null;
+  const currentEnkorr = liveEnkorr;
   let enkorrMinfinGas = null, enkorrMinfinDiesel = null;
   if (enkorr?.date) {
     [enkorrMinfinGas, enkorrMinfinDiesel] = await Promise.all([
@@ -798,11 +826,22 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const wholesaleDieselNoVat = dieselWholesaleParsedOk ? enkorr.diesel.wholesale / (1 + UKRAINE_STANDARD_VAT) : null;
   const gasWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleGasNoVat;
   const dieselWholesaleUsable = !!wholesaleRecentEnough && !!wholesaleDieselNoVat;
-  const currentWholesaleAge = enkorr?.date ? wholesaleBenchmarkAge(now, enkorr.date) : null;
+  const currentWholesaleAge = currentEnkorr?.date ? wholesaleBenchmarkAge(now, currentEnkorr.date) : null;
   const currentWholesaleUsable = daysOld <= 30 && currentWholesaleAge !== null && currentWholesaleAge <= 5;
+  let currentMinfinGas = null, currentMinfinDiesel = null;
+  if (currentWholesaleUsable && currentEnkorr?.date && currentEnkorr !== enkorr) {
+    [currentMinfinGas, currentMinfinDiesel] = await Promise.all([
+      needGas ? fetchMinfinPrice("a95", currentEnkorr.date) : null,
+      needDiesel ? fetchMinfinPrice("dt", currentEnkorr.date) : null
+    ]);
+  }
+  const currentGasDifference = percentDifference(currentEnkorr?.gasoline?.retail, currentMinfinGas?.priceWithVat);
+  const currentDieselDifference = percentDifference(currentEnkorr?.diesel?.retail, currentMinfinDiesel?.priceWithVat);
+  const currentGasChecked = currentEnkorr === enkorr ? gasWholesaleParsedOk : currentMinfinGas?.date === formatUaDate(currentEnkorr?.date) && currentGasDifference !== null && currentGasDifference <= crossCheckLimitPct;
+  const currentDieselChecked = currentEnkorr === enkorr ? dieselWholesaleParsedOk : currentMinfinDiesel?.date === formatUaDate(currentEnkorr?.date) && currentDieselDifference !== null && currentDieselDifference <= crossCheckLimitPct;
   const currentMarketCandidates = currentWholesaleUsable ? {
-    gasoline: gasWholesaleParsedOk ? wholesaleGasNoVat : null,
-    diesel: dieselWholesaleParsedOk ? wholesaleDieselNoVat : null
+    gasoline: currentGasChecked ? currentEnkorr.gasoline.wholesale / (1 + UKRAINE_STANDARD_VAT) : null,
+    diesel: currentDieselChecked ? currentEnkorr.diesel.wholesale / (1 + UKRAINE_STANDARD_VAT) : null
   } : null;
   const globalFormat = normalizeSupplyFormat(supplyInfo?.supplyFormat);
   const gasFormat = globalFormat === "split" ? normalizeSupplyFormat(supplyInfo?.gasolineSupplyFormat) : globalFormat;
@@ -841,7 +880,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
     fuelProducts: products,
     referenceCandidates: { policy: "fuel-quality-v1", gasoline: { retail: retailGasNoVat, bulk: gasWholesaleUsable ? wholesaleGasNoVat : null, check: retailGas?.check || null }, diesel: { retail: retailDieselNoVat, bulk: dieselWholesaleUsable ? wholesaleDieselNoVat : null, check: retailDiesel?.check || null } },
     currentMarketCandidates,
-    currentMarketReferenceDate: currentMarketCandidates ? formatUaDate(enkorr.date) : null,
+    currentMarketReferenceDate: currentMarketCandidates ? formatUaDate(currentEnkorr.date) : null,
     available: marketValue > 0,
     benchmarkType: globalFormat,
     benchmarkLabel,
