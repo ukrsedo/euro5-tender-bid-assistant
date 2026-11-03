@@ -5,7 +5,7 @@ const c=vm.createContext({document:{getElementById:get},window:{EURO5_CONFIG:{au
 vm.runInContext(fs.readFileSync('memory.js','utf8'),c);const ui=c.window.Euro5MemoryUI;
 const data={tender_id:'UA-2026-10-13-014119-a',buyer_code:'20001645',buyer_history_as_of:'2026-10-13'};
 ui.load(data,'https://test.example');ui.observe({tenderId:data.tender_id,buyerCode:data.buyer_code});await new Promise(r=>setImmediate(r));
-assert(get('memoryCredentials').classes.has('hidden'));assert(!get('sessionBar').classes.has('hidden'));assert(get('sessionName').textContent.includes('Тестувальник ЄВРО5'));
+assert(get('memoryCredentials').classes.has('hidden'));assert(get('memoryPanel').classes.has('hidden'));assert(!get('sessionBar').classes.has('hidden'));assert(get('sessionName').textContent.includes('Тестувальник ЄВРО5'));
 assert.equal(requests.filter(x=>x.url.endsWith('/status')).length,1);assert.equal(requests.filter(x=>x.url.endsWith('/observe')).length,1);
 assert(requests.every(x=>!x.opts.headers.Authorization));assert.equal(get('memoryKey').value,'');assert.equal(get('participationChoice').value,'');assert(get('participationSave').disabled);
 get('participationChoice').value='decline';get('participationChoice').oninput();assert(!get('participationSave').disabled);

@@ -52,7 +52,7 @@
       lastResult=result;advisory(reportHtml());
       const saved=await call('/memory/observe',{snapshot});if(ticket!==generation)return;
       by('memoryStatus').textContent=saved.saved?'Розрахунок збережено. Рішення щодо участі зберігається окремою кнопкою.':'Підказки отримано. Ваш доступ — лише читання.';
-    }catch(e){if(ticket!==generation)return;by('memoryStatus').textContent=e.message;advisory((lastResult?reportHtml():'')+`<p>Пам’ять: ${esc(e.message)} Поточний рейтинг розраховано без змін.</p>`);}
+    }catch(e){if(ticket!==generation)return;by('memoryStatus').textContent=e.message;if(sessionMode)by('participationStatus').textContent='Розрахунок не збережено: '+e.message;advisory((lastResult?reportHtml():'')+`<p>Пам’ять: ${esc(e.message)} Поточний рейтинг розраховано без змін.</p>`);}
   }
   function reset(){
     invalidate();decisionEpoch++;draft=0;saving=false;savedDecision=null;lastData=null;by('memoryStatus').textContent='';panel.classList.add('hidden');
@@ -62,7 +62,7 @@
     decisionState();
   }
   function load(data,url){
-    reset();lastData=data;api=url;panel.classList.remove('hidden');by('participationDecision')?.classList.remove('hidden');
+    reset();lastData=data;api=url;if(!sessionMode)panel.classList.remove('hidden');by('participationDecision')?.classList.remove('hidden');
     by('memoryStatus').textContent=connected?'Пам’ять підключена. Оберіть і збережіть рішення щодо участі.':sessionMode?'Пам’ять підключається автоматично після входу.':'Підключіть пам’ять, щоб зберегти рішення щодо участі.';
     if(!connected)by('participationStatus').textContent=sessionMode?'Пам’ять підключається автоматично після входу.':'Для збереження рішення спочатку підключіть пам’ять нижче.';
     decisionState();if(sessionMode){const epoch=decisionEpoch;void connect().then(()=>{if(epoch===decisionEpoch)void readDecision();});}else void readDecision();
@@ -75,7 +75,7 @@
   async function connect(){
     if(connected||!api)return;
     if(authPromise)return authPromise;
-    authPromise=(async()=>{try{const status=await call('/memory/status',{});connected=true;role=status.role||'';by('memoryStatus').textContent='Пам’ять підключена автоматично.';by('participationStatus').textContent=role==='reader'?'Ваш доступ — лише читання.':'';decisionState();}catch(e){by('memoryStatus').textContent=e.message;decisionState();}finally{authPromise=null;}})();
+    authPromise=(async()=>{try{const status=await call('/memory/status',{});connected=true;role=status.role||'';by('memoryStatus').textContent='Пам’ять підключена автоматично.';by('participationStatus').textContent=role==='reader'?'Ваш доступ — лише читання.':'';decisionState();}catch(e){by('memoryStatus').textContent=e.message;if(sessionMode)by('participationStatus').textContent='Пам’ять недоступна: '+e.message;decisionState();}finally{authPromise=null;}})();
     return authPromise;
   }
   by('memoryLoad').onclick=async()=>{
