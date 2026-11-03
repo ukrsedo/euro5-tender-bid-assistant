@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "source": "https://public-api.prozorro.gov.ua/api/2.5/tenders/",
+  "tenders": {
+    "UA-2026-10-28-014216-a": "69027f61342948a897a3c3b3a88af6e5",
+    "UA-2026-10-29-008698-a": "27261ce01a8c47ab99e7306f65674954"
+  }
+}

@@ -238,10 +238,21 @@ function safeProzorroFeedUrl(value) {
 
 export async function resolveTenderInternalIdFromFeed(tenderId, fetcher = fetch) {
   const target = String(tenderId || "").trim().toUpperCase();
-  let url = "https://public-api.prozorro.gov.ua/api/2.5/tenders?descending=1&limit=1000&opt_fields=tenderID,dateCreated";
-  const maxPages = 12;
+  const day = target.match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[A-Z]$/)?.[1];
+  const dayStart = day ? Date.parse(day + 'T00:00:00Z') : NaN;
+  const recent = Number.isFinite(dayStart) && dayStart-Date.now() <= 3*3600000 && Date.now()-dayStart <= 3*86400000;
 
-  for (let page = 0; page < maxPages; page++) {
+  // The feed is sorted by last modification, not tenderID or publication.
+  // For newly announced tenders start near the announcement day using the
+  // feed's date offset, then inspect the newest changes for later revisions.
+  const base='https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=1000&opt_fields=tenderID,dateCreated';
+  const feeds=recent ? [
+    {url:base+'&offset='+encodeURIComponent(new Date(dayStart-3*3600000).toISOString().slice(0,19)),maxPages:40,bounded:true},
+    {url:base+'&descending=1',maxPages:12,bounded:false}
+  ] : [{url:base+'&descending=1',maxPages:12,bounded:false}];
+  for (const feed of feeds) {
+   let url=feed.url;
+   for (let page=0;page<feed.maxPages;page++) {
     const res = await fetcher(url, {
       headers: PROZORRO_HEADERS,
       redirect: "follow"
@@ -275,11 +286,27 @@ export async function resolveTenderInternalIdFromFeed(tenderId, fetcher = fetch)
     }
 
     const next = safeProzorroFeedUrl(payload?.next_page?.uri);
-    if (!next) break;
+    if (!next || !rows.length) break;
+    if (feed.bounded && Number.parseFloat(new URL(next).searchParams.get('offset')) > (dayStart+2*86400000)/1000) break;
     url = next;
+   }
   }
 
-  throw new Error(`Тендер ${tenderId} не знайдено у резервному пошуку серед останніх змін Public API`);
+  throw new Error(`Тендер ${tenderId} не знайдено у межах резервного пошуку Public API; це не підтверджує відсутність тендера`);
+}
+
+async function resolveTenderInternalIdFromVerifiedIndex(tenderId,fetcher=fetch){
+  const url='https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/prozorro-verified-ids.json';
+  try{
+    const response=await fetcher(url,{signal:AbortSignal.timeout(5000)});
+    if(!response.ok)return null;
+    const index=await response.json();
+    if(index.schema_version!==1||index.source!=='https://public-api.prozorro.gov.ua/api/2.5/tenders/')return null;
+    const internalId=index.tenders?.[tenderId];
+    if(typeof internalId==='string'&&/^[0-9a-f]{32}$/i.test(internalId))
+      return {internalId,summaryUrl:null,feedUrl:null,lookupSource:'verified-index'};
+  }catch(_){}
+  return null;
 }
 
 export async function resolveTenderInternalId(tenderId, fetcher = fetch) {
@@ -318,6 +345,8 @@ export async function resolveTenderInternalId(tenderId, fetcher = fetch) {
     summaryFailure = error?.message || "помилка з'єднання";
   }
 
+  const verified=await resolveTenderInternalIdFromVerifiedIndex(tenderId,fetcher);
+  if(verified)return verified;
   try {
     return await resolveTenderInternalIdFromFeed(tenderId, fetcher);
   } catch (fallbackError) {
@@ -347,6 +376,9 @@ async function fetchTenderData(tenderId) {
   const data = payload?.data || payload;
   if (!data || typeof data !== "object") {
     throw new Error("Prozorro повернув порожні або некоректні дані тендера.");
+  }
+  if (data.tenderID !== tenderId) {
+    throw new Error("Внутрішній ID Prozorro не відповідає запитаному номеру тендера.");
   }
 
   return {
