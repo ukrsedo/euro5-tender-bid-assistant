@@ -1,0 +1,72 @@
+name: Validate 2026-11-09 fuel tender model candidate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/validate-fuel-model-2026-11-09.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install frozen original model dependencies
+        run: python -m pip install -r scripts/requirements-model.txt
+      - name: Retrieve verified 9 November BI source snapshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/euro5-stage /tmp/model-code
+          gh run download 42794248724 -R ukrsedo/euro5-tender-bid-assistant -n euro5-fuel-tender-snapshot-2026-11-09 -D /tmp/euro5-stage
+          test -s /tmp/euro5-stage/bi-fuel-all-2026-11-09.jsonl.gz
+          test -s /tmp/euro5-stage/bi-composition-2026-11-09.jsonl.gz
+      - name: Preserve conservative fuel classification without inventing API evidence
+        run: |
+          touch /tmp/euro5-stage/no-api-evidence.jsonl
+          cp scripts/enrich-fuel-training.py scripts/fuel_filter.py scripts/retrain-model.py /tmp/model-code/
+          sed -i "s/CUTOFF='2026-10-22'/CUTOFF='2026-11-09'/g" /tmp/model-code/fuel_filter.py
+          sed -i -e "s/CUTOFF='2026-10-22'/CUTOFF='2026-11-09'/g" -e "s/2026-10-22/2026-11-09/g" -e "s/2026-10-23/2026-11-10/g" /tmp/model-code/retrain-model.py
+          python /tmp/model-code/enrich-fuel-training.py /tmp/euro5-stage/bi-fuel-all-2026-11-09.jsonl.gz /tmp/euro5-stage/bi-composition-2026-11-09.jsonl.gz /tmp/euro5-stage/no-api-evidence.jsonl /tmp/euro5-stage/fuel-training-2026-11-09.jsonl.gz
+      - name: Train candidate without changing the live model
+        run: python -u /tmp/model-code/retrain-model.py /tmp/euro5-stage/fuel-training-2026-11-09.jsonl.gz /tmp/euro5-stage/model-candidate
+      - name: Compare to current production model and independently gate evidence quality
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          current=json.loads(pathlib.Path('models/validation-2026-10-22.json').read_text())
+          p=pathlib.Path('/tmp/euro5-stage/model-candidate')
+          new=json.loads((p/'validation-2026-11-09.json').read_text())
+          model=json.loads((p/'model-2026-11-09.json').read_text())
+          report={'old_raw_lots':current['raw_lots'],'new_raw_lots':new['raw_lots'],
+            'old_eligible':current['eligible_completed_lots'],'new_eligible':new['eligible_completed_lots'],
+            'old_source_update':current['source_update'],'new_source_update':new['source_update'],
+            'old_accuracy':current['test']['accuracy'],'new_accuracy':new['test']['accuracy'],
+            'new_brier':new['test']['brier'],'new_auc':new['test']['auc'],
+            'fuel_basis':new['fuel_classification_basis'],'model_version':model['version'],
+            'production_changed':False,
+            'limitations':'New snapshot has no saved API item-level evidence. Existing v2 model incorporated 172 API parents. This candidate is NOT equivalent to a full refreshed v2 filter.'}
+          if new['raw_lots']<current['raw_lots'] or model['cutoff']!='2026-11-09' or not any('09.11.2026' in x for x in new['source_update']):
+            raise RuntimeError('Candidate failed source recency and integrity conditions')
+          (p/'refresh-comparison.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload audited candidate, not deploy
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: euro5-fuel-model-candidate-2026-11-09
+          path: |
+            /tmp/euro5-stage/model-candidate/model-2026-11-09.json
+            /tmp/euro5-stage/model-candidate/validation-2026-11-09.json
+            /tmp/euro5-stage/model-candidate/refresh-comparison.json
+            /tmp/euro5-stage/fuel-training-2026-11-09.audit.json
+          retention-days: 30
