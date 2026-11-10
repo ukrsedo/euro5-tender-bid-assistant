@@ -91,6 +91,21 @@
           "retail": 104.54
         }
       }
+    },
+    {
+      "date": "2026-11-10",
+      "observed_at": "2026-11-10T15:40:12.283Z",
+      "source_url": "https://enkorr.ua/",
+      "prices_uah_l_with_vat": {
+        "a95": {
+          "wholesale": 84.69,
+          "retail": 89.02
+        },
+        "dt": {
+          "wholesale": 94.85,
+          "retail": 104.42
+        }
+      }
     }
   ]
 }
