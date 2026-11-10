@@ -1,0 +1,94 @@
+name: Reconcile November 9 tender fuel evidence and stage complete model
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/reconcile-fuel-model-2026-11-09.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned model dependencies
+        run: python -m pip install -r scripts/requirements-model.txt
+      - name: Retrieve validated November 9 raw and item snapshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/euro5-refresh /tmp/euro5-model-code
+          gh run download 42794248724 -R ukrsedo/euro5-tender-bid-assistant -n euro5-fuel-tender-snapshot-2026-11-09 -D /tmp/euro5-refresh
+          test -s /tmp/euro5-refresh/bi-fuel-all-2026-11-09.jsonl.gz
+          test -s /tmp/euro5-refresh/bi-composition-2026-11-09.jsonl.gz
+      - name: Recover previously verified 2022–2026 API item evidence, fail closed on timestamps
+        run: python -u scripts/restore-fuel-api-evidence.py /tmp/euro5-refresh/api-item-evidence-2026-11-09.jsonl
+      - name: Filter only eligible as-of-9-November API evidence
+        run: |
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('/tmp/euro5-refresh')
+          result={}
+          for line in (p/'api-item-evidence-2026-11-09.jsonl').read_text().splitlines():
+            row=json.loads(line)
+            if row.get('as_of_eligible'):
+              result[row['tender_id']]=row
+          (p/'api-evidence-verified.jsonl').write_text(''.join(json.dumps(v,ensure_ascii=False)+'\n' for v in result.values()))
+          print('Verified historical API parent records:',len(result),flush=True)
+          PY
+      - name: Reconstruct consistent 9 November fuel classification
+        run: |
+          cp scripts/enrich-fuel-training.py scripts/fuel_filter.py scripts/retrain-model.py /tmp/euro5-model-code/
+          sed -i "s/CUTOFF='2026-10-22'/CUTOFF='2026-11-09'/g" /tmp/euro5-model-code/fuel_filter.py
+          sed -i -e "s/CUTOFF='2026-10-22'/CUTOFF='2026-11-09'/g" -e "s/2026-10-22/2026-11-09/g" -e "s/2026-10-23/2026-11-10/g" /tmp/euro5-model-code/retrain-model.py
+          python /tmp/euro5-model-code/enrich-fuel-training.py /tmp/euro5-refresh/bi-fuel-all-2026-11-09.jsonl.gz /tmp/euro5-refresh/bi-composition-2026-11-09.jsonl.gz /tmp/euro5-refresh/api-evidence-verified.jsonl /tmp/euro5-refresh/fuel-training-2026-11-09.jsonl.gz
+      - name: Refit competition, buyer history and price model as candidate
+        run: python -u /tmp/euro5-model-code/retrain-model.py /tmp/euro5-refresh/fuel-training-2026-11-09.jsonl.gz /tmp/euro5-refresh/model
+      - name: Create auditable reconciliation and deployment gate
+        run: |
+          python - <<'PY'
+          import pathlib,json
+          root=pathlib.Path('/tmp/euro5-refresh')
+          audit=json.loads((root/'api-item-evidence-2026-11-09.audit.json').read_text())
+          before=json.loads(pathlib.Path('models/validation-2026-10-22.json').read_text())
+          after=json.loads((root/'model/validation-2026-11-09.json').read_text())
+          model=json.loads((root/'model/model-2026-11-09.json').read_text())
+          issues=[]
+          if audit['unverified']:issues.append('Missing auditable as-of evidence for '+str(len(audit['unverified']))+' previously checked parents')
+          if after['source_update']!=['09.11.2026 21:00:31']:issues.append('Unexpected BI source update timestamp')
+          if after['eligible_completed_lots']<before['eligible_completed_lots']:issues.append('Eligible sample unexpectedly shrank')
+          if not after['fuel_classification_basis'].get('api_items'):issues.append('No recovered verified API item evidence')
+          if model['cutoff']!='2026-11-09':issues.append('Model trained on wrong cutoff')
+          report={'cutoff':'2026-11-09','previous_eligible_completed_lots':before['eligible_completed_lots'],
+             'candidate_eligible_completed_lots':after['eligible_completed_lots'],
+             'api_parent_evidence_recovered':audit['verified_asof'],
+             'api_parent_evidence_missing':len(audit['unverified']),
+             'new_accuracy':after['test']['accuracy'],'new_brier':after['test']['brier'],
+             'new_auc':after['test']['auc'],'candidate_version':model['version'],
+             'deployment_gate':'BLOCKED' if issues else 'EVIDENCE_CHECK_PASSED_REQUIRES_DEPLOYMENT',
+             'blockers':issues,'production_changed':False,
+             'note':'Old October training outcomes are NOT overwritten; this is an independent 9 November BI snapshot. Retrospective API evidence is accepted only when last modification is <= cutoff.'}
+          (root/'model/reconciliation-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload evidence and candidate, never deploy an unverified model
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: euro5-reconciled-fuel-model-2026-11-09
+          path: |
+            /tmp/euro5-refresh/api-item-evidence-2026-11-09.jsonl
+            /tmp/euro5-refresh/api-item-evidence-2026-11-09.audit.json
+            /tmp/euro5-refresh/fuel-training-2026-11-09.audit.json
+            /tmp/euro5-refresh/model/model-2026-11-09.json
+            /tmp/euro5-refresh/model/validation-2026-11-09.json
+            /tmp/euro5-refresh/model/reconciliation-report.json
+          retention-days: 30
