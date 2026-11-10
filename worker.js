@@ -469,14 +469,14 @@ function tenderFuelProducts(data){
       ...(i.additionalClassifications||[]).map(c=>c.description||''),
       ...(i.characteristics||[]).map(c=>[c.name,c.value,c.value?.name,c.values?.join?.(' ')].filter(v=>typeof v==='string'||typeof v==='number').join(' '))]
       .filter(Boolean).join(' ');
-    const octane=[...evidence.matchAll(/(?:октанов(?:е|ое)\\s+число|octane\\s+(?:number|rating))\\s*[:=–-]?\\s*([0-9]{2,3})/gi)].map(x=>x[1]);
-    const named=[...evidence.matchAll(/(?:[аa](?:[іиi])?\\s*[-–]?\\s*|бензин\\s*)9([2458])(?!\\d)/gi)].map(x=>'9'+x[1]);
+    const octane=[...evidence.matchAll(/(?:октанов(?:е|ое)\s+число|octane\s+(?:number|rating))\s*[:=–-]?\s*([0-9]{2,3})/gi)].map(x=>x[1]);
+    const named=[...evidence.matchAll(/(?:[аa](?:[іиi])?\s*[-–]?\s*|бензин\s*)9([2458])(?!\d)/gi)].map(x=>'9'+x[1]);
     const all=[...new Set([...octane,...named])];
     return all.length===1?all[0]:null;
   }):[];
   // Tender title is a fallback only for a single gasoline line, never for mixed grades.
   const titleGrades=family==='gasoline'&&items.length===1
-    ?[...new Set([...String(data?.title||'').matchAll(/(?:[аa](?:[іиi])?\\s*[-–]?\\s*|бензин\\s*)9([2458])(?!\\d)/gi)].map(x=>'9'+x[1]))]
+    ?[...new Set([...String(data?.title||'').matchAll(/(?:[аa](?:[іиi])?\s*[-–]?\s*|бензин\s*)9([2458])(?!\d)/gi)].map(x=>'9'+x[1]))]
     :[];
   const itemGrades=[...new Set(indicativeGrades.filter(Boolean))];
   const indicativeGrade=family==='gasoline'&&items.length===1&&
