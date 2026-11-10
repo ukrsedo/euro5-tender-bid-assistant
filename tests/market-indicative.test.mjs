@@ -103,3 +103,43 @@ test('a current wholesale quote never substitutes for retail supply',()=>{
   ctx.lastExtraction.market_reference_candidates={policy:'fuel-quality-v1',gasoline:{retail:null,bulk:null},diesel:{retail:null,bulk:null}};
   assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
 });
+
+test('regression: mixed voucher tender shows indicative market price before selecting either fuel grade',()=>{
+  const previous=ctx.lastExtraction.fuel_products.gasoline;
+  const previousTitle=ctx.lastExtraction.tender_title;
+  const previousDay=ctx.lastExtraction.tender_announcement_date;
+  const previousCandidates=ctx.lastExtraction.market_reference_candidates;
+  try{
+    ctx.lastExtraction.tender_title='09130000-9 Нафта і дистиляти (Дизельне паливо (талони), бензин «А-95» (талони))';
+    ctx.lastExtraction.tender_announcement_date='05.11.2026';
+    ctx.lastExtraction.fuel_products.gasoline={grade:null,tier:'unspecified',items:[{grade:null,tier:'unspecified',source_text:'Бензин'}]};
+    ctx.lastExtraction.market_reference_candidates={policy:'fuel-quality-v1',
+      gasoline:{retail:89.84/1.2,bulk:null},diesel:{retail:104.64/1.2,bulk:null}};
+    const result=displayMarketComparison(1379300,7000,9400,'mixed',{
+      supply_format:'retail',gasoline_product:'unknown',diesel_product:'unknown'
+    });
+    assert.equal(result.indicative,true);
+    assert.ok(Math.abs(result.marketValue-1343746.6666666667)<0.01);
+    assert.ok(Math.abs(result.gap-2.645836)<0.001);
+    assert.equal(marketComparison(1379300,7000,9400,'mixed',{
+      supply_format:'retail',gasoline_product:'unknown',diesel_product:'unknown'
+    }),null,'indicative value must not become a verified scoring benchmark');
+  }finally{
+    ctx.lastExtraction.fuel_products.gasoline=previous;
+    ctx.lastExtraction.tender_title=previousTitle;
+    ctx.lastExtraction.tender_announcement_date=previousDay;
+    ctx.lastExtraction.market_reference_candidates=previousCandidates;
+  }
+});
+test('title with conflicting grades must not create indicative standard price',()=>{
+ const previous=ctx.lastExtraction.fuel_products.gasoline;
+ const previousTitle=ctx.lastExtraction.tender_title;
+ try{
+   ctx.lastExtraction.fuel_products.gasoline={grade:null,tier:'unspecified',items:[{grade:null,tier:'unspecified'}]};
+   ctx.lastExtraction.tender_title='Бензин А-92 та бензин А-95 (талони)';
+   assert.equal(displayMarketComparison(1140,10,10,'mixed',data),null);
+ }finally{
+   ctx.lastExtraction.fuel_products.gasoline=previous;
+   ctx.lastExtraction.tender_title=previousTitle;
+ }
+});
