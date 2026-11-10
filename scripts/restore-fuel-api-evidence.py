@@ -2,7 +2,7 @@
 Snapshot cutoff is fixed at 2026-11-09; later modified payloads are NOT as-of evidence.
 Artifact output is for retraining only and never automatically deploys a model.
 """
-import sys,json,datetime,urllib.request,urllib.error,time,pathlib,collections,random
+import sys,json,datetime,urllib.request,urllib.error,time,pathlib,collections,zoneinfo
 root=pathlib.Path(__file__).resolve().parents[1]
 audit=json.loads((root/'models/filter-v2-audit.json').read_text())
 cutoff='2026-11-09'
@@ -24,7 +24,7 @@ def get(url):
  last=time.monotonic()
  with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=25) as res:return json.load(res)
 def check_date(d):
- try: return datetime.datetime.fromisoformat(d.replace('Z','+00:00')).astimezone(datetime.timezone(datetime.timedelta(hours=2))).date().isoformat()
+ try: return datetime.datetime.fromisoformat(d.replace('Z','+00:00')).astimezone(zoneinfo.ZoneInfo('Europe/Kyiv')).date().isoformat()
  except:return None
 with out.open('a',encoding='utf8') as f:
  for i,id in enumerate(sorted(ids)):
