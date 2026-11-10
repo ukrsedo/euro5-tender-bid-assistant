@@ -185,4 +185,6 @@ test('UI confirmation refreshes Step 2 market comparison',()=>{
   assert.ok(source.includes('product_selection_confirmed:true'));
   assert.ok(source.includes("document.getElementById('reviewState').classList.add('accepted');\n  renderReviewMarket();"));
   assert.ok(source.includes('confirmedData?.product_selection_confirmed'));
+  assert.ok(source.includes('const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,confirmedData);'),
+    'Step 3 must use the accepted selection rather than the unconfirmed form object');
 });
