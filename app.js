@@ -203,12 +203,15 @@ function productLabel(family,d=activeTenderData()){
  return labels[selectedProduct(family,d)]||'не підтверджено';
 }
 function standardProductConfirmed(family,d=activeTenderData()){
+  if(!d?.product_selection_confirmed)return false;
   if(!lastExtraction?.market_reference_candidates||lastExtraction.market_reference_candidates.policy!=='fuel-quality-v1')return false;
   const selection=selectedProduct(family,d),profile=lastExtraction?.fuel_products?.[family];
   if(!profile?.items?.length)return false;
   if(profile.tier==='premium'||profile.tier==='ambiguous'||standardProductContradicted(family,d))return false;
-  if(family==='gasoline')return selection==='a95_regular'&&profile.grade==='95'&&profile.items.every(p=>p.grade==='95');
-  return selection==='diesel_regular'&&['unspecified','summer'].includes(profile.season);
+  // User confirmation upgrades an evidence-supported indicative standard benchmark
+  // to a confirmed selection. It does not waive contradictory grade/season evidence.
+  if(selection!==(family==='gasoline'?'a95_regular':'diesel_regular'))return false;
+  return indicativeStandardProductSupported(family,d);
 }
 // Lack of server-side quality evidence is not the same as evidence of a
 // conflicting product. Permit manual review in that case, but never enable
@@ -356,6 +359,19 @@ function marketGapText(gap,referenceContext='announcement'){
 function renderReviewMarket(){
   const box=document.getElementById('marketComparisonReview');
   const v=reviewValues();
+  // Only use the accepted selection while the visible pricing inputs still match it.
+  if(confirmedData?.product_selection_confirmed&&
+      v.fuelType===confirmedData.fuel_type&&
+      v.gasoline_product===confirmedData.gasoline_product&&
+      v.diesel_product===confirmedData.diesel_product&&
+      v.supplyFormat===confirmedData.supply_format&&
+      v.gasolineSupplyFormat===confirmedData.gasoline_supply_format&&
+      v.dieselSupplyFormat===confirmedData.diesel_supply_format&&
+      v.expectedValue===confirmedData.expected_value_uah&&
+      v.gasolineVolume===confirmedData.gasoline_volume_l&&
+      v.dieselVolume===confirmedData.diesel_volume_l){
+    v.product_selection_confirmed=true;
+  }
   const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
   if(!cmp){
     box.classList.remove('hidden');
@@ -569,6 +585,7 @@ acceptBtn.addEventListener('click',()=>{
 
   confirmedData={
     ...lastExtraction,
+    product_selection_confirmed:true,
     fuel_type:v.fuelType,
     gasoline_product:v.gasoline_product,
     diesel_product:v.diesel_product,
@@ -602,6 +619,7 @@ acceptBtn.addEventListener('click',()=>{
   validation.classList.remove('error-text');
   document.getElementById('reviewState').textContent='ПІДТВЕРДЖЕНО';
   document.getElementById('reviewState').classList.add('accepted');
+  renderReviewMarket();
 
   document.getElementById('fuelType').value=v.fuelType;
   setGroupedNumber(document.getElementById('expectedValue'),v.expectedValue);
