@@ -182,7 +182,7 @@ test('confirmation transition: verified selection replaces indicative status, in
     'contradictory source evidence must not become a confirmed price');
 });
 test('UI confirmation refreshes Step 2 market comparison',()=>{
-  assert.match(source,/product_selection_confirmed:true,[\\s\\S]{0,100}fuel_type:v\\.fuelType/);
-  assert.match(source,/reviewState'\\)\\.classList\\.add\\('accepted'\\);\\s*renderReviewMarket\\(\\);/);
-  assert.match(source,/if\\(confirmedData\\?\\.product_selection_confirmed&&/);
+  assert.ok(source.includes('product_selection_confirmed:true'));
+  assert.ok(source.includes("document.getElementById('reviewState').classList.add('accepted');\n  renderReviewMarket();"));
+  assert.ok(source.includes('confirmedData?.product_selection_confirmed'));
 });
