@@ -1,0 +1,71 @@
+name: Publish reconciled November 9 fuel tender model
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/publish-model-2026-11-09.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-euro5-model-asof-20261109
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch evidence-verified model, not preliminary model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/verified-euro5-model
+          gh run download 42796095795 -R ukrsedo/euro5-tender-bid-assistant -n euro5-reconciled-fuel-model-2026-11-09 -D /tmp/verified-euro5-model
+          ls -lah /tmp/verified-euro5-model
+      - name: Install dated model preserving October 22 historical forecast
+        run: python scripts/install-model-2026-11-09.py /tmp/verified-euro5-model
+      - name: Check preserved previous versions and source integrity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          w=Path('worker.js').read_text()
+          a=Path('app.js').read_text()
+          assert 'const COMPETITION_REFRESH_NOV9 = {"version":"2026-11-09-items-v2"' in w
+          assert 'const COMPETITION_REFRESH = {"version":"2026-10-22-items-v2"' in w
+          assert w.index('if(day>=COMPETITION_REFRESH_NOV9.valid_from)')<w.index('if(day>=COMPETITION_REFRESH.valid_from)')
+          assert "if(version==='2026-11-09-items-v2') return MODEL_REFRESH_NOV9;" in a
+          assert "if(version==='2026-10-22-items-v2') return MODEL_REFRESH;" in a
+          assert '09.11.2026' in Path('MODEL_METHOD.md').read_text()
+          assert 'app.js?v=20261110-fuel-model-asof-nov9' in Path('index.html').read_text()
+          print('New and historical models have separate date boundaries')
+          PY
+      - name: Build Cloudflare workers and run regression suite
+        run: |
+          node --check app.js
+          npx --yes esbuild@0.25.12 worker.js --bundle --format=esm --platform=browser --external:cloudflare:workers --target=es2022 --outfile=/tmp/euro5-analysis-reconciled.js
+          npx --yes esbuild@0.25.12 access-worker.js --bundle --format=esm --platform=browser --external:cloudflare:workers --target=es2022 --outfile=/tmp/euro5-protected-reconciled.js
+          node --check /tmp/euro5-analysis-reconciled.js
+          node --check /tmp/euro5-protected-reconciled.js
+          node --test tests/market-indicative.test.mjs tests/current-market.test.mjs tests/enkorr-archive.test.mjs tests/competition-panel.test.mjs tests/access-parity.test.mjs tests/prozorro-lookup-fallback.test.mjs
+      - name: Commit the verified versioned dataset into main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add worker.js app.js index.html MODEL_METHOD.md
+          git diff --cached --quiet && { echo 'No model changes'; exit 1; }
+          git commit -m 'Release validated November 9 fuel competition and discount model [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
