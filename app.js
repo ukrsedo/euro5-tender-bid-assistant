@@ -638,7 +638,8 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('logisticsAmount').textContent='—';
   document.getElementById('fullCost').textContent='—';
   document.getElementById('minBid').textContent='—';
-  const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
+  // Step 3 must use the accepted product selection, not the pre-confirmation form snapshot.
+  const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,confirmedData);
   document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
   document.getElementById('marketComparisonNote').textContent=cmp?(cmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext)+' '+(cmp.referenceContext==='current'?cmp.source:''):'Ринкове порівняння недоступне.';
   document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
