@@ -1,0 +1,72 @@
+name: Stage fuel tender data snapshot as of 2026-11-09
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/refresh-fuel-tenders-2026-11-09.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install original exporter dependency
+        run: python -m pip install websockets==16.0
+      - name: Set the precise 9 November cutoff in staging copies
+        run: |
+          mkdir -p /tmp/euro5-staging
+          cp scripts/export-training-bi.py /tmp/euro5-staging/export-training-bi.py
+          cp scripts/export-fuel-composition-bi.py /tmp/euro5-staging/export-fuel-composition-bi.py
+          sed -i 's/datetime.date(2026,10,22)/datetime.date(2026,11,9)/g' /tmp/euro5-staging/export-training-bi.py /tmp/euro5-staging/export-fuel-composition-bi.py
+          grep -q 'datetime.date(2026,11,9)' /tmp/euro5-staging/export-training-bi.py
+          grep -q 'datetime.date(2026,11,9)' /tmp/euro5-staging/export-fuel-composition-bi.py
+      - name: Export live public Prozorro BI lots through 9 November
+        run: python -u /tmp/euro5-staging/export-training-bi.py /tmp/euro5-staging/bi-fuel-all-2026-11-09.jsonl.gz
+      - name: Export dated item composition from the same BI application
+        run: python -u /tmp/euro5-staging/export-fuel-composition-bi.py /tmp/euro5-staging/bi-composition-2026-11-09.jsonl.gz
+      - name: Validate snapshot dates, identity and counts
+        run: |
+          python - <<'PY'
+          import gzip, json, datetime, pathlib, collections
+          p=pathlib.Path('/tmp/euro5-staging')
+          cutoff=datetime.date(2026,11,9)
+          seen=set(); dates=set(); n=0; before=0; latest=None
+          for line in gzip.open(p/'bi-fuel-all-2026-11-09.jsonl.gz','rt'):
+              row=json.loads(line); n+=1
+              lot=row['Ідентифікатор лота']['text']
+              if lot in seen: raise ValueError('Duplicate tender lot ID: '+str(lot))
+              seen.add(lot)
+              dates.add(row['Дата/час початку останнього оновлення даних у додатку']['text'])
+              dt=row['Дата']['num']
+              if isinstance(dt,(int,float)) and dt>-1e8:
+                  day=datetime.date(1899,12,30)+datetime.timedelta(days=int(dt))
+                  if day>cutoff: raise ValueError('Future tender detected: '+lot)
+                  if day>datetime.date(2026,10,22):before+=1
+                  latest=max(latest or day,day)
+          if n<20000 or before<1 or not dates: raise ValueError('Missing or stale BI refresh: '+str((n,before,dates)))
+          composition_count=sum(1 for _ in gzip.open(p/'bi-composition-2026-11-09.jsonl.gz','rt'))
+          report={'requested_cutoff':'2026-11-09','raw_lots':n,'lot_ids_after_previous_cutoff':before,
+                  'latest_announcement':str(latest),'composition_rows':composition_count,'bi_snapshot_update_dates':sorted(dates),
+                  'status':'STAGED_ONLY; production model not replaced'}
+          if composition_count!=n: raise ValueError('Composition size differs: '+str((composition_count,n)))
+          (p/'snapshot-audit.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload dated source evidence and audit (no production deployment)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: euro5-fuel-tender-snapshot-2026-11-09
+          path: |
+            /tmp/euro5-staging/bi-fuel-all-2026-11-09.jsonl.gz
+            /tmp/euro5-staging/bi-composition-2026-11-09.jsonl.gz
+            /tmp/euro5-staging/snapshot-audit.json
+          retention-days: 30
