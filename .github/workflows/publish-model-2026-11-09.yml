@@ -36,7 +36,7 @@ jobs:
           gh run download 42796095795 -R ukrsedo/euro5-tender-bid-assistant -n euro5-reconciled-fuel-model-2026-11-09 -D /tmp/verified-euro5-model
           ls -lah /tmp/verified-euro5-model
       - name: Install dated model preserving October 22 historical forecast
-        run: python scripts/install-model-2026-11-09.py /tmp/verified-euro5-model
+        run: python scripts/install-model-2026-11-09.py /tmp/verified-euro5-model/model
       - name: Check preserved previous versions and source integrity
         run: |
           python - <<'PY'
