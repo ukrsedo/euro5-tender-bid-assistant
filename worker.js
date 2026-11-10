@@ -460,9 +460,30 @@ function tenderFuelProducts(data){
  const result={};
  for(const family of ['gasoline','diesel']){
   const items=(data?.items||[]).filter(i=>classifyFuelItem(i)===family);
+  // Keep strict product verification based on item descriptions unchanged.
+  // Catalogue/structured evidence is supplied separately for indicative display only.
   const profiles=items.map(i=>fuelProductProfile(i.description,family));
   const grades=[...new Set(profiles.flatMap(p=>p.grades))],tiers=[...new Set(profiles.map(p=>p.tier))],seasons=[...new Set(profiles.map(p=>p.season))];
-  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,requires_confirmation:true};
+  const indicativeGrades=family==='gasoline'?items.map(i=>{
+    const evidence=[i.description,i.classification?.description,
+      ...(i.additionalClassifications||[]).map(c=>c.description||''),
+      ...(i.characteristics||[]).map(c=>[c.name,c.value,c.value?.name,c.values?.join?.(' ')].filter(v=>typeof v==='string'||typeof v==='number').join(' '))]
+      .filter(Boolean).join(' ');
+    const octane=[...evidence.matchAll(/(?:октанов(?:е|ое)\\s+число|octane\\s+(?:number|rating))\\s*[:=–-]?\\s*([0-9]{2,3})/gi)].map(x=>x[1]);
+    const named=[...evidence.matchAll(/(?:[аa](?:[іиi])?\\s*[-–]?\\s*|бензин\\s*)9([2458])(?!\\d)/gi)].map(x=>'9'+x[1]);
+    const all=[...new Set([...octane,...named])];
+    return all.length===1?all[0]:null;
+  }):[];
+  // Tender title is a fallback only for a single gasoline line, never for mixed grades.
+  const titleGrades=family==='gasoline'&&items.length===1
+    ?[...new Set([...String(data?.title||'').matchAll(/(?:[аa](?:[іиi])?\\s*[-–]?\\s*|бензин\\s*)9([2458])(?!\\d)/gi)].map(x=>'9'+x[1]))]
+    :[];
+  const itemGrades=[...new Set(indicativeGrades.filter(Boolean))];
+  const indicativeGrade=family==='gasoline'&&items.length===1&&
+    (itemGrades.length===1||(!itemGrades.length&&titleGrades.length===1))&&
+    (!titleGrades.length||titleGrades.length===1&&(!itemGrades.length||itemGrades[0]===titleGrades[0]))
+      ?(itemGrades[0]||titleGrades[0]):null;
+  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,indicative_grade:indicativeGrade,requires_confirmation:true};
  }
  return result;
 }
