@@ -143,3 +143,46 @@ test('title with conflicting grades must not create indicative standard price',(
    ctx.lastExtraction.tender_title=previousTitle;
  }
 });
+
+test('confirmation transition: verified selection replaces indicative status, including in Step 2',()=>{
+  const confirmedCode=between('function standardProductConfirmed(','// Lack of server-side quality evidence');
+  const evidenceCtx={
+    lastExtraction:{...ctx.lastExtraction,
+      tender_title:'09130000-9 Дизельне паливо (талони), бензин А-95 (талони)',
+      tender_announcement_date:'05.11.2026',
+      fuel_products:{
+        gasoline:{grade:null,tier:'unspecified',items:[{grade:null,tier:'unspecified'}]},
+        diesel:{season:'unspecified',tier:'unspecified',items:[{season:'unspecified',tier:'unspecified'}]}
+      },
+      market_reference_candidates:{policy:'fuel-quality-v1',
+        gasoline:{retail:50,bulk:null},diesel:{retail:45,bulk:null}}
+    },
+    selectedProduct:(fuel,d)=>d[fuel+'_product']||'unknown',
+    standardProductContradicted:()=>false,
+    activeTenderData:()=>({}),
+    benchmarkDescription:()=> 'Minfin',
+  };
+  const start=between('function indicativeStandardProductSupported(','function benchmarkDescription(');
+  const calc=between('function marketComparison(','function marketGapText(');
+  const {marketComparison:compare,displayMarketComparison:display}=vm.runInNewContext(
+    confirmedCode+start+calc+';({marketComparison,displayMarketComparison})',evidenceCtx);
+  const selections={supply_format:'retail',gasoline_product:'a95_regular',diesel_product:'diesel_regular'};
+  const before=display(1140,10,10,'mixed',selections);
+  assert.equal(before.indicative,true,'before clicking confirmation price is indicative');
+  assert.equal(compare(1140,10,10,'mixed',selections),null,'unconfirmed values are excluded from scoring');
+  const accepted={...selections,product_selection_confirmed:true};
+  const after=display(1140,10,10,'mixed',accepted);
+  assert.equal(after.indicative,false,'after confirmation the approximate label disappears');
+  assert.equal(after.marketValue,950);
+  assert.ok(compare(1140,10,10,'mixed',accepted),'confirmed price is available to scoring');
+  assert.equal(display(1140,10,10,'mixed',{...accepted,gasoline_product:'unknown'}).indicative,true,
+    'unconfirmed dropdown stays indicative');
+  evidenceCtx.standardProductContradicted=()=>true;
+  assert.equal(display(1140,10,10,'mixed',accepted),null,
+    'contradictory source evidence must not become a confirmed price');
+});
+test('UI confirmation refreshes Step 2 market comparison',()=>{
+  assert.match(source,/product_selection_confirmed:true,[\\s\\S]{0,100}fuel_type:v\\.fuelType/);
+  assert.match(source,/reviewState'\\)\\.classList\\.add\\('accepted'\\);\\s*renderReviewMarket\\(\\);/);
+  assert.match(source,/if\\(confirmedData\\?\\.product_selection_confirmed&&/);
+});
