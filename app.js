@@ -609,8 +609,9 @@ acceptBtn.addEventListener('click',()=>{
   };
 
   document.getElementById('confirmedFuelProducts').textContent='Підтверджений продукт: бензин — '+productLabel('gasoline',confirmedData)+'; дизель — '+productLabel('diesel',confirmedData)+'.';
+  const acceptedReview={...v,product_selection_confirmed:true};
   const unverified=['gasoline','diesel'].filter(family=>(v.fuelType===family||v.fuelType==='mixed')&&
-    ['a95_regular','diesel_regular'].includes(selectedProduct(family,v))&&!standardProductConfirmed(family,v));
+    ['a95_regular','diesel_regular'].includes(selectedProduct(family,acceptedReview))&&!standardProductConfirmed(family,acceptedReview));
   const contradicted=unverified.filter(family=>standardProductContradicted(family,v));
   validation.textContent=unverified.length
     ? 'Показники передано в калькулятор. '+(contradicted.length?'Увага: автоматична класифікація виявила можливу невідповідність марки або сезонності. ':'')+
