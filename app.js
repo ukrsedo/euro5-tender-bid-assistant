@@ -245,7 +245,14 @@ function indicativeStandardProductSupported(fuel,d){
   const checked={...d,[fuel==='gasoline'?'gasoline_product':'diesel_product']:standard};
   if(standardProductContradicted(fuel,checked))return false;
   if(fuel==='gasoline'){
-    return profile.grade==='95'&&profile.items.every(item=>item.grade==='95');
+    // Indicative only: explicit A-95 evidence may come from title or structured data.
+    // A deployed older API might not expose indicative_grade yet.
+    const title=String(lastExtraction?.tender_title||'');
+    const titleGrades=[...new Set([...title.matchAll(/(?:[аa](?:[іиi])?\\s*[-–]?\\s*|бензин\\s*)9([2458])(?!\\d)/gi)].map(x=>'9'+x[1]))];
+    const titleGrade=profile.items.length===1&&titleGrades.length===1?titleGrades[0]:null;
+    const candidateGrades=[profile.grade,profile.indicative_grade,titleGrade].filter(Boolean);
+    return candidateGrades.length>0&&candidateGrades.every(g=>g==='95')&&
+      profile.items.every(item=>!item.grade||item.grade==='95');
   }
   return ['unspecified','summer'].includes(profile.season)&&
     profile.items.every(item=>['unspecified','summer'].includes(item.season));
