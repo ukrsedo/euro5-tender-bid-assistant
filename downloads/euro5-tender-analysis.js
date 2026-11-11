@@ -40050,6 +40050,24 @@ function docKind(document2) {
   if (/\.docx(?:\b|\?)/i.test(descriptor) || /wordprocessingml\.document/.test(descriptor)) return "docx";
   return null;
 }
+var TRUSTED_DOCUMENT_DOMAINS = ["prozorro.gov.ua", "openprocurement.org"];
+var MAX_DOCUMENT_REDIRECTS = 5;
+function isTrustedProzorroDocumentUrl(url) {
+  return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && TRUSTED_DOCUMENT_DOMAINS.some((domain) => url.hostname === domain || url.hostname.endsWith("." + domain));
+}
+async function fetchProzorroDocument(initialUrl, fetcher) {
+  let url = new URL(initialUrl);
+  for (let redirects = 0; ; redirects++) {
+    if (!isTrustedProzorroDocumentUrl(url)) throw new Error("\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u044F\u0454 \u043D\u0430 \u043D\u0435\u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u0438\u0439 \u0434\u043E\u043C\u0435\u043D.");
+    const response = await fetcher(url.toString(), { redirect: "manual", signal: AbortSignal.timeout(15e3) });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    if (redirects >= MAX_DOCUMENT_REDIRECTS) throw new Error("\u041F\u0435\u0440\u0435\u0432\u0438\u0449\u0435\u043D\u043E \u043B\u0456\u043C\u0456\u0442 \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u044C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.");
+    const location = response.headers.get("location");
+    if (!location) throw new Error("\u0421\u0435\u0440\u0432\u0435\u0440 \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u0438\u0432 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u0431\u0435\u0437 \u0430\u0434\u0440\u0435\u0441\u0438 Location.");
+    url = new URL(location, url);
+    if (!isTrustedProzorroDocumentUrl(url)) throw new Error("\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u044F\u0454 \u043D\u0430 \u043D\u0435\u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u0438\u0439 \u0434\u043E\u043C\u0435\u043D.");
+  }
+}
 function decodeXml(text) {
   return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/&#x([0-9a-f]+);/gi, (_2, n2) => String.fromCodePoint(parseInt(n2, 16))).replace(/&#(\d+);/g, (_2, n2) => String.fromCodePoint(Number(n2)));
 }
@@ -40082,7 +40100,7 @@ async function extractOne(document2, fetcher, remainingBytes) {
   if (url.protocol !== "https:" || !/(^|\.)prozorro\.gov\.ua$/i.test(url.hostname))
     return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "blocked", reason: "\u0414\u043E\u0437\u0432\u043E\u043B\u0435\u043D\u0456 \u043B\u0438\u0448\u0435 \u0437\u0430\u0445\u0438\u0449\u0435\u043D\u0456 \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 Prozorro." };
   try {
-    const response = await fetcher(url.toString(), { redirect: "follow", signal: AbortSignal.timeout(15e3) });
+    const response = await fetchProzorroDocument(url, fetcher);
     if (!response.ok) throw new Error("HTTP " + response.status);
     const declared = Number(response.headers.get("content-length") || 0);
     if (declared > MAX_FILE_BYTES || remainingBytes > 0 && declared > remainingBytes) throw new Error("\u0424\u0430\u0439\u043B \u043F\u0435\u0440\u0435\u0432\u0438\u0449\u0443\u0454 \u043B\u0456\u043C\u0456\u0442 \u0440\u043E\u0437\u043C\u0456\u0440\u0443 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.");
