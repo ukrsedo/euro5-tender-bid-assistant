@@ -1481,7 +1481,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
    if (lotId && Number.isFinite(amount) && amount > 0) amountByLot.set(lotId, amount);
   }
   const related = Array.isArray(bid.relatedLots) ? bid.relatedLots.map(String) : [...amountByLot.keys()];
-  const targets = related.length ? related : (lotsById.size === 1 ? [...lotsById.keys()] : []);
+  const targets = related.length ? related : (lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : []);
   const award = awards.get(bid.id);
   for (const lotId of targets) {
    const row = lotsByApiId.get(lotId);
