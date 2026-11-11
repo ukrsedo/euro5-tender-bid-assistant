@@ -1425,7 +1425,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
         supplier_name: name,
         bid_value: Number.isFinite(amount) && amount > 0 ? amount : null,
         expected_value: Number.isFinite(expected) && expected > 0 ? expected : null,
-        won: String(row["\u041F\u0435\u0440\u0435\u043C\u043E\u0436\u0435\u0446\u044C"] || "").match(/(?:\\|\\s*|#)(\\d{8,10})\\s*$/)?.[1] === code,
+        won: String(row["\u041F\u0435\u0440\u0435\u043C\u043E\u0436\u0435\u0446\u044C"] || "").match(/(?:\|\s*|#)(\d{8,10})\s*$/)?.[1] === code,
         bid_status: String(bid.status || "")
       });
     }
