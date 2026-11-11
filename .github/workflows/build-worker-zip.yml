@@ -58,6 +58,12 @@ jobs:
               throw new Error('Document-reader parity check failed for ' + marker);
             }
           }
+          const obsoleteRedirectError = 'Посилання перенаправляє за межі Prozorro.';
+          const currentRedirectError = 'Посилання перенаправляє на неперевірений домен.';
+          if (analysis.includes(obsoleteRedirectError) || protectedCode.includes(obsoleteRedirectError) ||
+              !analysis.includes(currentRedirectError) || !protectedCode.includes(currentRedirectError)) {
+            throw new Error('A Worker bundle still contains the obsolete redirect rejection.');
+          }
           console.log('Analysis and protected Worker entrypoints verified with matching document-reader policy');
           NODE
       - uses: actions/upload-artifact@v4
