@@ -56,10 +56,11 @@ jobs:
           for (const marker of documentReaderMarkers) {
             if (!analysis.includes(marker)) throw new Error('Analysis Worker is missing document-reader policy: ' + marker);
           }
+          const readerSource = fs.readFileSync('document-reader.js','utf8');
           const obsoleteRedirectError = 'Посилання перенаправляє за межі Prozorro.';
           const currentRedirectError = 'Посилання перенаправляє на неперевірений домен.';
-          if (analysis.includes(obsoleteRedirectError) || !analysis.includes(currentRedirectError)) {
-            throw new Error('Analysis Worker still contains the obsolete redirect rejection.');
+          if (readerSource.includes(obsoleteRedirectError) || !readerSource.includes(currentRedirectError)) {
+            throw new Error('Source still contains the obsolete redirect rejection.');
           }
           if (!protectedCode.includes('TENDER_AI') || !protectedCode.includes('tender-check')) {
             throw new Error('Protected Worker is not proxying tender analysis to the shared analysis Worker.');
