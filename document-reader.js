@@ -33,7 +33,7 @@ function docxParagraphs(buffer) {
   if (!paragraphs.length) throw new Error('У DOCX не знайдено текстових абзаців.');
   return paragraphs;
 }
-async function extractOne(document, fetcher) {
+async function extractOne(document, fetcher, remainingBytes) {
   const kind = docKind(document);
   if (!kind) return { title: document?.title || 'Без назви', status: 'unsupported', reason: 'Підтримуються вкладення PDF і DOCX.' };
   let url;
@@ -44,19 +44,21 @@ async function extractOne(document, fetcher) {
     const response = await fetcher(url.toString(), { redirect: 'follow', signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const declared = Number(response.headers.get('content-length') || 0);
-    if (declared > MAX_FILE_BYTES) throw new Error('Файл перевищує ліміт 8 МБ.');
+    if (declared > MAX_FILE_BYTES || (remainingBytes > 0 && declared > remainingBytes)) throw new Error('Файл перевищує ліміт розміру документа.');
     const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > MAX_FILE_BYTES) throw new Error('Файл перевищує ліміт 8 МБ.');
+    if (buffer.byteLength > MAX_FILE_BYTES || buffer.byteLength > remainingBytes) throw new Error('Файл перевищує ліміт розміру документа.');
+    const finalUrl = new URL(response.url || url.toString());
+    if (finalUrl.protocol !== 'https:' || !/(^|\\.)prozorro\\.gov\\.ua$/i.test(finalUrl.hostname)) throw new Error('Посилання перенаправляє за межі Prozorro.');
     const title = document?.title || url.pathname.split('/').pop() || 'Без назви';
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, pages: null, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
+      return { title, kind, bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16_777_216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF має понад ' + MAX_PDF_PAGES + ' сторінок.');
     const result = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(result.text) ? result.text : [result.text];
-    return { title, kind, pages: result.totalPages, text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
+    return { title, kind, bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
   } catch (error) {
     return { title: document?.title || 'Без назви', kind, status: 'error', reason: String(error?.message || 'Не вдалося прочитати файл').slice(0, 240) };
   }
@@ -66,14 +68,17 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   const out = [];
   let totalBytes = 0;
   for (const document of candidates) {
-    const item = await extractOne(document, fetcher);
+    const item = await extractOne(document, fetcher, MAX_TOTAL_BYTES - totalBytes);
+    totalBytes += item.bytes || 0;
     // The file size is enforced per attachment. Keep prompt content bounded at aggregate level.
     if (item.text) {
       const remaining = MAX_EXTRACTED_CHARS - totalBytes;
       if (remaining <= 0) { item.text = ''; item.status = 'truncated'; item.reason = 'Досягнуто ліміт спільного обсягу тексту.'; }
       else if (item.text.length > remaining) { item.text = item.text.slice(0, remaining); item.status = 'truncated'; item.reason = 'Текст скорочено через ліміт 48 000 символів.'; }
-      totalBytes += item.text.length;
       item.status ||= 'read';
+    } else {
+      item.status ||= 'no_text';
+      item.reason ||= 'Не знайдено текстового шару. PDF може бути скан-копією.';
     }
     out.push(item);
   }
