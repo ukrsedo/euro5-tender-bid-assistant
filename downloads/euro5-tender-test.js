@@ -40107,7 +40107,7 @@ async function extractOne(document2, fetcher, remainingBytes) {
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > MAX_FILE_BYTES || buffer.byteLength > remainingBytes) throw new Error("\u0424\u0430\u0439\u043B \u043F\u0435\u0440\u0435\u0432\u0438\u0449\u0443\u0454 \u043B\u0456\u043C\u0456\u0442 \u0440\u043E\u0437\u043C\u0456\u0440\u0443 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430.");
     const finalUrl = new URL(response.url || url.toString());
-    if (finalUrl.protocol !== "https:" || !/(^|\\.)prozorro\\.gov\\.ua$/i.test(finalUrl.hostname)) throw new Error("\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u044F\u0454 \u0437\u0430 \u043C\u0435\u0436\u0456 Prozorro.");
+    if (!isTrustedProzorroDocumentUrl(finalUrl)) throw new Error("\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u044F\u0454 \u043D\u0430 \u043D\u0435\u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u0438\u0439 \u0434\u043E\u043C\u0435\u043D.");
     const title = document2?.title || url.pathname.split("/").pop() || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438";
     if (kind === "docx") {
       const paragraphs = docxParagraphs(buffer);
