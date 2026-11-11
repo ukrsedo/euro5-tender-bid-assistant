@@ -1451,7 +1451,15 @@ const BUYER_VERIFIED_SNAPSHOTS = [{"tender_id":"UA-2025-12-04-020528-a","buyer_c
 // END VERIFIED BUYER SNAPSHOTS
 function buyerParentId(row){return String(row['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0]}
 function extractSupplierBidEvidence(data, tenderId, lotRows) {
- const lotsById = new Map(lotRows.map(r => [String(r['Ідентифікатор лота']), r]));
+ const apiLots = Array.isArray(data?.lots) ? data.lots : [];
+ const rowLots = [...lotRows].sort((a,b) => {
+  const ai=Number(String(a['Ідентифікатор лота']).match(/-L(\\d+)$/)?.[1]||0);
+  const bi=Number(String(b['Ідентифікатор лота']).match(/-L(\\d+)$/)?.[1]||0);
+  return ai-bi;
+ });
+ const lotsByApiId = new Map();
+ if (apiLots.length === rowLots.length) apiLots.forEach((lot,i) => lotsByApiId.set(String(lot.id),rowLots[i]));
+ else if (rowLots.length === 1) for (const lot of apiLots) lotsByApiId.set(String(lot.id),rowLots[0]);
  const awards = new Map();
  for (const award of Array.isArray(data?.awards) ? data.awards : []) {
   if (award?.status !== 'active') continue;
@@ -1476,7 +1484,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
   const targets = related.length ? related : (lotsById.size === 1 ? [...lotsById.keys()] : []);
   const award = awards.get(bid.id);
   for (const lotId of targets) {
-   const row = lotsById.get(lotId);
+   const row = lotsByApiId.get(lotId);
    if (!row) continue;
    const amount = amountByLot.get(lotId) ?? Number(bid.value?.amount);
    const expected = Number(row['Очікувана вартість']);
@@ -1535,7 +1543,7 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const parents=[...new Set(unique.map(buyerParentId).filter(Boolean))].sort().reverse();
  const states=new Map(),proofs=new Map();let cursor=0;const deadline=Date.now()+40000;
  const cache=options.cache,base=options.baseUrl||'https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev';
- const key=id=>new Request(new URL('/buyer-evidence/v2/'+code+'/'+period.as_of+'/'+id,base));
+ const key=id=>new Request(new URL('/buyer-evidence/v3/'+code+'/'+period.as_of+'/'+id,base));
  const usable=(e,id)=>e?.buyer_code===code&&e.tender_id===id&&/^\d{4}-\d{2}-\d{2}$/.test(e.modified_day)&&e.modified_day<=period.end&&e.created_day>=period.start&&e.created_day<=period.end&&e.modified_day>=e.created_day&&Array.isArray(e.rows)&&Array.isArray(e.supplier_bids)&&unique.filter(r=>buyerParentId(r)===id).every(r=>e.rows.some(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота']&&String(x['Організатор']).endsWith(' | '+code)));
  for(const id of parents){
   let e;
@@ -1574,7 +1582,7 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const history=summarizeBuyerHistory(eligible,code,period);
  const supplierEvidence=[...proofs.values()].flatMap(e=>Array.isArray(e.supplier_bids)?e.supplier_bids:[]);
  history.supplier_behavior=summarizeSupplierBehavior(supplierEvidence,period);
- return {...history,history_version:3,as_of:period.as_of,excluded_tender_id:excludedTenderId,
+ return {...history,history_version:4,as_of:period.as_of,excluded_tender_id:excludedTenderId,
   verification:{candidate_lots:unique.length,verified_lots:eligible.length,unresolved_lots:unresolved.length,excluded_lots:unique.length-eligible.length-unresolved.length,complete:unresolved.length===0,excluded_or_unverified_lots:unique.length-eligible.length,details:reasons,
    method:'Preserved verified rows or public Prozorro snapshot last modified before announcement'},
   evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано збережені підтверджені дані до дати оголошення. Пізніші результати аналізованого тендера не враховано.'};
@@ -1586,7 +1594,7 @@ async function buyerHistoryRoute(request,origin,ctx){
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v5/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ const key=new Request(new URL('/buyer-history-cache/v6/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
  try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
   const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
