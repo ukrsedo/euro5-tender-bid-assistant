@@ -1453,8 +1453,8 @@ function buyerParentId(row){return String(row['Ідентифікатор лот
 function extractSupplierBidEvidence(data, tenderId, lotRows) {
  const apiLots = Array.isArray(data?.lots) ? data.lots : [];
  const rowLots = [...lotRows].sort((a,b) => {
-  const ai=Number(String(a['Ідентифікатор лота']).match(/-L(\\d+)$/)?.[1]||0);
-  const bi=Number(String(b['Ідентифікатор лота']).match(/-L(\\d+)$/)?.[1]||0);
+  const ai=Number(String(a['Ідентифікатор лота']).match(/-L(\d+)$/)?.[1]||0);
+  const bi=Number(String(b['Ідентифікатор лота']).match(/-L(\d+)$/)?.[1]||0);
   return ai-bi;
  });
  const lotsByApiId = new Map();
@@ -1473,7 +1473,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
   const entity = bid?.tenderers?.[0];
   const code = String(entity?.identifier?.id || '').trim();
   const name = String(entity?.name || '').trim();
-  if (!/^\\d{8,10}$/.test(code) || !name) continue;
+  if (!/^\d{8,10}$/.test(code) || !name) continue;
   const amountByLot = new Map();
   for (const lv of Array.isArray(bid.lotValues) ? bid.lotValues : []) {
    const lotId = String(lv?.relatedLot || '');
