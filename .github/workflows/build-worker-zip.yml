@@ -10,6 +10,7 @@ on:
       - 'buyer-card.js'
       - 'tests/**'
       - 'worker.js'
+      - 'document-reader.js'
       - 'auth/**'
       - '.github/workflows/build-worker-zip.yml'
 
@@ -28,6 +29,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install Worker document extraction libraries
+        run: npm install --no-save --no-package-lock unpdf@1.9.1 fflate@0.8.3
       - name: Bundle both Cloudflare Worker services
         run: |
           mkdir -p dist
