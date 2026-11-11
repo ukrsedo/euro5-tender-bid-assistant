@@ -1625,7 +1625,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.10.24-fuel-quality"
+        version: "2026.11.11-buyer-supplier-behavior-v4"
       }, 200, origin);
     }
 
