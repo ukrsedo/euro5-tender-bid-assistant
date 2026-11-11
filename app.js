@@ -524,8 +524,10 @@ function renderReview(data){
 
   const reviewItems=[
     ...(Array.isArray(data.requirements)?data.requirements:[]),
-    ...(Array.isArray(data.conditions)?data.conditions:[]).map(x=>({text:x,type:'Умова'})),
-    ...(Array.isArray(data.actions)?data.actions:[]).map(x=>({text:x,type:'Перевірка перед участю'}))
+    ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements:[]).map(x=>({text:x,type:'Технічний параметр пального'})),
+    ...(Array.isArray(data.conditions)?data.conditions:[]).map(x=>({text:x,type:'Умова тендера'})),
+    ...(Array.isArray(data.actions)?data.actions:[]).map(x=>({text:x,type:'Перевірка перед участю'})),
+    ...(Array.isArray(data.document_read_status)?data.document_read_status.filter(x=>x.status!=='read').map(x=>({text:`${x.title}: ${x.reason||x.status}`,type:'Документ не прочитано'})):[])
   ];
   renderRequirements(reviewItems);
   document.getElementById('sourceScope').textContent=data.source_scope || '';
@@ -811,10 +813,8 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const budgetScore=budgetAssessment(cmp?.gap);
   const sizeScore=tenderSizeScore(expected);
 
-  const model=submissionRiskModel(fuelCost,gasCostAmount);
-  const priceRisk=Euro5PriceRisk.assess(model,bid50,full,fuelCost,minMargin);
   const conditions=conditionAdjustment(activeTenderData());
-  const base=marginScore+budgetScore+sizeScore+priceRisk.points;
+  const base=marginScore+budgetScore+sizeScore;
   const buyerCompetition=Euro5BuyerCompetition.assess(lastExtraction?.buyer_profile,lastExtraction?.buyer_history_as_of,lastExtraction?.buyer_code);
   const total=clamp(base+conditions.points+buyerCompetition.points,0,100);
 
@@ -825,12 +825,12 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
 
   if(!productRiskSupported()){
     if(!stop&&recommendation.tone!=='bad')recommendation={...recommendation,title:'Попередня оцінка — перевірте продукт і ціновий ризик',tone:'warn'};
-    recommendation.summary+=' Марка або різновид не підтверджені чи не мають окремого цінового ряду. Ризик — нейтральні 7,5/15; історична конкурентність узагальнена.';
+    recommendation.summary+=' Марка або різновид не підтверджені чи не мають окремого цінового ряду; історична конкурентність узагальнена.';
   }
   return {
     total:Math.round(total),base:round1(base),conditions,discount50,margin50,marginDelta,
     marginScore:round1(marginScore),budgetScore:round1(budgetScore),sizeScore,
-    priceRisk,buyerCompetition,cautiousMargin,stop,recommendation
+    buyerCompetition,cautiousMargin,stop,recommendation
   };
 }
 
@@ -838,18 +838,6 @@ function marginRatingDescription(rating,minMargin){
   const multiple=rating.margin50/minMargin;
   return `Маржа ${num.format(rating.margin50)}% при вашому мінімумі ${num.format(minMargin)}% — ${num.format(multiple)} від мінімуму. Бал: 20 × ${num.format(multiple)}, з обмеженням до 40 → ${num.format(rating.marginScore)} із 40. Мінімум дає 20 балів, 1,5 мінімуму — 30, подвійний — 40.`;
 }
-function priceRiskDescription(risk){
-  if(!risk.ready)return `Ризик не визначений: ${risk.reason} Нейтральні 7,5 із 15.`;
-  return `Від ${displayRiskDate(risk.model.submission_date)} до ${displayRiskDate(risk.model.risk_end_date)}: у ${num.format(risk.safe_fraction*100)}% модельних сценаріїв зберігається мінімальна маржа. Запас до її втрати — подорожчання закупівлі на ${num.format(risk.buffer_pct)}%.`;
-}
-function priceRiskDetails(risk,forPrint=false){
-  if(!risk.ready)return '';
-  const m=risk.model,change=v=>(v>=0?'+':'')+num.format(v)+'%',date=m.last_observation.split('-').reverse().join('.');
-  const section=`<h4>1. Дані та горизонт</h4><p>Дата подання нашої пропозиції: <strong>${displayRiskDate(m.submission_date)}</strong>. Кінець періоду ризику: <strong>${displayRiskDate(m.risk_end_date)}</strong>. П’ять робочих діб після подання; день подання — день 0. Ціна пропозиції фіксована. Пальне: <a href="https://index.minfin.com.ua/ua/markets/fuel/" target="_blank" rel="noopener">Minfin / А-95</a>. Остання дата цін пального: ${escapeHtml(date)}. Поточна статистика: ${num.format(m.recent_count)} п’ятиденних вікон за 30 днів; довша історія: ${num.format(m.historical_count)} вікон до цього періоду, максимум за рік. Ціни на майбутні дати не використовуються.</p><h4>2. Тренд та волатильність</h4><table><thead><tr><th>Показник</th><th>Середня зміна за 5 робочих діб</th><th>Волатильність за 5 робочих діб</th></tr></thead><tbody><tr><td>Пальне</td><td>${change(m.fuel.trend_pct)}</td><td>${num.format(m.fuel.volatility_pct)}%</td></tr></tbody></table><p>Тренд — середнє відсоткових змін; волатильність — стандартне відхилення цих змін. Вищий додатний тренд підвищує ризик подорожчання. Волатильність визначає розкид сценаріїв. Для змішаного тендера пальне зважується за закупівельною вартістю бензину й дизеля.</p><h4>3. Скільки подорожчання витримує маржа</h4><p>Ціна пропозиції: ${money.format(risk.bid)} грн. Мінімальна маржа: ${num.format(risk.min_margin)}%. Максимальні витрати при цій маржі: ${money.format(risk.bid*(1-risk.min_margin/100))} грн. Повна собівартість: ${money.format(risk.total_cost)} грн. Залишок до мінімальної маржі: ${money.format(risk.cost_buffer_uah)} грн.</p><p>Допустиме подорожчання = залишок / закупівельна вартість пального × 100 = ${money.format(risk.cost_buffer_uah)} / ${money.format(risk.fuel_cost)} × 100 = <b>${num.format(risk.buffer_pct)}%</b>. Логістика не множиться на зміну ціни пального.</p><h4>4. Як утворюються сценарії</h4><p>Використано ${num.format(m.historical_count)} історичних п’ятиденних змін гривневої ціни пального. Їхні відхилення масштабуються під тренд та волатильність. Щоб коротка вибірка не визначала весь прогноз, вага останніх 30 днів становить ${num.format(m.recent_weight*100)}%: ${num.format(m.recent_count)} / (${num.format(m.recent_count)} + ${num.format(m.historical_count)}). Решта — довша історія. Це правило згладжування прототипу.</p><p>До закупівельної собівартості застосовується лише відсоткова зміна гривневої ціни пального. Окремий валютний стрес виключено. Сценарій проходить перевірку, якщо подорожчання не перевищує ${num.format(risk.buffer_pct)}%.</p><h4>5. Звідки бал</h4><p>Максимум 15 балів — оцінка збереження мінімальної маржі за сценаріями зміни гривневої ціни пального.</p><p><b>15 × ${num.format(risk.safe_count)} / ${num.format(risk.total_count)} = ${num.format(round1(risk.points))} із 15.</b> ${num.format(risk.safe_fraction*100)}% сценаріїв зберігають мінімальну маржу. Більший запас маржі підвищує бал; сильніший зростаючий тренд знижує його за незмінних інших умов.</p><h4>Межі оцінки</h4><p>Це модельна частка сценаріїв, а не підтверджена ймовірність майбутньої ціни. Історичні вікна перекриваються. Роздрібний ряд є допоміжним ринковим сигналом і не дорівнює фактичній закупівельній чи оптовій ціні Євро5. Перевірка на історії була невеликою; для малих запасів маржі результат не завжди кращий за нейтральну оцінку.</p>`;
-  const title=`Як отримано ${num.format(round1(risk.points))} із 15 балів`;
-  return forPrint?`<section class="price-risk-details"><h3>${title}</h3>${section}</section>`:`<details class="price-risk-details"><summary>${title}</summary>${section}</details>`;
-}
-
 function scoreRow(label,score,max,text,cls=''){
   return `<div class="rating-row ${cls}"><div class="rating-label"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(text)}</span></div><div class="rating-points">${score>0&&String(score).charAt(0)!=='-'?'' : ''}${num.format(score)}${max?`/${max}`:''}</div></div>`;
 }
@@ -880,10 +868,9 @@ function renderRecommendation(rating,cmp,expected,minMargin){
     scoreRow('Маржа за ціни з 50% історичної конкурентності',rating.marginScore,40,marginRatingDescription(rating,minMargin)),
     scoreRow('Бюджет замовника проти ринку',rating.budgetScore,20,budgetText),
     scoreRow('Розмір тендера',rating.sizeScore,15,`Очікувана вартість: ${money.format(expected)} грн без ПДВ.`),
-    scoreRow('Ціновий ризик за 5 робочих діб',round1(rating.priceRisk.points),15,priceRiskDescription(rating.priceRisk)),
     scoreRow('Умови тендера',rating.conditions.points,0,condText,'condition-row'),
     scoreRow('Конкурентність замовника',rating.buyerCompetition.points,0,rating.buyerCompetition.label+'. '+rating.buyerCompetition.reason,'condition-row')
-  ].join('')+priceRiskDetails(rating.priceRisk);
+  ].join('');
 
   const details=[`<li><strong>Конкурентність замовника (${rating.buyerCompetition.points} балів):</strong> ${escapeHtml(rating.buyerCompetition.reason)}</li>`];
   rating.conditions.reasons.forEach(r=>details.push(`<li><strong>${r.points>0?'+':''}${num.format(r.points)}:</strong> ${escapeHtml(r.text)}</li>`));
@@ -891,38 +878,16 @@ function renderRecommendation(rating,cmp,expected,minMargin){
   warnings.innerHTML=details.length?`<h3>Як умови вплинули на рекомендацію</h3><ul>${details.join('')}</ul>`:'';
 }
 
-function forecastCardHtml(result){
-  if(!result.ready)return `<div class="notice warning"><strong>Прогноз недоступний.</strong> ${escapeHtml(result.reason)} Повторно завантажте тендер. Відсотки ризику не розраховані.</div>`;
-  const percent=x=>`${num.format(Math.round(x*1000)/10)}%`;
-  const rows=result.rows.map((r,i)=>`<tr><td>${POSITIONS[i][0]}</td><td>${money.format(r.bid)}</td><td>${percent(r.safe_fraction)}</td><td>${percent(r.loss_fraction)}</td><td>${money.format(r.median_profit)}</td></tr>`).join('');
-  const best=result.rows.reduce((a,r,i)=>r.safe_fraction>result.rows[a].safe_fraction||(r.safe_fraction===result.rows[a].safe_fraction&&r.median_profit>result.rows[a].median_profit)?i:a,0);
-  const r=result.rows[best];
-  const recommendation=r.safe_fraction===0?'Жодна ставка не зберегла мінімальну маржу в симуляції. Перегляньте собівартість або умови закупівлі.':`Найкращий захист прибутку серед чотирьох ставок — «${POSITIONS[best][0]}»: мінімальна маржа зберігається у ${percent(r.safe_fraction)} прогонів, збиток виникає у ${percent(r.loss_fraction)}. Нижчу ставку обирайте лише з урахуванням більшого ризику.`;
-  return `<p><strong>Період ризику: ${displayRiskDate(result.submission_date)} → ${displayRiskDate(result.risk_end_date)}</strong> — ${result.horizon_business_days} робочих діб після подання нашої пропозиції. День подання — день 0; субота й неділя не враховуються.</p><p>Що станеться з прибутком, якщо за цей період зміниться закупівельна ціна пального? Ціна кожної пропозиції фіксована. Ваш мінімум маржі — <strong>${num.format(result.min_margin)}%</strong>.</p><div class="table-wrap"><table><thead><tr><th>Ставка</th><th>Пропозиція, грн</th><th>Маржа ≥ ${num.format(result.min_margin)}%</th><th>Ризик збитку</th><th>Медіанний прибуток, грн</th></tr></thead><tbody>${rows}</tbody></table></div><div class="notice"><strong>Рекомендація:</strong> ${recommendation}</div><p class="muted">Відсотки — частки змодельованих результатів, а не шанси перемоги. Медіанний прибуток — середина розподілу: половина результатів вища, половина нижча. Прибуток враховує задані логістику та резерв.</p><details class="price-risk-details"><summary>Як розраховано</summary><p>${num.format(result.iterations)} прогонів із повторним випадковим вибором із ${result.historical_count} історичних сценаріїв. Остання дата цін: ${escapeHtml(result.last_observation)}. Джерело — Minfin / А-95. Історичні зміни скориговано за трендом та волатильністю за правилами моделі. Припущення: собівартість ЄВРО5 змінюється пропорційно гривневій ринковій ціні пального. Валютний стрес виключено. Ставки, логістика та резерв фіксовані; ринкові зміни однакові для всіх ставок. Кількість прогонів не збільшує обсяг історії. Результат залежить від припущень моделі.</p></details>`;
-}
-
-function renderAnalysisCards({expected,full,fuelCost,gasCostAmount,cfg,minMargin}){
-  const model=submissionRiskModel(fuelCost,gasCostAmount);
+function renderAnalysisCards({expected,full,cfg,minMargin}){
   const bids=cfg.discounts.map(d=>expected*(1-d/100));
-  const result=Euro5PriceRisk.simulate(model,bids,full,fuelCost,minMargin);
-  document.getElementById('forecastContent').innerHTML=forecastCardHtml(result);
-  document.getElementById('forecastCard').classList.remove('hidden');
   const eligible=bids.map((bid,i)=>({i,margin:(bid-full)/bid*100})).filter(r=>r.margin>=minMargin);
   const best=eligible.sort((a,b)=>cfg.competitiveness[b.i]-cfg.competitiveness[a.i])[0];
-  document.getElementById('historicalRecommendation').textContent=best?`За історією найконкурентніша ставка, що проходить мінімальну маржу за незмінної собівартості, — «${POSITIONS[best.i][0]}». Перед вибором перевірте її стійкість у картці Монте-Карло нижче.`:'Жодна ставка не проходить мінімальну маржу за введеної собівартості. Перегляньте економіку закупівлі.';
+  document.getElementById('historicalRecommendation').textContent=best?`За історією найконкурентніша ставка, що проходить мінімальну маржу за введеної собівартості, — «${POSITIONS[best.i][0]}». Історична конкурентність не є ймовірністю перемоги.`:'Жодна ставка не проходить мінімальну маржу за введеної собівартості. Перегляньте економіку закупівлі.';
 }
 
 
 function recalc(){
   const status=document.getElementById('calculateStatus');
-  const period=selectedRiskPeriod();
-  updateRiskPeriodHint();
-  if(!period||period.submission_date>kyivToday()){
-    invalidateCalculation();
-    status.textContent='Вкажіть коректну дату подання нашої пропозиції, не пізнішу за сьогодні.';
-    document.getElementById('submissionDate').focus();
-    return false;
-  }
   const expected=value('expectedValue');
   const gasVol=value('gasolineVolume'), gasCost=value('gasolineCost');
   const dieVol=value('dieselVolume'), dieCost=value('dieselCost');
@@ -1050,7 +1015,6 @@ function ratingPdfHtml(rating,cmp,expected,minMargin){
     ['Маржа за ціни з 50% історичної конкурентності',`${num.format(rating.marginScore)}/40`,marginRatingDescription(rating,minMargin)],
     ['Бюджет замовника проти ринку',`${num.format(rating.budgetScore)}/20`,cmp?`${cmp.gap>=0?'+':''}${num.format(cmp.gap)}% до ринку.`:'Дані недоступні; нейтральна оцінка.'],
     ['Розмір тендера',`${num.format(rating.sizeScore)}/15`,`${money.format(expected)} грн без ПДВ.`],
-    ['Ціновий ризик за 5 робочих діб',`${num.format(round1(rating.priceRisk.points))}/15`,priceRiskDescription(rating.priceRisk)],
     ['Умови тендера',`${rating.conditions.points>0?'+':''}${num.format(rating.conditions.points)}`,'Коригування базового рейтингу.'],
     ['Конкурентність замовника',`${rating.buyerCompetition.points}`,rating.buyerCompetition.label+'. '+rating.buyerCompetition.reason]
   ].map(x=>`<tr><td>${escapeHtml(x[0])}</td><td>${escapeHtml(x[1])}</td><td>${escapeHtml(x[2])}</td></tr>`).join('');
