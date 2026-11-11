@@ -1146,16 +1146,6 @@ async function fetchNbuUsdRate(targetDate) {
   return null;
 }
 
-async function fetchPriceRiskHistory(targetDate){
-  try{
-    const res=await fetch('https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/market-series.json',{signal:AbortSignal.timeout(15000)});
-    if(!res.ok)return {ready:false,reason:'Не вдалося отримати історичний ряд цін.'};
-    const data=await res.json(),asOf=euro5ObservationDate(targetDate);
-    if(data.schema_version!==1||!Array.isArray(data.records))return {ready:false,reason:'Некоректний ряд цін.'};
-    return {ready:true,as_of:asOf,updated_at:data.updated_at,sources:data.sources,records:data.records.filter(r=>r.date<=asOf)};
-  }catch(_){return {ready:false,reason:'Історичний ряд цін тимчасово недоступний.'}}
-}
-
 async function buildFxTrend(data) {
   const date = tenderAnnouncementDate(data);
   if (!date) return { available: false, note: "Не вдалося визначити дату для валютного тренду." };
@@ -1629,7 +1619,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.11-document-extraction-no-profit-reliability-v6"
+        version: "2026.11.11-document-extraction-no-profit-reliability-v7"
       }, 200, origin);
     }
 
@@ -1763,12 +1753,9 @@ response_format: { type: "json_object" }
       scope.normalizedWithoutVat
     );
 
-    // Supply available price history; the calculator fits it at the user-confirmed
-    // submission date. Never anchor price risk to the tender publication date.
-    const [marketResult, fx, priceRiskHistory] = await Promise.all([
+    const [marketResult, fx] = await Promise.all([
       buildMarketReference(source.data, parsed, scope, supplyInfo),
-      buildFxTrend(source.data),
-      fetchPriceRiskHistory(new Date())
+      buildFxTrend(source.data)
     ]);
 
     // Every optional field is present even when market data is unavailable.
@@ -1856,7 +1843,6 @@ response_format: { type: "json_object" }
       budget_vs_market_pct: market.budgetVsMarketPct ?? null,
       budget_vs_market_text: market.text ?? null,
       market_comparison_note: market.note ?? null,
-      price_risk_history: priceRiskHistory,
       fuel_market_trend_30d_pct: market.fuelTrend30dPct ?? null,
       fuel_market_trend_start_date: market.trendStartDate ?? null,
       fuel_market_trend_end_date: market.trendEndDate ?? null,
