@@ -1629,7 +1629,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.11-buyer-supplier-behavior-v5"
+        version: "2026.11.11-document-extraction-no-profit-reliability-v6"
       }, 200, origin);
     }
 
