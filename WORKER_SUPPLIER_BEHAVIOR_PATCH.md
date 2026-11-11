@@ -27,7 +27,7 @@ function supplierName(entity) {
   return String(entity?.name || entity?.identifier?.legalName || "").trim() || "Постачальник без підтвердженої назви";
 }
 
-function supplierBidSnapshot(data, buyerCode, tenderId, cutoffDay) {
+function supplierBidSnapshot(data, expectedBuyerCode, tenderId, cutoffDay) {
   const lots = Array.isArray(data?.lots) ? data.lots : [];
   const bids = Array.isArray(data?.bids) ? data.bids : [];
   const awards = Array.isArray(data?.awards) ? data.awards : [];
@@ -38,7 +38,7 @@ function supplierBidSnapshot(data, buyerCode, tenderId, cutoffDay) {
     for (const bidId of award.relatedBid || []) awardByBid.set(bidId, award);
   }
   const modifiedDay = String(data?.dateModified || "").slice(0, 10);
-  if (data?.tenderID !== tenderId || buyerCode(data) !== buyerCode || !/^\d{4}-\d{2}-\d{2}$/.test(modifiedDay) || modifiedDay > cutoffDay) {
+  if (data?.tenderID !== tenderId || buyerCode(data) !== expectedBuyerCode || !/^\d{4}-\d{2}-\d{2}$/.test(modifiedDay) || modifiedDay > cutoffDay) {
     return [];
   }
   return bids.flatMap(bid => {
