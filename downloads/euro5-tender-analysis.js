@@ -1425,7 +1425,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
         supplier_name: name,
         bid_value: Number.isFinite(amount) && amount > 0 ? amount : null,
         expected_value: Number.isFinite(expected) && expected > 0 ? expected : null,
-        won: Boolean(award && (award.relatedBid || []).includes(bid.id)),
+        won: String(row["\u041F\u0435\u0440\u0435\u043C\u043E\u0436\u0435\u0446\u044C"] || "").match(/(?:\\|\\s*|#)(\\d{8,10})\\s*$/)?.[1] === code,
         bid_status: String(bid.status || "")
       });
     }
@@ -1477,7 +1477,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   let cursor = 0;
   const deadline = Date.now() + 4e4;
   const cache = options.cache, base = options.baseUrl || "https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev";
-  const key = (id) => new Request(new URL("/buyer-evidence/v3/" + code + "/" + period.as_of + "/" + id, base));
+  const key = (id) => new Request(new URL("/buyer-evidence/v4/" + code + "/" + period.as_of + "/" + id, base));
   const usable = (e, id) => e?.buyer_code === code && e.tender_id === id && /^\d{4}-\d{2}-\d{2}$/.test(e.modified_day) && e.modified_day <= period.end && e.created_day >= period.start && e.created_day <= period.end && e.modified_day >= e.created_day && Array.isArray(e.rows) && Array.isArray(e.supplier_bids) && unique.filter((r) => buyerParentId(r) === id).every((r) => e.rows.some((x) => x["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] === r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] && String(x["\u041E\u0440\u0433\u0430\u043D\u0456\u0437\u0430\u0442\u043E\u0440"]).endsWith(" | " + code)));
   for (const id of parents) {
     let e;
@@ -1541,7 +1541,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   history.supplier_behavior = summarizeSupplierBehavior(supplierEvidence, period);
   return {
     ...history,
-    history_version: 4,
+    history_version: 5,
     as_of: period.as_of,
     excluded_tender_id: excludedTenderId,
     verification: {
@@ -1563,7 +1563,7 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key = new Request(new URL("/buyer-history-cache/v6/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key = new Request(new URL("/buyer-history-cache/v7/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key);
     if (hit) {
@@ -1601,7 +1601,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.11-buyer-supplier-behavior-v4"
+        version: "2026.11.11-buyer-supplier-behavior-v5"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
