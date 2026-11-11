@@ -67,7 +67,7 @@ async function extractOne(document, fetcher, remainingBytes) {
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > MAX_FILE_BYTES || buffer.byteLength > remainingBytes) throw new Error('Файл перевищує ліміт розміру документа.');
     const finalUrl = new URL(response.url || url.toString());
-    if (finalUrl.protocol !== 'https:' || !/(^|\\.)prozorro\\.gov\\.ua$/i.test(finalUrl.hostname)) throw new Error('Посилання перенаправляє за межі Prozorro.');
+    if (!isTrustedProzorroDocumentUrl(finalUrl)) throw new Error('Посилання перенаправляє на неперевірений домен.');
     const title = document?.title || url.pathname.split('/').pop() || 'Без назви';
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
