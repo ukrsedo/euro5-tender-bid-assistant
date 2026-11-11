@@ -13,6 +13,25 @@ function docKind(document) {
   if (/\.docx(?:\b|\?)/i.test(descriptor) || /wordprocessingml\.document/.test(descriptor)) return 'docx';
   return null;
 }
+const TRUSTED_DOCUMENT_DOMAINS = ['prozorro.gov.ua', 'openprocurement.org'];
+const MAX_DOCUMENT_REDIRECTS = 5;
+function isTrustedProzorroDocumentUrl(url) {
+  return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') &&
+    TRUSTED_DOCUMENT_DOMAINS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain));
+}
+async function fetchProzorroDocument(initialUrl, fetcher) {
+  let url = new URL(initialUrl);
+  for (let redirects = 0; ; redirects++) {
+    if (!isTrustedProzorroDocumentUrl(url)) throw new Error('Посилання перенаправляє на неперевірений домен.');
+    const response = await fetcher(url.toString(), { redirect: 'manual', signal: AbortSignal.timeout(15000) });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    if (redirects >= MAX_DOCUMENT_REDIRECTS) throw new Error('Перевищено ліміт перенаправлень документа.');
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Сервер перенаправив документ без адреси Location.');
+    url = new URL(location, url);
+    if (!isTrustedProzorroDocumentUrl(url)) throw new Error('Посилання перенаправляє на неперевірений домен.');
+  }
+}
 function decodeXml(text) {
   return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
 }
@@ -41,7 +60,7 @@ async function extractOne(document, fetcher, remainingBytes) {
   if (url.protocol !== 'https:' || !/(^|\.)prozorro\.gov\.ua$/i.test(url.hostname))
     return { title: document?.title || 'Без назви', status: 'blocked', reason: 'Дозволені лише захищені посилання на Prozorro.' };
   try {
-    const response = await fetcher(url.toString(), { redirect: 'follow', signal: AbortSignal.timeout(15000) });
+    const response = await fetchProzorroDocument(url, fetcher);
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const declared = Number(response.headers.get('content-length') || 0);
     if (declared > MAX_FILE_BYTES || (remainingBytes > 0 && declared > remainingBytes)) throw new Error('Файл перевищує ліміт розміру документа.');
