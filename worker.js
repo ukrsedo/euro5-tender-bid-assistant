@@ -1289,8 +1289,10 @@ function aiTenderPayload(data) {
   return s;
 }
 
+import { readTenderDocuments, formatTenderDocumentsForAI } from './document-reader.js';
+
 const SYSTEM_PROMPT = `Ти допомагаєш ЄВРО5 швидко зрозуміти умови конкретного тендера на пальне.
-Ти отримуєш структуровані дані безпосередньо з публічного API Prozorro.
+Ти отримуєш структуровані дані Prozorro та, якщо вкладення вдалося завантажити й прочитати, текст тендерної документації.
 CPV, очікувана вартість і ПДВ уже перевірені програмно.
 
 Твоє завдання — виділити лише факти, які справді можуть вплинути на рішення про участь, витрати, логістику або коло можливих постачальників.
@@ -1298,7 +1300,8 @@ CPV, очікувана вартість і ПДВ уже перевірені �
 Не вгадуй відсутні значення.
 
 НЕ рекомендуй ціну. НЕ оцінюй імовірність перемоги. НЕ змінюй розрахунок ціни.
-НЕ стверджуй, що прочитав вкладений файл, якщо отримав лише його назву або метадані.
+НЕ роби висновків за назвою файлу. Використовуй текст прочитаних вкладень нижче. Якщо текст вкладення відсутній або має статус помилки, прямо не стверджуй, що файл прочитано.
+У fuel_requirements витягай конкретні технічні параметри пального, зокрема стандарт/клас, марку, сезонність, екологічний клас, вміст сірки, густину, граничну температуру фільтрованості та інші задані числові або якісні параметри. Не доповнюй відсутні значення стандартними припущеннями. Кожен пункт має містити дослівно точне значення та джерело: назву документа і сторінку PDF або номер абзацу DOCX. За суперечностей між документами наведи обидва значення і обидва джерела.
 
 Не винось у «важливі умови» стандартні вимоги, які є звичайними для публічних закупівель або закупівель пального, якщо вони не мають нетипового обмеження. Зокрема, НЕ включай без окремої причини:
 - загальну вимогу відповідати технічним характеристикам пального;
@@ -1340,10 +1343,11 @@ CPV, очікувана вартість і ПДВ уже перевірені �
   "nationwide_coverage": boolean | null,
   "named_network": string | null,
   "conditions": string[],
+  "fuel_requirements": string[],
   "actions": string[]
 }
 
-Якщо нетипових умов не виявлено, поверни conditions: [] і actions: [].`;
+Кожен елемент fuel_requirements має містити параметр і посилання виду «Документ: назва, сторінка N» для PDF або «Документ: назва, абзац N» для DOCX. Якщо читаний текст не містить технічних параметрів пального, поверни fuel_requirements: []. Якщо нетипових умов не виявлено, поверни conditions: [] і actions: [].`;
 
 function cleanAiList(items, kind) {
   if (!Array.isArray(items)) return [];
@@ -1675,6 +1679,13 @@ export default {
 
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
+    const announcement=tenderAnnouncementDate(source.data);
+    const cutoff=announcement?euro5ObservationDate(announcement):null;
+    const documentsForReading=(source.data?.documents||[]).filter(d=>{
+      const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
+      return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
+    });
+    const documentExtracts=await readTenderDocuments(documentsForReading);
 
     const payload = {
       model: env.AI_MODEL,
@@ -1689,7 +1700,10 @@ export default {
 Очікувана вартість для розрахунку без ПДВ: ${scope.normalizedWithoutVat} грн
 
 Структуровані дані Prozorro:
-${aiTenderPayload(source.data)}`
+${aiTenderPayload(source.data)}
+
+Текст вкладень тендерної документації:
+${formatTenderDocumentsForAI(documentExtracts)}`
         }
       ],
 response_format: { type: "json_object" }
@@ -1721,6 +1735,10 @@ response_format: { type: "json_object" }
     }
 
     parsed.conditions = cleanAiList(parsed.conditions, "conditions");
+    parsed.fuel_requirements = Array.isArray(parsed.fuel_requirements)
+      ? parsed.fuel_requirements.filter(x => typeof x === "string" && x.trim()).map(x => x.trim().slice(0, 1000)).slice(0, 30)
+      : [];
+    parsed.document_read_status = documentExtracts.map(({title,status,reason,pages}) => ({title,status,reason:reason||null,pages:pages??null}));
     parsed.actions = cleanAiList(parsed.actions, "actions");
 
     // Structured Prozorro item quantities override AI where they are available.
