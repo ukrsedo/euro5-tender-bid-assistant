@@ -54,15 +54,15 @@ jobs:
           if(!protectedCode.includes('origin && origin !== url.origin') && !protectedCode.includes('origin&&origin!==url.origin')) process.exit(1);
           const documentReaderMarkers = ['MAX_DOCUMENT_REDIRECTS', 'isTrustedProzorroDocumentUrl', 'openprocurement.org'];
           for (const marker of documentReaderMarkers) {
-            if (!analysis.includes(marker) || !protectedCode.includes(marker)) {
-              throw new Error('Document-reader parity check failed for ' + marker);
-            }
+            if (!analysis.includes(marker)) throw new Error('Analysis Worker is missing document-reader policy: ' + marker);
           }
           const obsoleteRedirectError = 'Посилання перенаправляє за межі Prozorro.';
           const currentRedirectError = 'Посилання перенаправляє на неперевірений домен.';
-          if (analysis.includes(obsoleteRedirectError) || protectedCode.includes(obsoleteRedirectError) ||
-              !analysis.includes(currentRedirectError) || !protectedCode.includes(currentRedirectError)) {
-            throw new Error('A Worker bundle still contains the obsolete redirect rejection.');
+          if (analysis.includes(obsoleteRedirectError) || !analysis.includes(currentRedirectError)) {
+            throw new Error('Analysis Worker still contains the obsolete redirect rejection.');
+          }
+          if (!protectedCode.includes('TENDER_AI') || !protectedCode.includes('tender-check')) {
+            throw new Error('Protected Worker is not proxying tender analysis to the shared analysis Worker.');
           }
           console.log('Analysis and protected Worker entrypoints verified with matching document-reader policy');
           NODE
