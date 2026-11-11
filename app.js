@@ -59,29 +59,6 @@ let calculationIsCurrent=false;
 function pct(v){ return `${num.format(v)}%`; }
 
 
-function kyivToday(){
-  return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-}
-function displayRiskDate(date){ return date.split('-').reverse().join('.'); }
-function selectedRiskPeriod(){ return Euro5PriceRisk.riskPeriod(document.getElementById('submissionDate').value); }
-function updateRiskPeriodHint(){
-  const input=document.getElementById('submissionDate');
-  input.max=kyivToday();
-  const period=selectedRiskPeriod();
-  document.getElementById('riskPeriodHint').textContent=period
-    ? `Період ризику: від ${displayRiskDate(period.submission_date)} до ${displayRiskDate(period.risk_end_date)} — 5 робочих діб після подання. День подання — день 0; субота й неділя не враховуються.`
-    : 'Вкажіть дату подання нашої пропозиції. Від неї відраховуються наступні 5 робочих діб.';
-}
-function submissionRiskModel(fuelCost,gasCostAmount){
-  if(!productRiskSupported())return {ready:false,reason:'Марку або різновид не підтверджено чи для нього немає окремого історичного ряду. Звичайний А-95 / ДП не підставляється. Нейтральна оцінка ризику 7,5/15.'};
-  const period=selectedRiskPeriod();
-  if(!period||period.submission_date>kyivToday())return {ready:false,reason:'Вкажіть дату подання нашої пропозиції, не пізнішу за сьогодні.'};
-  const history=lastExtraction?.price_risk_history;
-  if(!history?.ready)return {ready:false,reason:history?.reason||'Історія цін недоступна.'};
-  if(!history.as_of||history.as_of<period.submission_date)return {ready:false,reason:'Історію цін завантажено до обраної дати подання. Оновіть Worker та повторно завантажте тендер.'};
-  return Euro5PriceRisk.fit(history.records,period.submission_date,fuelCost>0?gasCostAmount/fuelCost:0);
-}
-
 function vatBasisLabel(value){
   const map={
     'without VAT':'без ПДВ',
@@ -235,7 +212,7 @@ function standardProductContradicted(family,d){
   return ['winter','arctic'].includes(profile.season)||
     profile.items.some(item=>['winter','arctic'].includes(item.season));
 }
-function productRiskSupported(){
+function productBenchmarkSupported(){
  const d=activeTenderData(),type=d?.fuel_type;
  return (type==='diesel'||standardProductConfirmed('gasoline',d))&&(type==='gasoline'||standardProductConfirmed('diesel',d))&&['gasoline','diesel','mixed'].includes(type);
 }
@@ -293,7 +270,6 @@ function invalidateCalculation(){
   calculationIsCurrent=false;
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
   exportPdfBtn.disabled=true;
   const status=document.getElementById('calculateStatus');
   if(status) status.textContent='Дані змінено. Натисніть «Розрахувати», щоб оновити результат.';
@@ -446,7 +422,6 @@ analyzeBtn.addEventListener('click', async()=>{
   calculatorSection.classList.add('hidden');
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
   confirmedData=null;
   calculationIsCurrent=false;
 
@@ -658,8 +633,7 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('competitionMode').value=v.competitionMode;
   document.getElementById('confirmedSupplyFormat').value=supplyFormatLabel(v.supplyFormat,v.gasolineSupplyFormat,v.dieselSupplyFormat);
 
-  document.getElementById('submissionDate').value='';
-  updateRiskPeriodHint();
+  
   document.getElementById('gasolineCost').value='';
   document.getElementById('dieselCost').value='';
   document.getElementById('totalLitres').textContent=money.format(v.gasolineVolume+v.dieselVolume);
@@ -676,7 +650,6 @@ acceptBtn.addEventListener('click',()=>{
 
   recommendationCard.classList.add('hidden');
   resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
   exportPdfBtn.disabled=true;
   calculationIsCurrent=false;
   calculatorSection.classList.remove('hidden');
@@ -814,7 +787,7 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const sizeScore=tenderSizeScore(expected);
 
   const conditions=conditionAdjustment(activeTenderData());
-  const base=marginScore+budgetScore+sizeScore;
+  const base=round1((marginScore+budgetScore+sizeScore)*1.2);
   const buyerCompetition=Euro5BuyerCompetition.assess(lastExtraction?.buyer_profile,lastExtraction?.buyer_history_as_of,lastExtraction?.buyer_code);
   const total=clamp(base+conditions.points+buyerCompetition.points,0,100);
 
@@ -823,8 +796,8 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const stop=cautiousMargin<minMargin;
   let recommendation=Euro5BuyerCompetition.recommendation(recommendationFromScore(total,stop),buyerCompetition,stop);
 
-  if(!productRiskSupported()){
-    if(!stop&&recommendation.tone!=='bad')recommendation={...recommendation,title:'Попередня оцінка — перевірте продукт і ціновий ризик',tone:'warn'};
+  if(!productBenchmarkSupported()){
+    if(!stop&&recommendation.tone!=='bad')recommendation={...recommendation,title:'Попередня оцінка — перевірте продукт',tone:'warn'};
     recommendation.summary+=' Марка або різновид не підтверджені чи не мають окремого цінового ряду; історична конкурентність узагальнена.';
   }
   return {
@@ -882,7 +855,7 @@ function renderAnalysisCards({expected,full,cfg,minMargin}){
   const bids=cfg.discounts.map(d=>expected*(1-d/100));
   const eligible=bids.map((bid,i)=>({i,margin:(bid-full)/bid*100})).filter(r=>r.margin>=minMargin);
   const best=eligible.sort((a,b)=>cfg.competitiveness[b.i]-cfg.competitiveness[a.i])[0];
-  document.getElementById('historicalRecommendation').textContent=best?`За історією найконкурентніша ставка, що проходить мінімальну маржу за введеної собівартості, — «${POSITIONS[best.i][0]}». Історична конкурентність не є ймовірністю перемоги.`:'Жодна ставка не проходить мінімальну маржу за введеної собівартості. Перегляньте економіку закупівлі.';
+  document.getElementById('historicalRecommendation').textContent=best?`За історією найконкурентніша ставка, що проходить мінімальну маржу за введеної собівартості, — «${POSITIONS[best.i][0]}». Базовий рейтинг нормовано до 90 балів без моделі надійності прибутку. Історична конкурентність не є ймовірністю перемоги.`:'Жодна ставка не проходить мінімальну маржу за введеної собівартості. Перегляньте економіку закупівлі.';
 }
 
 
@@ -901,7 +874,6 @@ function recalc(){
     status.textContent='Мінімальна маржа має бути більшою за 0% і меншою за 100%.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -937,7 +909,6 @@ function recalc(){
     status.textContent='Введіть закупівельну собівартість потрібного виду пального.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -946,7 +917,6 @@ function recalc(){
     status.textContent='Очікувана вартість менша за 1 млн грн без ПДВ.';
     recommendationCard.classList.add('hidden');
     resultsCard.classList.add('hidden');
-  document.getElementById('forecastCard').classList.add('hidden');
     exportPdfBtn.disabled=true;
     calculationIsCurrent=false;
     return false;
@@ -1076,9 +1046,7 @@ function buildPdfReport(){
     <h3>Картка 1 · Історична конкурентність</h3>
     <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
     <p>${escapeHtml(document.getElementById('historicalRecommendation').textContent)}</p>
-    <h3>Картка 2 · Монте-Карло: стійкість прибутку</h3>
-    ${document.getElementById('forecastContent').innerHTML}
-    <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()} Підтверджений продукт: бензин — ${productLabel("gasoline")}; дизель — ${productLabel("diesel")}.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, п’ятиденний ризик зміни гривневої ціни пального і підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
+    <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()} Підтверджений продукт: бензин — ${productLabel("gasoline")}; дизель — ${productLabel("diesel")}.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
 
 exportPdfBtn.addEventListener('click',()=>{
@@ -1112,8 +1080,6 @@ exportPdfBtn.disabled=true;
 
 
 
-updateRiskPeriodHint();
-document.getElementById('submissionDate').addEventListener('input',()=>{updateRiskPeriodHint();invalidateCalculation();});
 
 window.onBuyerHistoryLoaded=(data,history)=>{
  if(data!==lastExtraction)return;
