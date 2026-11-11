@@ -41137,17 +41137,6 @@ async function fetchNbuUsdRate(targetDate) {
   }
   return null;
 }
-async function fetchPriceRiskHistory(targetDate) {
-  try {
-    const res = await fetch("https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/market-series.json", { signal: AbortSignal.timeout(15e3) });
-    if (!res.ok) return { ready: false, reason: "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u043E\u0442\u0440\u0438\u043C\u0430\u0442\u0438 \u0456\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u0438\u0439 \u0440\u044F\u0434 \u0446\u0456\u043D." };
-    const data = await res.json(), asOf = euro5ObservationDate(targetDate);
-    if (data.schema_version !== 1 || !Array.isArray(data.records)) return { ready: false, reason: "\u041D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 \u0440\u044F\u0434 \u0446\u0456\u043D." };
-    return { ready: true, as_of: asOf, updated_at: data.updated_at, sources: data.sources, records: data.records.filter((r2) => r2.date <= asOf) };
-  } catch (_2) {
-    return { ready: false, reason: "\u0406\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u0438\u0439 \u0440\u044F\u0434 \u0446\u0456\u043D \u0442\u0438\u043C\u0447\u0430\u0441\u043E\u0432\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0438\u0439." };
-  }
-}
 async function buildFxTrend(data) {
   const date = tenderAnnouncementDate(data);
   if (!date) return { available: false, note: "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u0432\u0438\u0437\u043D\u0430\u0447\u0438\u0442\u0438 \u0434\u0430\u0442\u0443 \u0434\u043B\u044F \u0432\u0430\u043B\u044E\u0442\u043D\u043E\u0433\u043E \u0442\u0440\u0435\u043D\u0434\u0443." };
@@ -41744,7 +41733,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.11-document-extraction-no-profit-reliability-v6"
+        version: "2026.11.11-document-extraction-no-profit-reliability-v7"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41857,10 +41846,9 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       parsed.fuel_type || structuredFuel.fuelType,
       scope.normalizedWithoutVat
     );
-    const [marketResult, fx, priceRiskHistory] = await Promise.all([
+    const [marketResult, fx] = await Promise.all([
       buildMarketReference(source.data, parsed, scope, supplyInfo),
-      buildFxTrend(source.data),
-      fetchPriceRiskHistory(/* @__PURE__ */ new Date())
+      buildFxTrend(source.data)
     ]);
     const market = Object.assign({
       fuelProducts: null,
@@ -41944,7 +41932,6 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       budget_vs_market_pct: market.budgetVsMarketPct ?? null,
       budget_vs_market_text: market.text ?? null,
       market_comparison_note: market.note ?? null,
-      price_risk_history: priceRiskHistory,
       fuel_market_trend_30d_pct: market.fuelTrend30dPct ?? null,
       fuel_market_trend_start_date: market.trendStartDate ?? null,
       fuel_market_trend_end_date: market.trendEndDate ?? null,
