@@ -522,12 +522,36 @@ function renderReview(data){
   note.textContent=volumeParts.join(' ');
   note.classList.toggle('hidden',!volumeParts.length);
 
-  fillList('conditionsList',data.conditions,'Нетипових або суттєвих умов не виявлено.');
-  fillList('actionsList',data.actions,'Додаткових перевірок за завантаженими даними не потрібно.');
+  const reviewItems=[
+    ...(Array.isArray(data.requirements)?data.requirements:[]),
+    ...(Array.isArray(data.conditions)?data.conditions:[]).map(x=>({text:x,type:'Умова'})),
+    ...(Array.isArray(data.actions)?data.actions:[]).map(x=>({text:x,type:'Перевірка перед участю'}))
+  ];
+  renderRequirements(reviewItems);
   document.getElementById('sourceScope').textContent=data.source_scope || '';
   document.getElementById('reviewValidation').textContent='';
   renderReviewMarket();
   renderCompetitionForecast(data);
+}
+
+function renderRequirements(items){
+  const ul=document.getElementById('requirementsList');
+  if(!ul)return;
+  ul.innerHTML='';
+  const rows=items.filter(x=>typeof x==='string'||x?.text||x?.requirement);
+  if(!rows.length){
+    const li=document.createElement('li');
+    li.textContent='Умови й дії, виявлені в даних тендера, не надані.';
+    ul.appendChild(li);
+    return;
+  }
+  for(const item of rows){
+    const li=document.createElement('li');
+    const text=typeof item==='string'?item:(item.text||item.requirement);
+    const label=typeof item==='string'?'':(item.type||item.category||'');
+    li.textContent=label?label+': '+text:text;
+    ul.appendChild(li);
+  }
 }
 
 function fillList(id,items,fallback){
