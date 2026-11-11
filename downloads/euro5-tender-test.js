@@ -1381,7 +1381,15 @@ function buyerParentId(row) {
   return String(row["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0];
 }
 function extractSupplierBidEvidence(data, tenderId, lotRows) {
-  const lotsById = new Map(lotRows.map((r) => [String(r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]), r]));
+  const apiLots = Array.isArray(data?.lots) ? data.lots : [];
+  const rowLots = [...lotRows].sort((a, b) => {
+    const ai = Number(String(a["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]).match(/-L(\\d+)$/)?.[1] || 0);
+    const bi = Number(String(b["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]).match(/-L(\\d+)$/)?.[1] || 0);
+    return ai - bi;
+  });
+  const lotsByApiId = /* @__PURE__ */ new Map();
+  if (apiLots.length === rowLots.length) apiLots.forEach((lot, i) => lotsByApiId.set(String(lot.id), rowLots[i]));
+  else if (rowLots.length === 1) for (const lot of apiLots) lotsByApiId.set(String(lot.id), rowLots[0]);
   const awards = /* @__PURE__ */ new Map();
   for (const award of Array.isArray(data?.awards) ? data.awards : []) {
     if (award?.status !== "active") continue;
@@ -1403,10 +1411,10 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
       if (lotId && Number.isFinite(amount) && amount > 0) amountByLot.set(lotId, amount);
     }
     const related = Array.isArray(bid.relatedLots) ? bid.relatedLots.map(String) : [...amountByLot.keys()];
-    const targets = related.length ? related : lotsById.size === 1 ? [...lotsById.keys()] : [];
+    const targets = related.length ? related : lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : [];
     const award = awards.get(bid.id);
     for (const lotId of targets) {
-      const row = lotsById.get(lotId);
+      const row = lotsByApiId.get(lotId);
       if (!row) continue;
       const amount = amountByLot.get(lotId) ?? Number(bid.value?.amount);
       const expected = Number(row["\u041E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u0442\u0456\u0441\u0442\u044C"]);
@@ -1469,7 +1477,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   let cursor = 0;
   const deadline = Date.now() + 4e4;
   const cache = options.cache, base = options.baseUrl || "https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev";
-  const key2 = (id) => new Request(new URL("/buyer-evidence/v2/" + code + "/" + period.as_of + "/" + id, base));
+  const key2 = (id) => new Request(new URL("/buyer-evidence/v3/" + code + "/" + period.as_of + "/" + id, base));
   const usable = (e, id) => e?.buyer_code === code && e.tender_id === id && /^\d{4}-\d{2}-\d{2}$/.test(e.modified_day) && e.modified_day <= period.end && e.created_day >= period.start && e.created_day <= period.end && e.modified_day >= e.created_day && Array.isArray(e.rows) && Array.isArray(e.supplier_bids) && unique.filter((r) => buyerParentId(r) === id).every((r) => e.rows.some((x) => x["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] === r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] && String(x["\u041E\u0440\u0433\u0430\u043D\u0456\u0437\u0430\u0442\u043E\u0440"]).endsWith(" | " + code)));
   for (const id of parents) {
     let e;
@@ -1533,7 +1541,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   history.supplier_behavior = summarizeSupplierBehavior(supplierEvidence, period);
   return {
     ...history,
-    history_version: 3,
+    history_version: 4,
     as_of: period.as_of,
     excluded_tender_id: excludedTenderId,
     verification: {
@@ -1555,7 +1563,7 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key2 = new Request(new URL("/buyer-history-cache/v5/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key2 = new Request(new URL("/buyer-history-cache/v6/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key2);
     if (hit) {
