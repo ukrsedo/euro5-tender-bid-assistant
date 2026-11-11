@@ -52,7 +52,13 @@ jobs:
           if(!/access_worker_default as default/.test(protectedCode)) process.exit(1);
           if(!analysis.includes('enkorr-wholesale-history.json') || !analysis.includes('tender-check')) process.exit(1);
           if(!protectedCode.includes('origin && origin !== url.origin') && !protectedCode.includes('origin&&origin!==url.origin')) process.exit(1);
-          console.log('Analysis and protected Worker entrypoints verified');
+          const documentReaderMarkers = ['MAX_DOCUMENT_REDIRECTS', 'isTrustedProzorroDocumentUrl', 'openprocurement.org'];
+          for (const marker of documentReaderMarkers) {
+            if (!analysis.includes(marker) || !protectedCode.includes(marker)) {
+              throw new Error('Document-reader parity check failed for ' + marker);
+            }
+          }
+          console.log('Analysis and protected Worker entrypoints verified with matching document-reader policy');
           NODE
       - uses: actions/upload-artifact@v4
         with:
