@@ -41868,6 +41868,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       buildMarketReference(source.data, parsed, scope, supplyInfo),
       buildFxTrend(source.data)
     ]);
+    const fxData = "change30dPct" in fx ? fx : null;
     const market = Object.assign({
       fuelProducts: null,
       referenceCandidates: null,
@@ -41953,9 +41954,9 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       fuel_market_trend_30d_pct: market.fuelTrend30dPct ?? null,
       fuel_market_trend_start_date: market.trendStartDate ?? null,
       fuel_market_trend_end_date: market.trendEndDate ?? null,
-      usd_uah_change_30d_pct: fx.change30dPct ?? null,
-      usd_uah_current_date: fx.currentDate ?? null,
-      usd_uah_start_date: fx.pastDate ?? null,
+      usd_uah_change_30d_pct: fxData?.change30dPct ?? null,
+      usd_uah_current_date: fxData?.currentDate ?? null,
+      usd_uah_start_date: fxData?.pastDate ?? null,
       currency_note: fx.note ?? null,
       competition_forecast: competitionForecast,
       advance_payment_pct: parsed.advance_payment_pct ?? 0,
