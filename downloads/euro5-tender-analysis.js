@@ -1380,6 +1380,88 @@ var BUYER_VERIFIED_SNAPSHOTS = [{ "tender_id": "UA-2025-12-04-020528-a", "buyer_
 function buyerParentId(row) {
   return String(row["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0];
 }
+function extractSupplierBidEvidence(data, tenderId, lotRows) {
+  const lotsById = new Map(lotRows.map((r) => [String(r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]), r]));
+  const awards = /* @__PURE__ */ new Map();
+  for (const award of Array.isArray(data?.awards) ? data.awards : []) {
+    if (award?.status !== "active") continue;
+    for (const bidId of Array.isArray(award.relatedBid) ? award.relatedBid : []) {
+      awards.set(bidId, award);
+    }
+  }
+  const bids = Array.isArray(data?.bids) ? data.bids : [];
+  const out = [];
+  for (const bid of bids) {
+    const entity = bid?.tenderers?.[0];
+    const code = String(entity?.identifier?.id || "").trim();
+    const name = String(entity?.name || "").trim();
+    if (!/^\\d{8,10}$/.test(code) || !name) continue;
+    const amountByLot = /* @__PURE__ */ new Map();
+    for (const lv of Array.isArray(bid.lotValues) ? bid.lotValues : []) {
+      const lotId = String(lv?.relatedLot || "");
+      const amount = Number(lv?.value?.amount);
+      if (lotId && Number.isFinite(amount) && amount > 0) amountByLot.set(lotId, amount);
+    }
+    const related = Array.isArray(bid.relatedLots) ? bid.relatedLots.map(String) : [...amountByLot.keys()];
+    const targets = related.length ? related : lotsById.size === 1 ? [...lotsById.keys()] : [];
+    const award = awards.get(bid.id);
+    for (const lotId of targets) {
+      const row = lotsById.get(lotId);
+      if (!row) continue;
+      const amount = amountByLot.get(lotId) ?? Number(bid.value?.amount);
+      const expected = Number(row["\u041E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u0442\u0456\u0441\u0442\u044C"]);
+      out.push({
+        tender_id: tenderId,
+        lot_id: lotId,
+        supplier_code: code,
+        supplier_name: name,
+        bid_value: Number.isFinite(amount) && amount > 0 ? amount : null,
+        expected_value: Number.isFinite(expected) && expected > 0 ? expected : null,
+        won: Boolean(award && (award.relatedBid || []).includes(bid.id)),
+        bid_status: String(bid.status || "")
+      });
+    }
+  }
+  return out;
+}
+function summarizeSupplierBehavior(entries, period) {
+  const map = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    if (!e.supplier_code || !e.tender_id || !e.lot_id) continue;
+    let s = map.get(e.supplier_code);
+    if (!s) {
+      s = { code: e.supplier_code, name: e.supplier_name, tenders: /* @__PURE__ */ new Set(), wins: /* @__PURE__ */ new Set(), ratios: [], latest: null };
+      map.set(e.supplier_code, s);
+    }
+    s.tenders.add(e.tender_id);
+    if (e.won) s.wins.add(e.tender_id);
+    if (Number.isFinite(e.bid_value) && Number.isFinite(e.expected_value) && e.expected_value > 0)
+      s.ratios.push(e.bid_value / e.expected_value * 100);
+    const day = String(e.tender_id).slice(3, 13);
+    if (!s.latest || day > s.latest) s.latest = day;
+  }
+  const suppliers = [...map.values()].map((s) => {
+    const ratios = [...s.ratios].sort((a, b) => a - b);
+    const median = ratios.length ? ratios.length % 2 ? ratios[(ratios.length - 1) / 2] : (ratios[ratios.length / 2 - 1] + ratios[ratios.length / 2]) / 2 : null;
+    const behavior = ratios.length >= 3 ? median <= 90 ? "\u041F\u0440\u043E\u043F\u043E\u043D\u0443\u0432\u0430\u0432 \u0446\u0456\u043D\u0443 \u043D\u0430 \u0440\u0456\u0432\u043D\u0456 \u0434\u043E 90% \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u043E\u0457 \u0432\u0430\u0440\u0442\u043E\u0441\u0442\u0456" : median <= 97 ? "\u0417\u0430\u0437\u0432\u0438\u0447\u0430\u0439 \u043F\u0440\u043E\u043F\u043E\u043D\u0443\u0432\u0430\u0432 \u0446\u0456\u043D\u0443 \u0431\u043B\u0438\u0437\u044C\u043A\u0443 \u0434\u043E \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u043E\u0457" : "\u0417\u0430\u0437\u0432\u0438\u0447\u0430\u0439 \u043F\u0440\u043E\u043F\u043E\u043D\u0443\u0432\u0430\u0432 \u0446\u0456\u043D\u0443 \u043F\u043E\u0431\u043B\u0438\u0437\u0443 \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u043E\u0457 \u0432\u0430\u0440\u0442\u043E\u0441\u0442\u0456" : "\u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043D\u044C\u043E \u0446\u0456\u043D\u043E\u0432\u0438\u0445 \u0441\u043F\u043E\u0441\u0442\u0435\u0440\u0435\u0436\u0435\u043D\u044C";
+    const participation = s.tenders.size >= 3 ? "\u0412\u0438\u0441\u043E\u043A\u0430 \u0456\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0456\u0441\u0442\u044C" : s.tenders.size === 2 ? "\u0421\u0435\u0440\u0435\u0434\u043D\u044F \u0456\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0456\u0441\u0442\u044C" : "\u041F\u043E\u043E\u0434\u0438\u043D\u043E\u043A\u0430 \u0443\u0447\u0430\u0441\u0442\u044C";
+    const forecast = s.tenders.size >= 3 && s.latest && (Date.parse(period.as_of) - Date.parse(s.latest)) / 864e5 <= 120 ? "\u0423\u0447\u0430\u0441\u0442\u044C \u0456\u043C\u043E\u0432\u0456\u0440\u043D\u0430 \u0437\u0430 \u0456\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u043E\u044E \u0430\u043A\u0442\u0438\u0432\u043D\u0456\u0441\u0442\u044E" : s.tenders.size >= 2 ? "\u041C\u043E\u0436\u043B\u0438\u0432\u0430 \u0443\u0447\u0430\u0441\u0442\u044C; \u0456\u0441\u0442\u043E\u0440\u0456\u044F \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u0430" : "\u041D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043D\u044C\u043E \u0434\u0430\u043D\u0438\u0445 \u0434\u043B\u044F \u043F\u0440\u043E\u0433\u043D\u043E\u0437\u0443 \u0443\u0447\u0430\u0441\u0442\u0456";
+    return {
+      name: s.name,
+      code: s.code,
+      bids: s.tenders.size,
+      tenders: s.tenders.size,
+      wins: s.wins.size,
+      avg_price_pct_of_budget: median,
+      behavior_label: behavior,
+      behavior_basis: ratios.length + " \u0446\u0456\u043D\u043E\u0432\u0438\u0445 \u0441\u043F\u043E\u0441\u0442\u0435\u0440\u0435\u0436\u0435\u043D\u044C; \u043C\u0435\u0434\u0456\u0430\u043D\u0430 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457 \u0432\u0456\u0434 \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u043E\u0457 \u0432\u0430\u0440\u0442\u043E\u0441\u0442\u0456.",
+      forecast_label: forecast,
+      forecast_reason: participation + "; \u043E\u0441\u0442\u0430\u043D\u043D\u044F \u0443\u0447\u0430\u0441\u0442\u044C: " + (s.latest || "\u043D\u0435\u0432\u0456\u0434\u043E\u043C\u043E") + ".",
+      observation_count: ratios.length
+    };
+  }).sort((a, b) => b.tenders - a.tenders || b.wins - a.wins || a.code.localeCompare(b.code));
+  return { suppliers, coverage_note: "\u041F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457 \u0443 \u043F\u0430\u043B\u0438\u0432\u043D\u0438\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u0430\u0445 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0437\u0430 \u043F\u043E\u043F\u0435\u0440\u0435\u0434\u043D\u0456 12 \u043C\u0456\u0441\u044F\u0446\u0456\u0432; \u043F\u043E\u0442\u043E\u0447\u043D\u0438\u0439 \u0442\u0435\u043D\u0434\u0435\u0440 \u0432\u0438\u043A\u043B\u044E\u0447\u0435\u043D\u043E. \u041F\u0440\u043E\u0433\u043D\u043E\u0437 \u0443\u0447\u0430\u0441\u0442\u0456 \u0454 \u0456\u0441\u0442\u043E\u0440\u0438\u0447\u043D\u043E\u044E \u043E\u0446\u0456\u043D\u043A\u043E\u044E, \u043D\u0435 \u0433\u0430\u0440\u0430\u043D\u0442\u0456\u0454\u044E." };
+}
 async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {}) {
   const unique = [...new Map(rows.filter((r) => buyerParentId(r) !== excludedTenderId).map((r) => [r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"], r])).values()];
   const parents = [...new Set(unique.map(buyerParentId).filter(Boolean))].sort().reverse();
@@ -1387,8 +1469,8 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   let cursor = 0;
   const deadline = Date.now() + 4e4;
   const cache = options.cache, base = options.baseUrl || "https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev";
-  const key = (id) => new Request(new URL("/buyer-evidence/v1/" + code + "/" + period.as_of + "/" + id, base));
-  const usable = (e, id) => e?.buyer_code === code && e.tender_id === id && /^\d{4}-\d{2}-\d{2}$/.test(e.modified_day) && e.modified_day <= period.end && e.created_day >= period.start && e.created_day <= period.end && e.modified_day >= e.created_day && Array.isArray(e.rows) && unique.filter((r) => buyerParentId(r) === id).every((r) => e.rows.some((x) => x["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] === r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] && String(x["\u041E\u0440\u0433\u0430\u043D\u0456\u0437\u0430\u0442\u043E\u0440"]).endsWith(" | " + code)));
+  const key = (id) => new Request(new URL("/buyer-evidence/v2/" + code + "/" + period.as_of + "/" + id, base));
+  const usable = (e, id) => e?.buyer_code === code && e.tender_id === id && /^\d{4}-\d{2}-\d{2}$/.test(e.modified_day) && e.modified_day <= period.end && e.created_day >= period.start && e.created_day <= period.end && e.modified_day >= e.created_day && Array.isArray(e.rows) && Array.isArray(e.supplier_bids) && unique.filter((r) => buyerParentId(r) === id).every((r) => e.rows.some((x) => x["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] === r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] && String(x["\u041E\u0440\u0433\u0430\u043D\u0456\u0437\u0430\u0442\u043E\u0440"]).endsWith(" | " + code)));
   for (const id of parents) {
     let e;
     try {
@@ -1422,7 +1504,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
           }
           const modified = new Date(data.dateModified), created = new Date(data.dateCreated);
           if (!Number.isFinite(modified.getTime()) || !Number.isFinite(created.getTime())) throw Error("date");
-          const e = { buyer_code: code, tender_id: id, created_day: euro5ObservationDate(created), modified_day: euro5ObservationDate(modified), rows: unique.filter((r) => buyerParentId(r) === id), source: "Prozorro API verified snapshot" };
+          const e = { buyer_code: code, tender_id: id, created_day: euro5ObservationDate(created), modified_day: euro5ObservationDate(modified), rows: unique.filter((r) => buyerParentId(r) === id), supplier_bids: extractSupplierBidEvidence(data, id, unique.filter((r) => buyerParentId(r) === id)), source: "Prozorro API verified snapshot" };
           if (!usable(e, id)) {
             states.set(id, "after_cutoff");
             break;
@@ -1447,9 +1529,11 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   const unresolved = unique.filter((r) => !["verified", "after_cutoff", "identity_mismatch"].includes(states.get(buyerParentId(r))));
   const reasons = unique.filter((r) => states.get(buyerParentId(r)) !== "verified").map((r) => ({ lot_id: r["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"], reason: states.get(buyerParentId(r)) || "not_checked" }));
   const history = summarizeBuyerHistory(eligible, code, period);
+  const supplierEvidence = [...proofs.values()].flatMap((e) => Array.isArray(e.supplier_bids) ? e.supplier_bids : []);
+  history.supplier_behavior = summarizeSupplierBehavior(supplierEvidence, period);
   return {
     ...history,
-    history_version: 2,
+    history_version: 3,
     as_of: period.as_of,
     excluded_tender_id: excludedTenderId,
     verification: {
@@ -1471,7 +1555,7 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key = new Request(new URL("/buyer-history-cache/v4/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key = new Request(new URL("/buyer-history-cache/v5/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key);
     if (hit) {
