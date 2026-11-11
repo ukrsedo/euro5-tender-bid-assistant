@@ -4,6 +4,9 @@
   let role='',decisionEpoch=0,draft=0,saving=false,savedDecision=null;
   const by=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const panel=by('memoryPanel');if(!panel)return;
+  // The public no-password experience has no personal-memory sign-in. The
+  // protected shared-profile experience keeps the existing memory controls.
+  if(!sessionMode){panel.remove();return;}
   const label=choice=>choice==='participate'?'Беремо участь':'Не беремо участі';
   function advisory(html){const node=by('memoryAdvice');if(node)node.innerHTML=html;}
   function decisionState(){
