@@ -1536,7 +1536,7 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const states=new Map(),proofs=new Map();let cursor=0;const deadline=Date.now()+40000;
  const cache=options.cache,base=options.baseUrl||'https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev';
  const key=id=>new Request(new URL('/buyer-evidence/v2/'+code+'/'+period.as_of+'/'+id,base));
- const usable=(e,id)=>e?.buyer_code===code&&e.tender_id===id&&/^\d{4}-\d{2}-\d{2}$/.test(e.modified_day)&&e.modified_day<=period.end&&e.created_day>=period.start&&e.created_day<=period.end&&e.modified_day>=e.created_day&&Array.isArray(e.rows)&&unique.filter(r=>buyerParentId(r)===id).every(r=>e.rows.some(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота']&&String(x['Організатор']).endsWith(' | '+code)));
+ const usable=(e,id)=>e?.buyer_code===code&&e.tender_id===id&&/^\d{4}-\d{2}-\d{2}$/.test(e.modified_day)&&e.modified_day<=period.end&&e.created_day>=period.start&&e.created_day<=period.end&&e.modified_day>=e.created_day&&Array.isArray(e.rows)&&Array.isArray(e.supplier_bids)&&unique.filter(r=>buyerParentId(r)===id).every(r=>e.rows.some(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота']&&String(x['Організатор']).endsWith(' | '+code)));
  for(const id of parents){
   let e;
   try{const hit=await cache?.match(key(id));if(hit)e=await hit.json()}catch{}
