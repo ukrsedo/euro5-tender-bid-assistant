@@ -59,8 +59,8 @@ async function extractOne(document, fetcher, remainingBytes) {
   if (!kind) return { title: document?.title || 'Без назви', status: 'unsupported', reason: 'Підтримуються вкладення PDF і DOCX.' };
   let url;
   try { url = new URL(document?.url); } catch { return { title: document?.title || 'Без назви', status: 'unavailable', reason: 'Посилання на документ відсутнє.' }; }
-  if (url.protocol !== 'https:' || !/(^|\.)prozorro\.gov\.ua$/i.test(url.hostname))
-    return { title: document?.title || 'Без назви', status: 'blocked', reason: 'Дозволені лише захищені посилання на Prozorro.' };
+  if (!isTrustedProzorroDocumentUrl(url))
+    return { title: document?.title || 'Без назви', status: 'blocked', reason: 'Адреса документа не належить перевіреному сховищу Prozorro.' };
   try {
     const response = await fetchProzorroDocument(url, fetcher);
     if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -73,7 +73,7 @@ async function extractOne(document, fetcher, remainingBytes) {
     const title = document?.title || url.pathname.split('/').pop() || 'Без назви';
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16_777_216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF має понад ' + MAX_PDF_PAGES + ' сторінок.');
@@ -88,27 +88,41 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   const candidates = (documents || []).filter(d => docKind(d)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
-  let totalChars = 0;
   for (const document of candidates) {
     const item = await extractOne(document, fetcher, MAX_TOTAL_BYTES - totalBytes);
     totalBytes += item.bytes || 0;
-    // The file size is enforced per attachment. Keep prompt content bounded at aggregate level.
-    if (item.text) {
-      const remaining = MAX_EXTRACTED_CHARS - totalChars;
-      if (remaining <= 0) { item.text = ''; item.status = 'truncated'; item.reason = 'Досягнуто ліміт спільного обсягу тексту — 120 000 символів.'; }
-      else if (item.text.length > remaining) { item.text = item.text.slice(0, remaining); item.status = 'truncated'; item.reason = 'Текст скорочено через спільний ліміт 120 000 символів.'; }
-      totalChars += item.text.length;
-      item.status ||= 'read';
-    } else {
+    if (!item.text) {
       item.status ||= 'no_text';
       item.reason ||= 'Не знайдено текстового шару. PDF може бути скан-копією.';
     }
     out.push(item);
   }
+  // Give every readable attachment a share of the prompt budget. A large
+  // contract must not consume all the space before the announcement is read.
+  const readable = out.filter(item => item.text);
+  if (readable.length) {
+    const share = Math.floor(MAX_EXTRACTED_CHARS / readable.length);
+    const quotas = readable.map(item => Math.min(item.text.length, share));
+    let remaining = MAX_EXTRACTED_CHARS - quotas.reduce((sum, n) => sum + n, 0);
+    readable.forEach((item, i) => {
+      const extra = Math.min(remaining, item.text.length - quotas[i]);
+      quotas[i] += extra;
+      remaining -= extra;
+    });
+    readable.forEach((item, i) => {
+      const original = item.text.length;
+      item.text = item.text.slice(0, quotas[i]);
+      item.extracted_chars = item.text.length;
+      if (item.text.length < original) {
+        item.status = 'truncated';
+        item.reason = 'Текст скорочено через спільний ліміт 120 000 символів.';
+      } else item.status = 'read';
+    });
+  }
   return out;
 }
 export function formatTenderDocumentsForAI(items) {
-  if (!items?.length) return 'Вкладень PDF або DOCX, опублікованих до оголошення, не знайдено.';
+  if (!items?.length) return 'Вкладень PDF або DOCX, опублікованих до завершення подання пропозицій, не знайдено.';
   return items.map(item => {
     const sourceId = item.source_id ? 'ID джерела: ' + item.source_id + ' | ' : '';
     if (!item.text) return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.reason ? ' | причина: ' + item.reason : '');
