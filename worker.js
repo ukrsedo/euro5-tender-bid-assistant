@@ -1413,13 +1413,13 @@ function validateAiEvidenceList(items, kind, documents) {
 // or pages; no condition or citation is generated from the file name.
 export function directDocumentHighlights(documents) {
   const rules=[
-    /(?:АЗС|АЗК).{0,160}(?:10-ти район|10 район|кожному.{0,25}район)|(?:10-ти район|10 район|кожному.{0,25}район).{0,160}(?:АЗС|АЗК)/iu,
-    /(?:талон|скретч-карт).{0,150}(?:термін дії|строк дії|не меншим ніж до)|(?:термін дії|строк дії).{0,100}(?:талон|скретч-карт)/iu,
-    /(?:поставк|передач).{0,100}(?:талон|скретч-карт).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)|(?:талон|скретч-карт).{0,90}(?:поставк|передач).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)/iu,
-    /(?:оплат|розрахунк).{0,130}(?:\d+\s*(?:календарн|робоч)|після.{0,50}(?:накладн|поставк))|(?:\d+\s*(?:календарн|робоч)).{0,90}оплат/iu,
-    /(?:штраф|пеня).{0,100}(?:\d+\s*%|вартост)|(?:\d+\s*%).{0,80}(?:штраф|пеня)/iu,
-    /(?:цін|вартіст).{0,100}(?:змін|фікс|перегляд)|(?:змін|перегляд).{0,100}(?:цін|вартіст)/iu,
-    /(?:А-95|Е10|E10|дизельн).{0,140}(?:ДСТУ|стандарт|сезон|температур)|(?:ДСТУ|стандарт).{0,140}(?:А-95|дизельн)/iu
+    s=>s.includes('азс')&&s.includes('район'),
+    s=>s.includes('талон')&&(s.includes('строк дії')||s.includes('терміном дії')||s.includes('термін дії')),
+    s=>s.includes('талон')&&s.includes('постав')&&s.includes('2026'),
+    s=>s.includes('розрахунк')&&s.includes('робочих днів'),
+    s=>s.includes('строків поставки талонів')&&s.includes('штраф'),
+    s=>s.includes('заміни талонів')&&s.includes('штраф'),
+    s=>s.includes('затримка фінансування')&&s.includes('відповідальності')
   ];
   const paragraphs=[];
   for(const doc of documents){
@@ -1440,14 +1440,10 @@ export function directDocumentHighlights(documents) {
   }
   const result=[],used=new Set();
   for(const rule of rules){
-    const found=paragraphs.find(p=>!used.has(p)&&rule.test(p.body));
+    const found=paragraphs.find(p=>!used.has(p)&&rule(p.body.toLowerCase()));
     if(!found)continue;
-    const match=found.body.match(rule),near=Math.max(0,(match?.index||0)-70);
-    const start=near?Math.min(found.body.length,found.body.indexOf(' ',near)+1):0;
-    const quote=found.body.slice(start,start+500).trim();
-    // The quote is sliced from this numbered paragraph. Verify against that
-    // paragraph directly, independent of the AI citation validator's kind gate.
-    if(!quote||!normalizeEvidenceText(found.body).includes(normalizeEvidenceText(quote)))continue;
+    const quote=found.body.slice(0,500).trim();
+    if(!quote||!found.body.includes(quote))continue;
     used.add(found);
     result.push({text:quote,source:{title:found.doc.title,location:found.location,quote,url:found.doc.source_url||null},source_verified:true});
   }
@@ -1712,7 +1708,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-document-evidence-v7"
+        version: "2026.11.12-august-document-evidence-v8"
       }, 200, origin);
     }
 
@@ -1828,7 +1824,7 @@ response_format: { type: "json_object" }
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,
-      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,segments:d.segments?.length||0,body_chars:d.text?.length||0,text_sample:d.text?.slice(0,100)||'',segment_sample:d.segments?.slice(0,2).map(s=>({location:s.location,body:s.body?.slice(0,100)}))||[]})),
+      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,segments:d.segments?.length||0,body_chars:d.text?.length||0,keyword_hits:d.segments?.filter(s=>s.body?.toLowerCase().includes('талон')).length||0})),
       cutoff_date: cutoff
     };
 
