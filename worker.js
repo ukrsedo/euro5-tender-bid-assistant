@@ -1438,7 +1438,9 @@ export function directDocumentHighlights(documents) {
     const match=found.body.match(rule),near=Math.max(0,(match?.index||0)-70);
     const start=near?Math.min(found.body.length,found.body.indexOf(' ',near)+1):0;
     const quote=found.body.slice(start,start+500).trim();
-    if(!quote||!citationBlock(found.doc,found.location)?.includes(normalizeEvidenceText(quote)))continue;
+    // The quote is sliced from this numbered paragraph. Verify against that
+    // paragraph directly, independent of the AI citation validator's kind gate.
+    if(!quote||!normalizeEvidenceText(found.body).includes(normalizeEvidenceText(quote)))continue;
     used.add(found);
     result.push({text:quote,source:{title:found.doc.title,location:found.location,quote,url:found.doc.source_url||null},source_verified:true});
   }
@@ -1703,7 +1705,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-document-evidence-v4"
+        version: "2026.11.12-august-document-evidence-v5"
       }, 200, origin);
     }
 
@@ -1819,6 +1821,7 @@ response_format: { type: "json_object" }
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,
+      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,body_chars:d.text?.length||0})),
       cutoff_date: cutoff
     };
 
