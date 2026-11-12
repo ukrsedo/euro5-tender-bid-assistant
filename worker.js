@@ -1412,34 +1412,35 @@ function validateAiEvidenceList(items, kind, documents) {
 // evidence array. These excerpts are copied verbatim from numbered paragraphs
 // or pages; no condition or citation is generated from the file name.
 export function directDocumentHighlights(documents) {
-  const patterns=[
-    /(?:АЗС|автозаправн).{0,110}(?:мереж|адрес|місц|радіус|област|міст|не менш)|(?:мереж|адрес|місц|радіус|област|міст|не менш).{0,110}(?:АЗС|автозаправн)/iu,
-    /(?:талон|скретч-карт|паливн.{0,8}карт).{0,100}(?:строк|термін|дійсн|номінал|емітент|бренд|зразк|отриман|передач|обмін)|(?:строк|термін|дійсн|номінал|емітент|бренд).{0,80}(?:талон|скретч-карт|паливн.{0,8}карт)/iu,
-    /(?:оплат|розрахунк).{0,100}(?:дн|після|перед|рахунк|накладн)|(?:дн|після|перед).{0,80}оплат/iu,
-    /(?:змін|перегляд|коригуван).{0,80}(?:цін|вартіст)|(?:цін|вартіст).{0,80}(?:змін|перегляд|коригуван)/iu,
-    /(?:постав|передач).{0,90}(?:дн|строк|термін|адрес|парті)/iu,
-    /(?:забезпеченн|гаранті).{0,70}(?:пропозиці|договор|виконан)|(?:штраф|пеня).{0,80}(?:%|грн|вартіст)/iu,
-    /(?:А-95|Е10|E10|Євро.?5|дизельн).{0,80}(?:ДСТУ|стандарт|октан|сірк|сезон|температур|густин)/iu
+  const rules=[
+    /(?:АЗС|АЗК).{0,160}(?:10-ти район|10 район|кожному.{0,25}район)|(?:10-ти район|10 район|кожному.{0,25}район).{0,160}(?:АЗС|АЗК)/iu,
+    /(?:талон|скретч-карт).{0,150}(?:термін дії|строк дії|не меншим ніж до)|(?:термін дії|строк дії).{0,100}(?:талон|скретч-карт)/iu,
+    /(?:поставк|передач).{0,100}(?:талон|скретч-карт).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)|(?:талон|скретч-карт).{0,90}(?:поставк|передач).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)/iu,
+    /(?:оплат|розрахунк).{0,130}(?:\d+\s*(?:календарн|робоч)|після.{0,50}(?:накладн|поставк))|(?:\d+\s*(?:календарн|робоч)).{0,90}оплат/iu,
+    /(?:штраф|пеня).{0,100}(?:\d+\s*%|вартост)|(?:\d+\s*%).{0,80}(?:штраф|пеня)/iu,
+    /(?:цін|вартіст).{0,100}(?:змін|фікс|перегляд)|(?:змін|перегляд).{0,100}(?:цін|вартіст)/iu,
+    /(?:А-95|Е10|E10|дизельн).{0,140}(?:ДСТУ|стандарт|сезон|температур)|(?:ДСТУ|стандарт).{0,140}(?:А-95|дизельн)/iu
   ];
-  const result=[],seen=new Set();
+  const paragraphs=[];
   for(const doc of documents){
     if(!['read','truncated'].includes(doc.status)||!doc.text)continue;
-    const marker=/\[(сторінка|абзац) (\d+)\]\s*/gu;
+    const marker=/\[(сторінка|абзац)\s+(\d+)\]\s*/gu;
     const matches=[...doc.text.matchAll(marker)];
     for(let i=0;i<matches.length;i++){
-      const m=matches[i],body=doc.text.slice(m.index+m[0].length,matches[i+1]?.index??doc.text.length);
-      const location=`${m[1]} ${m[2]}`;
-      const candidates=body.split(/(?<=[.!?;])\s+/u).map(s=>s.trim()).filter(s=>s.length>=25);
-      const matched=candidates.find(s=>patterns.some(re=>re.test(s)));
-      if(!matched)continue;
-      const quote=matched.slice(0,500).trim();
-      if(!quote||!citationBlock(doc,location)?.includes(normalizeEvidenceText(quote)))continue;
-      const key=normalizeEvidenceText(quote);
-      if(seen.has(key))continue;
-      seen.add(key);
-      result.push({text:quote,source:{title:doc.title,location,quote,url:doc.source_url||null},source_verified:true});
-      if(result.length>=12)return result;
+      const m=matches[i],body=doc.text.slice(m.index+m[0].length,matches[i+1]?.index??doc.text.length).trim();
+      if(body.length>=25)paragraphs.push({doc,location:`${m[1]} ${m[2]}`,body});
     }
+  }
+  const result=[],used=new Set();
+  for(const rule of rules){
+    const found=paragraphs.find(p=>!used.has(p)&&rule.test(p.body));
+    if(!found)continue;
+    const match=found.body.match(rule),near=Math.max(0,(match?.index||0)-70);
+    const start=near?Math.min(found.body.length,found.body.indexOf(' ',near)+1):0;
+    const quote=found.body.slice(start,start+500).trim();
+    if(!quote||!citationBlock(found.doc,found.location)?.includes(normalizeEvidenceText(quote)))continue;
+    used.add(found);
+    result.push({text:quote,source:{title:found.doc.title,location:found.location,quote,url:found.doc.source_url||null},source_verified:true});
   }
   return result;
 }
@@ -1702,7 +1703,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-catalog-evidence-v3"
+        version: "2026.11.12-august-document-evidence-v4"
       }, 200, origin);
     }
 
@@ -1758,6 +1759,7 @@ export default {
       return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
     });
     const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({extracted_chars:0,...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`}));
+    const directHighlights=directDocumentHighlights(documentExtracts);
 
     const payload = {
       model: env.AI_MODEL,
@@ -1809,13 +1811,14 @@ response_format: { type: "json_object" }
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
-    parsed.document_highlights = directDocumentHighlights(documentExtracts).filter(item=>
+    parsed.document_highlights = directHighlights.filter(item=>
       ![...parsed.conditions,...parsed.fuel_requirements,...parsed.actions].some(other=>other.text===item.text));
     parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
     parsed.document_read_summary = {
       available: Array.isArray(source.data?.documents)?source.data.documents.length:0,
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
+      highlights_found: directHighlights.length,
       cutoff_date: cutoff
     };
 
