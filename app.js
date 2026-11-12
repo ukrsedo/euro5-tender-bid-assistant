@@ -433,20 +433,25 @@ function renderCompetitionForecast(data){
     Math.abs(fc.one_participant_pct+fc.two_plus_participants_pct-100)<1;
   box.classList.remove('hidden');
   if(!valid){
-    document.getElementById('competitionConclusion').textContent='Прогноз поки недоступний';
+    const actual=Number(data?.competition_actual?.count);
+    const actualKnown=Number.isInteger(actual)&&actual>0;
+    document.getElementById('competitionKicker').textContent=actualKnown?'Фактична конкуренція':'Очікувана конкуренція';
+    document.getElementById('competitionConclusion').textContent=actualKnown?`${actual} учасників подали пропозиції`:'Прогноз недоступний';
     document.getElementById('competitionOnePct').textContent='—';
     document.getElementById('competitionTwoPct').textContent='—';
     document.getElementById('competitionOneBar').style.width='0%';
     document.getElementById('competitionTwoBar').style.width='0%';
-    document.getElementById('competitionHistoryNote').textContent=
-      'Статистичний прогноз не надійшов із сервера або закупівля поза умовами моделі (від 1 млн грн без ПДВ). Відсотки не вигадуються.';
+    document.getElementById('competitionHistoryNote').textContent=actualKnown
+      ? 'Кількість учасників підтверджена пропозиціями Prozorro. Модель, доступна з жовтня 2026 року, не могла дати прогноз на дату цього серпневого тендера.'
+      : 'Статистичний прогноз недоступний для цієї дати або вартості; учасників із пропозицій Prozorro не підтверджено. Відсотки не вигадуються.';
     document.getElementById('reviewCompetitionMode').value='market';
     document.getElementById('competitionModeReason').textContent=
-      'Оберіть режим конкуренції вручну. Автоматичної рекомендації наразі немає.';
+      actualKnown?'Фактична кількість не є прогнозом на дату участі. Для розрахунку оберіть режим конкуренції вручну.':'Оберіть режим конкуренції вручну. Автоматичної рекомендації наразі немає.';
     return;
   }
   const one=Number(fc.one_participant_pct);
   const two=Number(fc.two_plus_participants_pct);
+  document.getElementById('competitionKicker').textContent='Очікувана конкуренція';
   box.classList.remove('hidden');
   document.getElementById('competitionConclusion').textContent=fc.conclusion || '—';
   document.getElementById('competitionOnePct').textContent=`${num.format(one)}%`;
@@ -557,7 +562,8 @@ function renderReview(data){
   const reviewItems=[
     ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements.map(x=>({...x,type:'Технічний параметр пального'})):[]),
     ...(Array.isArray(data.conditions)?data.conditions.map(x=>({...x,type:'Умова тендера'})):[]),
-    ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[])
+    ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[]),
+    ...(Array.isArray(data.document_highlights)?data.document_highlights.map(x=>({...x,type:'Дослівний витяг із документа'})):[])
   ];
   renderDocumentReadSummary(data);
   renderRequirements(reviewItems,data.document_read_summary?.read||0);
@@ -1152,7 +1158,7 @@ function buildPdfReport(){
     ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap,displayCmp.referenceContext))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
     <p>Документи Prozorro: прочитано ${money.format(lastExtraction?.document_read_summary?.read??0)} із ${money.format(lastExtraction?.document_read_summary?.supported_before_cutoff??0)} відібраних PDF/DOCX.</p>
-    <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${evidenceListHtml(lastExtraction?.conditions,'Пунктів із перевіреною цитатою не отримано.')}</div><div><h4>Фрагменти для перевірки</h4>${evidenceListHtml(lastExtraction?.actions,'Пунктів із перевіреною цитатою не отримано.')}</div></div>
+    <div class="pdf-two"><div><h4>Умови та технічні параметри</h4>${evidenceListHtml([...(lastExtraction?.conditions||[]),...(lastExtraction?.fuel_requirements||[])],'Пунктів із перевіреною цитатою не отримано.')}</div><div><h4>Дослівні витяги з документів</h4>${evidenceListHtml(lastExtraction?.document_highlights,'Підтверджених витягів не отримано.')}</div></div>
     <h3>Економіка ЄВРО5</h3>
     <div class="pdf-grid">
       <div><span>Вартість пального</span><strong>${money.format(fuelCost)} грн</strong></div>
