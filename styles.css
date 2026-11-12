@@ -68,3 +68,5 @@ input[readonly],select:disabled{background:#f2f5f9;color:#34445a;cursor:not-allo
 #participationComment{width:100%;font:inherit;padding:10px;border:1px solid #cbd6e5;border-radius:9px;resize:vertical;background:#fff}
 #participationSave:disabled{cursor:not-allowed;opacity:.55}
 #participationSaved{white-space:pre-wrap;overflow-wrap:anywhere}
+.supplier-estimate-value,.supplier-estimate-basis{display:block;white-space:nowrap}
+.supplier-estimate-basis{color:var(--muted);font-size:11px;font-weight:400}
