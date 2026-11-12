@@ -40297,6 +40297,18 @@ function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat) {
     model_note: "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u0447\u043D\u0438\u0439 \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u0444\u043E\u0440\u043C\u0443\u0454 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u043E\u0432\u0430\u043D\u0438\u0439 \u0440\u0435\u0436\u0438\u043C \u043A\u043E\u043D\u043A\u0443\u0440\u0435\u043D\u0446\u0456\u0457. \u041F\u0435\u0440\u0435\u0434 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u043E\u043C \u043A\u043E\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447 \u043C\u0430\u0454 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438 \u0430\u0431\u043E \u0437\u043C\u0456\u043D\u0438\u0442\u0438 \u0446\u0435\u0439 \u0440\u0435\u0436\u0438\u043C."
   };
 }
+function actualTenderParticipants(data) {
+  const end = new Date(data?.tenderPeriod?.endDate);
+  if (!Number.isFinite(end.getTime()) || end.getTime() > Date.now() || !Array.isArray(data?.bids)) return null;
+  const participants = /* @__PURE__ */ new Set();
+  for (const bid of data.bids) {
+    if (bid?.status === "deleted" || bid?.status === "draft") continue;
+    const entity = bid?.tenderers?.[0];
+    const code = String(entity?.identifier?.id || "").trim();
+    if (code) participants.add(code);
+  }
+  return { count: participants.size, source: "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0456 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457 \u0443\u0447\u0430\u0441\u043D\u0438\u043A\u0456\u0432 Prozorro", as_of: end.toISOString() };
+}
 function cors(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : "";
   return {
@@ -41399,6 +41411,38 @@ function validateAiEvidenceList(items, kind, documents) {
   }
   return out.slice(0, 30);
 }
+function directDocumentHighlights(documents) {
+  const patterns = [
+    /(?:АЗС|автозаправн).{0,110}(?:мереж|адрес|місц|радіус|област|міст|не менш)|(?:мереж|адрес|місц|радіус|област|міст|не менш).{0,110}(?:АЗС|автозаправн)/iu,
+    /(?:талон|скретч-карт|паливн.{0,8}карт).{0,100}(?:строк|термін|дійсн|номінал|емітент|бренд|зразк|отриман|передач|обмін)|(?:строк|термін|дійсн|номінал|емітент|бренд).{0,80}(?:талон|скретч-карт|паливн.{0,8}карт)/iu,
+    /(?:оплат|розрахунк).{0,100}(?:дн|після|перед|рахунк|накладн)|(?:дн|після|перед).{0,80}оплат/iu,
+    /(?:змін|перегляд|коригуван).{0,80}(?:цін|вартіст)|(?:цін|вартіст).{0,80}(?:змін|перегляд|коригуван)/iu,
+    /(?:постав|передач).{0,90}(?:дн|строк|термін|адрес|парті)/iu,
+    /(?:забезпеченн|гаранті).{0,70}(?:пропозиці|договор|виконан)|(?:штраф|пеня).{0,80}(?:%|грн|вартіст)/iu,
+    /(?:А-95|Е10|E10|Євро.?5|дизельн).{0,80}(?:ДСТУ|стандарт|октан|сірк|сезон|температур|густин)/iu
+  ];
+  const result = [], seen = /* @__PURE__ */ new Set();
+  for (const doc of documents) {
+    if (!["read", "truncated"].includes(doc.status) || !doc.text) continue;
+    const marker = /\[(сторінка|абзац) (\d+)\]\s*/gu;
+    const matches = [...doc.text.matchAll(marker)];
+    for (let i2 = 0; i2 < matches.length; i2++) {
+      const m2 = matches[i2], body = doc.text.slice(m2.index + m2[0].length, matches[i2 + 1]?.index ?? doc.text.length);
+      const location = `${m2[1]} ${m2[2]}`;
+      const candidates = body.split(/(?<=[.!?;])\s+/u).map((s2) => s2.trim()).filter((s2) => s2.length >= 25);
+      const matched = candidates.find((s2) => patterns.some((re2) => re2.test(s2)));
+      if (!matched) continue;
+      const quote = matched.slice(0, 500).trim();
+      if (!quote || !citationBlock(doc, location)?.includes(normalizeEvidenceText(quote))) continue;
+      const key2 = normalizeEvidenceText(quote);
+      if (seen.has(key2)) continue;
+      seen.add(key2);
+      result.push({ text: quote, source: { title: doc.title, location, quote, url: doc.source_url || null }, source_verified: true });
+      if (result.length >= 12) return result;
+    }
+  }
+  return result;
+}
 var BUYER_BI_APP = "fba3f2f2-cf55-40a0-a79f-b74f5ce947c2";
 function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -41585,6 +41629,7 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
   const lotsByApiId = /* @__PURE__ */ new Map();
   if (apiLots.length === rowLots.length) apiLots.forEach((lot, i2) => lotsByApiId.set(String(lot.id), rowLots[i2]));
   else if (rowLots.length === 1) for (const lot of apiLots) lotsByApiId.set(String(lot.id), rowLots[0]);
+  const unpartitioned = rowLots.length === 1 && apiLots.length === 0 ? rowLots[0] : null;
   const awards = /* @__PURE__ */ new Map();
   for (const award of Array.isArray(data?.awards) ? data.awards : []) {
     if (award?.status !== "active") continue;
@@ -41606,16 +41651,16 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
       if (lotId && Number.isFinite(amount) && amount > 0) amountByLot.set(lotId, amount);
     }
     const related = Array.isArray(bid.relatedLots) ? bid.relatedLots.map(String) : [...amountByLot.keys()];
-    const targets = related.length ? related : lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : [];
+    const targets = unpartitioned ? ["__single__"] : related.length ? related : lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : [];
     const award = awards.get(bid.id);
     for (const lotId of targets) {
-      const row = lotsByApiId.get(lotId);
+      const row = unpartitioned || lotsByApiId.get(lotId);
       if (!row) continue;
       const amount = amountByLot.get(lotId) ?? Number(bid.value?.amount);
       const expected = Number(row["\u041E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u0442\u0456\u0441\u0442\u044C"]);
       out.push({
         tender_id: tenderId,
-        lot_id: lotId,
+        lot_id: String(row["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"]),
         supplier_code: code,
         supplier_name: name,
         bid_value: Number.isFinite(amount) && amount > 0 ? amount : null,
@@ -41672,7 +41717,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   let cursor = 0;
   const deadline = Date.now() + 4e4;
   const cache = options.cache, base = options.baseUrl || "https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev";
-  const key2 = (id) => new Request(new URL("/buyer-evidence/v4/" + code + "/" + period.as_of + "/" + id, base));
+  const key2 = (id) => new Request(new URL("/buyer-evidence/v5/" + code + "/" + period.as_of + "/" + id, base));
   const usable = (e2, id) => e2?.buyer_code === code && e2.tender_id === id && /^\d{4}-\d{2}-\d{2}$/.test(e2.modified_day) && e2.modified_day <= period.end && e2.created_day >= period.start && e2.created_day <= period.end && e2.modified_day >= e2.created_day && Array.isArray(e2.rows) && Array.isArray(e2.supplier_bids) && unique.filter((r2) => buyerParentId(r2) === id).every((r2) => e2.rows.some((x2) => x2["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] === r2["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"] && String(x2["\u041E\u0440\u0433\u0430\u043D\u0456\u0437\u0430\u0442\u043E\u0440"]).endsWith(" | " + code)));
   for (const id of parents) {
     let e2;
@@ -41759,7 +41804,7 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u0437\u0440\u0456\u0437\u0443 \u0456\u0441\u0442\u043E\u0440\u0456\u0457." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key2 = new Request(new URL("/buyer-history-cache/v10/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key2 = new Request(new URL("/buyer-history-cache/v11/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key2);
     if (hit) {
@@ -41797,7 +41842,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-submission-history-documents-v2"
+        version: "2026.11.12-august-catalog-evidence-v3"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41890,6 +41935,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
+    parsed.document_highlights = directDocumentHighlights(documentExtracts).filter((item) => ![...parsed.conditions, ...parsed.fuel_requirements, ...parsed.actions].some((other) => other.text === item.text));
     parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, paragraphs, extracted_chars, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, paragraphs: paragraphs ?? null, extracted_chars: extracted_chars ?? 0, source_url: source_url || null }));
     parsed.document_read_summary = {
       available: Array.isArray(source.data?.documents) ? source.data.documents.length : 0,
@@ -42010,11 +42056,12 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       usd_uah_start_date: fxData?.pastDate ?? null,
       currency_note: fx.note ?? null,
       competition_forecast: competitionForecast,
+      competition_actual: actualTenderParticipants(source.data),
       advance_payment_pct: parsed.advance_payment_pct ?? 0,
       payment_days: parsed.payment_days ?? null,
       payment_note: parsed.payment_note ?? null,
       scope_note: "\u0412\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0456\u0441\u0442\u044C \u0441\u0444\u0435\u0440\u0438 \u0437\u0430\u0441\u0442\u043E\u0441\u0443\u0432\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u043E \u0437\u0430 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0438\u043C\u0438 \u0434\u0430\u043D\u0438\u043C\u0438 \u043F\u0443\u0431\u043B\u0456\u0447\u043D\u043E\u0433\u043E API Prozorro.",
-      source_scope: "\u041E\u0441\u043D\u043E\u0432\u043D\u0456 \u0434\u0430\u043D\u0456 \u0442\u0435\u043D\u0434\u0435\u0440\u0430 \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0435\u043D\u043E \u0437 Prozorro. \u0412\u043A\u043B\u0430\u0434\u0435\u043D\u0456 \u0444\u0430\u0439\u043B\u0438 \u043F\u043E\u043A\u0438 \u0449\u043E \u043D\u0435 \u0430\u043D\u0430\u043B\u0456\u0437\u0443\u044E\u0442\u044C\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u043D\u043E."
+      source_scope: "\u041E\u0441\u043D\u043E\u0432\u043D\u0456 \u0434\u0430\u043D\u0456 \u0442\u0435\u043D\u0434\u0435\u0440\u0430 \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0435\u043D\u043E \u0437 Prozorro. \u0421\u0442\u0430\u0442\u0443\u0441 \u0447\u0438\u0442\u0430\u043D\u043D\u044F PDF/DOCX \u0456 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u0446\u0438\u0442\u0430\u0442\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0438\u0449\u0435."
     }, 200, origin);
   }
 };
