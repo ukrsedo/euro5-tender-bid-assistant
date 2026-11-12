@@ -40111,13 +40111,13 @@ async function extractOne(document2, fetcher, remainingBytes) {
     const title = document2?.title || url.pathname.split("/").pop() || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438";
     if (kind === "docx") {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16777216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error("PDF \u043C\u0430\u0454 \u043F\u043E\u043D\u0430\u0434 " + MAX_PDF_PAGES + " \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A.");
     const result = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(result.text) ? result.text : [result.text];
-    return { title, kind, bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i2) => "[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 " + (i2 + 1) + "] " + String(page || "").trim()).filter(Boolean).join("\n") };
+    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i2) => "[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 " + (i2 + 1) + "] " + String(page || "").trim()).filter(Boolean).join("\n") };
   } catch (error) {
     return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", kind, status: "error", reason: String(error?.message || "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u0438 \u0444\u0430\u0439\u043B").slice(0, 240) };
   }
@@ -40154,8 +40154,9 @@ async function readTenderDocuments(documents, fetcher = fetch) {
 function formatTenderDocumentsForAI(items) {
   if (!items?.length) return "\u0412\u043A\u043B\u0430\u0434\u0435\u043D\u044C PDF \u0430\u0431\u043E DOCX, \u043E\u043F\u0443\u0431\u043B\u0456\u043A\u043E\u0432\u0430\u043D\u0438\u0445 \u0434\u043E \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F, \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E.";
   return items.map((item) => {
-    if (!item.text) return "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.reason ? " | \u043F\u0440\u0438\u0447\u0438\u043D\u0430: " + item.reason : "");
-    return "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.pages ? " | \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A: " + item.pages : " | \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0438 \u0443 DOCX \u043D\u0435 \u0432\u0438\u0437\u043D\u0430\u0447\u0430\u044E\u0442\u044C\u0441\u044F; \u0446\u0438\u0442\u0443\u0439 \u043D\u043E\u043C\u0435\u0440 \u0430\u0431\u0437\u0430\u0446\u0443") + "\n" + item.text;
+    const sourceId = item.source_id ? "ID \u0434\u0436\u0435\u0440\u0435\u043B\u0430: " + item.source_id + " | " : "";
+    if (!item.text) return sourceId + "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.reason ? " | \u043F\u0440\u0438\u0447\u0438\u043D\u0430: " + item.reason : "");
+    return sourceId + "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.pages ? " | \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A: " + item.pages : " | \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0438 \u0443 DOCX \u043D\u0435 \u0432\u0438\u0437\u043D\u0430\u0447\u0430\u044E\u0442\u044C\u0441\u044F; \u0446\u0438\u0442\u0443\u0439 \u043D\u043E\u043C\u0435\u0440 \u0430\u0431\u0437\u0430\u0446\u0443") + "\n" + item.text;
   }).join("\n\n");
 }
 
@@ -41265,7 +41266,6 @@ function aiTenderPayload(data) {
       title: d2?.title,
       documentType: d2?.documentType,
       format: d2?.format,
-      url: d2?.url,
       datePublished: d2?.datePublished
     })),
     tenderPeriod: data?.tenderPeriod,
@@ -41287,9 +41287,16 @@ CPV, \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u
 \u041A\u043E\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447 \u043E\u0431\u043E\u0432'\u044F\u0437\u043A\u043E\u0432\u043E \u043F\u0435\u0440\u0435\u0433\u043B\u044F\u043D\u0435 \u0442\u0430 \u0437\u0430 \u043F\u043E\u0442\u0440\u0435\u0431\u0438 \u0432\u0438\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0435\u043D\u0456 \u0434\u0430\u043D\u0456 \u043F\u0435\u0440\u0435\u0434 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u043E\u043C.
 \u041D\u0435 \u0432\u0433\u0430\u0434\u0443\u0439 \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F.
 
+\u0417\u0410\u0425\u0418\u0421\u0422 \u0412\u0406\u0414 \u0412\u0418\u0413\u0410\u0414\u0410\u041D\u0418\u0425 \u0412\u0418\u041C\u041E\u0413 \u0406 \u041F\u041E\u0421\u0418\u041B\u0410\u041D\u042C:
+- \u0423 \u043C\u0430\u0441\u0438\u0432\u0430\u0445 conditions, fuel_requirements \u0442\u0430 actions \u043F\u043E\u0432\u0435\u0440\u0442\u0430\u0439 \u043B\u0438\u0448\u0435 \u043F\u0443\u043D\u043A\u0442\u0438, \u043F\u0440\u044F\u043C\u043E \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u0438\u043C \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u043C.
+- \u041A\u043E\u0436\u0435\u043D \u043F\u0443\u043D\u043A\u0442 \u043C\u0430\u0454 \u0431\u0443\u0442\u0438 \u043E\u0431'\u0454\u043A\u0442\u043E\u043C \u0437 \u043F\u043E\u043B\u044F\u043C\u0438 text, source_id, source_location \u0442\u0430 evidence_quote. text \u0456 evidence_quote \u043C\u0430\u044E\u0442\u044C \u0431\u0443\u0442\u0438 \u0442\u0438\u043C \u0441\u0430\u043C\u0438\u043C \u0434\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u043C \u0443\u0440\u0438\u0432\u043A\u043E\u043C \u0456\u0437 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430; \u043D\u0435 \u043F\u0435\u0440\u0435\u043A\u0430\u0437\u0443\u0439 \u0456 \u043D\u0435 \u0443\u0437\u0430\u0433\u0430\u043B\u044C\u043D\u044E\u0439 \u0439\u043E\u0433\u043E. source_id \u043C\u0430\u0454 \u0442\u043E\u0447\u043D\u043E \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u0442\u0438 ID \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430, \u043D\u0430\u0434\u0430\u043D\u043E\u043C\u0443 \u043F\u0435\u0440\u0435\u0434 \u0442\u0435\u043A\u0441\u0442\u043E\u043C. source_location \u2014 \u0442\u0456\u043B\u044C\u043A\u0438 \xAB\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 N\xBB \u0434\u043B\u044F PDF \u0430\u0431\u043E \xAB\u0430\u0431\u0437\u0430\u0446 N\xBB \u0434\u043B\u044F DOCX.
+- \u042F\u043A\u0449\u043E \u0442\u0435\u043A\u0441\u0442, \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430/\u0430\u0431\u0437\u0430\u0446 \u0430\u0431\u043E \u0434\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u0439 \u0443\u0440\u0438\u0432\u043E\u043A \u043D\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0443\u044E\u0442\u044C\u0441\u044F \u043D\u0430\u0434\u0430\u043D\u0438\u043C \u0442\u0435\u043A\u0441\u0442\u043E\u043C, \u043D\u0435 \u043F\u043E\u0432\u0435\u0440\u0442\u0430\u0439 \u043F\u0443\u043D\u043A\u0442.
+- \u041D\u0435 \u0441\u0442\u0432\u043E\u0440\u044E\u0439 URL, \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u044C, \u043D\u0430\u0437\u0432 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0456\u0432, \u043D\u043E\u043C\u0435\u0440\u0456\u0432 \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A \u0447\u0438 \u0430\u0431\u0437\u0430\u0446\u0456\u0432. URL \u043D\u0435 \u043F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u0443 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0456. \u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u0441\u0444\u043E\u0440\u043C\u0443\u0454 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u0430 \u043B\u0438\u0448\u0435 \u0437 \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u043E\u0433\u043E URL Prozorro.
+- \u041D\u0435 \u0432\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0439 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0443 Prozorro \u0430\u0431\u043E \u0432\u043B\u0430\u0441\u043D\u0456 \u043F\u0440\u0438\u043F\u0443\u0449\u0435\u043D\u043D\u044F \u044F\u043A \u043F\u0456\u0434\u0441\u0442\u0430\u0432\u0443 \u0434\u043B\u044F \u043F\u0443\u043D\u043A\u0442\u0456\u0432 \u0446\u0438\u0445 \u0442\u0440\u044C\u043E\u0445 \u043C\u0430\u0441\u0438\u0432\u0456\u0432. \u0414\u0430\u043D\u0456 Prozorro \u0432\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u044E\u0442\u044C\u0441\u044F \u043E\u043A\u0440\u0435\u043C\u043E \u0434\u043B\u044F \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0438\u0445 \u043F\u043E\u043B\u0456\u0432.
+
 \u041D\u0415 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0439 \u0446\u0456\u043D\u0443. \u041D\u0415 \u043E\u0446\u0456\u043D\u044E\u0439 \u0456\u043C\u043E\u0432\u0456\u0440\u043D\u0456\u0441\u0442\u044C \u043F\u0435\u0440\u0435\u043C\u043E\u0433\u0438. \u041D\u0415 \u0437\u043C\u0456\u043D\u044E\u0439 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043E\u043A \u0446\u0456\u043D\u0438.
 \u041D\u0415 \u0440\u043E\u0431\u0438 \u0432\u0438\u0441\u043D\u043E\u0432\u043A\u0456\u0432 \u0437\u0430 \u043D\u0430\u0437\u0432\u043E\u044E \u0444\u0430\u0439\u043B\u0443. \u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0439 \u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u0438\u0445 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u044C \u043D\u0438\u0436\u0447\u0435. \u042F\u043A\u0449\u043E \u0442\u0435\u043A\u0441\u0442 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0439 \u0430\u0431\u043E \u043C\u0430\u0454 \u0441\u0442\u0430\u0442\u0443\u0441 \u043F\u043E\u043C\u0438\u043B\u043A\u0438, \u043F\u0440\u044F\u043C\u043E \u043D\u0435 \u0441\u0442\u0432\u0435\u0440\u0434\u0436\u0443\u0439, \u0449\u043E \u0444\u0430\u0439\u043B \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u043E.
-\u0423 fuel_requirements \u0432\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u0437\u043E\u043A\u0440\u0435\u043C\u0430 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442/\u043A\u043B\u0430\u0441, \u043C\u0430\u0440\u043A\u0443, \u0441\u0435\u0437\u043E\u043D\u043D\u0456\u0441\u0442\u044C, \u0435\u043A\u043E\u043B\u043E\u0433\u0456\u0447\u043D\u0438\u0439 \u043A\u043B\u0430\u0441, \u0432\u043C\u0456\u0441\u0442 \u0441\u0456\u0440\u043A\u0438, \u0433\u0443\u0441\u0442\u0438\u043D\u0443, \u0433\u0440\u0430\u043D\u0438\u0447\u043D\u0443 \u0442\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0443 \u0444\u0456\u043B\u044C\u0442\u0440\u043E\u0432\u0430\u043D\u043E\u0441\u0442\u0456 \u0442\u0430 \u0456\u043D\u0448\u0456 \u0437\u0430\u0434\u0430\u043D\u0456 \u0447\u0438\u0441\u043B\u043E\u0432\u0456 \u0430\u0431\u043E \u044F\u043A\u0456\u0441\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438. \u041D\u0435 \u0434\u043E\u043F\u043E\u0432\u043D\u044E\u0439 \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0438\u043C\u0438 \u043F\u0440\u0438\u043F\u0443\u0449\u0435\u043D\u043D\u044F\u043C\u0438. \u041A\u043E\u0436\u0435\u043D \u043F\u0443\u043D\u043A\u0442 \u043C\u0430\u0454 \u043C\u0456\u0441\u0442\u0438\u0442\u0438 \u0434\u043E\u0441\u043B\u0456\u0432\u043D\u043E \u0442\u043E\u0447\u043D\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F \u0442\u0430 \u0434\u0436\u0435\u0440\u0435\u043B\u043E: \u043D\u0430\u0437\u0432\u0443 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0456 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0443 PDF \u0430\u0431\u043E \u043D\u043E\u043C\u0435\u0440 \u0430\u0431\u0437\u0430\u0446\u0443 DOCX. \u0417\u0430 \u0441\u0443\u043F\u0435\u0440\u0435\u0447\u043D\u043E\u0441\u0442\u0435\u0439 \u043C\u0456\u0436 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u043D\u0430\u0432\u0435\u0434\u0438 \u043E\u0431\u0438\u0434\u0432\u0430 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F \u0456 \u043E\u0431\u0438\u0434\u0432\u0430 \u0434\u0436\u0435\u0440\u0435\u043B\u0430.
+\u0423 fuel_requirements \u0432\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E: \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442/\u043A\u043B\u0430\u0441, \u043C\u0430\u0440\u043A\u0443, \u0441\u0435\u0437\u043E\u043D\u043D\u0456\u0441\u0442\u044C, \u0435\u043A\u043E\u043B\u043E\u0433\u0456\u0447\u043D\u0438\u0439 \u043A\u043B\u0430\u0441, \u0432\u043C\u0456\u0441\u0442 \u0441\u0456\u0440\u043A\u0438, \u0433\u0443\u0441\u0442\u0438\u043D\u0443, \u0433\u0440\u0430\u043D\u0438\u0447\u043D\u0443 \u0442\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0443 \u0444\u0456\u043B\u044C\u0442\u0440\u043E\u0432\u0430\u043D\u043E\u0441\u0442\u0456 \u0442\u0430 \u0456\u043D\u0448\u0456 \u0437\u0430\u0434\u0430\u043D\u0456 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F. \u0417\u0430 \u0441\u0443\u043F\u0435\u0440\u0435\u0447\u043D\u043E\u0441\u0442\u0435\u0439 \u043F\u043E\u0432\u0435\u0440\u043D\u0438 \u043E\u043A\u0440\u0435\u043C\u0456 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u043F\u0443\u043D\u043A\u0442\u0438 \u0437 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0438\u043C\u0438 \u0446\u0438\u0442\u0430\u0442\u0430\u043C\u0438 \u0442\u0430 \u0434\u0436\u0435\u0440\u0435\u043B\u0430\u043C\u0438.
 
 \u041D\u0435 \u0432\u0438\u043D\u043E\u0441\u044C \u0443 \xAB\u0432\u0430\u0436\u043B\u0438\u0432\u0456 \u0443\u043C\u043E\u0432\u0438\xBB \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438, \u044F\u043A\u0456 \u0454 \u0437\u0432\u0438\u0447\u0430\u0439\u043D\u0438\u043C\u0438 \u0434\u043B\u044F \u043F\u0443\u0431\u043B\u0456\u0447\u043D\u0438\u0445 \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u0430\u0431\u043E \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u044F\u043A\u0449\u043E \u0432\u043E\u043D\u0438 \u043D\u0435 \u043C\u0430\u044E\u0442\u044C \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u043D\u044F. \u0417\u043E\u043A\u0440\u0435\u043C\u0430, \u041D\u0415 \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u0431\u0435\u0437 \u043E\u043A\u0440\u0435\u043C\u043E\u0457 \u043F\u0440\u0438\u0447\u0438\u043D\u0438:
 - \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0443 \u0432\u0438\u043C\u043E\u0433\u0443 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u0442\u0438 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u043C \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\u0430\u043C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E;
@@ -41330,32 +41337,57 @@ CPV, \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u
   "max_radius_km": number | null,
   "nationwide_coverage": boolean | null,
   "named_network": string | null,
-  "conditions": string[],
-  "fuel_requirements": string[],
-  "actions": string[]
+  "conditions": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}],
+  "fuel_requirements": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}],
+  "actions": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}]
 }
 
-\u041A\u043E\u0436\u0435\u043D \u0435\u043B\u0435\u043C\u0435\u043D\u0442 fuel_requirements \u043C\u0430\u0454 \u043C\u0456\u0441\u0442\u0438\u0442\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440 \u0456 \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u0432\u0438\u0434\u0443 \xAB\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: \u043D\u0430\u0437\u0432\u0430, \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 N\xBB \u0434\u043B\u044F PDF \u0430\u0431\u043E \xAB\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: \u043D\u0430\u0437\u0432\u0430, \u0430\u0431\u0437\u0430\u0446 N\xBB \u0434\u043B\u044F DOCX. \u042F\u043A\u0449\u043E \u0447\u0438\u0442\u0430\u043D\u0438\u0439 \u0442\u0435\u043A\u0441\u0442 \u043D\u0435 \u043C\u0456\u0441\u0442\u0438\u0442\u044C \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u0445 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0456\u0432 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u043F\u043E\u0432\u0435\u0440\u043D\u0438 fuel_requirements: []. \u042F\u043A\u0449\u043E \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u0438\u0445 \u0443\u043C\u043E\u0432 \u043D\u0435 \u0432\u0438\u044F\u0432\u043B\u0435\u043D\u043E, \u043F\u043E\u0432\u0435\u0440\u043D\u0438 conditions: [] \u0456 actions: [].`;
-function cleanAiList(items, kind) {
+\u0414\u043B\u044F \u043A\u043E\u0436\u043D\u043E\u0433\u043E \u043F\u0443\u043D\u043A\u0442\u0443 \u0432 \u0446\u0438\u0445 \u043C\u0430\u0441\u0438\u0432\u0430\u0445 \u043E\u0431\u043E\u0432'\u044F\u0437\u043A\u043E\u0432\u0456 \u0432\u0441\u0456 \u0447\u043E\u0442\u0438\u0440\u0438 \u043F\u043E\u043B\u044F. \u042F\u043A\u0449\u043E \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043D\u044F \u043D\u0435\u043C\u0430\u0454 \u2014 \u043F\u043E\u0432\u0435\u0440\u043D\u0438 \u043F\u043E\u0440\u043E\u0436\u043D\u0456\u0439 \u043C\u0430\u0441\u0438\u0432 \u0434\u043B\u044F \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044F.`;
+function normalizeEvidenceText(value) {
+  return String(value || "").normalize("NFKC").replace(/[\u00a0\u202f\s]+/gu, " ").trim();
+}
+function citationBlock(document2, location) {
+  const match = String(location || "").match(/^(сторінка|абзац)\s+(\d+)$/i);
+  if (!match || !document2?.text) return null;
+  const kind = match[1].toLowerCase(), number = Number(match[2]);
+  if (!Number.isSafeInteger(number) || number < 1) return null;
+  if (kind === "\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430" && document2.kind !== "pdf") return null;
+  if (kind === "\u0430\u0431\u0437\u0430\u0446" && document2.kind !== "docx") return null;
+  const marker = kind === "\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430" ? `[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 ${number}]` : `[\u0430\u0431\u0437\u0430\u0446 ${number}]`;
+  const start = document2.text.indexOf(marker);
+  if (start < 0) return null;
+  const contentStart = start + marker.length;
+  const nextPage = document2.text.indexOf("[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 ", contentStart);
+  const nextParagraph = document2.text.indexOf("[\u0430\u0431\u0437\u0430\u0446 ", contentStart);
+  const ends = [nextPage, nextParagraph].filter((n2) => n2 >= 0);
+  const end = ends.length ? Math.min(...ends) : document2.text.length;
+  return normalizeEvidenceText(document2.text.slice(contentStart, end));
+}
+function cleanAiText(value, kind) {
+  const text = typeof value === "string" ? value.trim().slice(0, 1e3) : "";
+  if (!text || /(?:https?:\/\/|www\.)/i.test(text) || /\[[^\]]+\]\([^)]*\)/.test(text)) return "";
+  const generic = [/санкц/i, /бенефіціар/i, /походжен.{0,20}товар/i, /технічн.{0,30}характеристик/i, /сертифікат.{0,20}якост/i, /паспорт.{0,20}якост/i, /підстав.{0,20}відмов/i, /підтверд.{0,20}повноважен/i, /реєстраційн.{0,20}дан/i];
+  const genericActions = [/перевірити.{0,20}тендерн.{0,20}документац/i, /підготувати.{0,30}технічн.{0,30}характеристик/i, /перевірити.{0,20}відповідність.{0,20}учасник/i, /перевірити.{0,20}санкц/i];
+  if (generic.some((re2) => re2.test(text)) || kind === "actions" && genericActions.some((re2) => re2.test(text))) return "";
+  return text;
+}
+function validateAiEvidenceList(items, kind, documents) {
   if (!Array.isArray(items)) return [];
-  const generic = [
-    /санкц/i,
-    /бенефіціар/i,
-    /походжен.{0,20}товар/i,
-    /технічн.{0,30}характеристик/i,
-    /сертифікат.{0,20}якост/i,
-    /паспорт.{0,20}якост/i,
-    /підстав.{0,20}відмов/i,
-    /підтверд.{0,20}повноважен/i,
-    /реєстраційн.{0,20}дан/i
-  ];
-  const genericActions = [
-    /перевірити.{0,20}тендерн.{0,20}документац/i,
-    /підготувати.{0,30}технічн.{0,30}характеристик/i,
-    /перевірити.{0,20}відповідність.{0,20}учасник/i,
-    /перевірити.{0,20}санкц/i
-  ];
-  return items.filter((x2) => typeof x2 === "string" && x2.trim()).map((x2) => x2.trim()).filter((x2) => !generic.some((re2) => re2.test(x2))).filter((x2) => kind !== "actions" || !genericActions.some((re2) => re2.test(x2)));
+  const out = [];
+  for (const item of items.slice(0, 50)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const text = cleanAiText(item.text, kind), sourceId = String(item.source_id || "").trim();
+    const location = String(item.source_location || "").trim();
+    const quote = String(item.evidence_quote || "").trim().slice(0, 500);
+    if (!text || !sourceId || !quote || normalizeEvidenceText(text) !== normalizeEvidenceText(quote)) continue;
+    const document2 = documents.find((d2) => d2.source_id === sourceId && ["read", "truncated"].includes(d2.status) && d2.text);
+    if (!document2) continue;
+    const block = citationBlock(document2, location), normalizedQuote = normalizeEvidenceText(quote);
+    if (!block || normalizedQuote.length < 2 || !block.includes(normalizedQuote)) continue;
+    const source = { title: document2.title, location, quote, url: document2.source_url || null };
+    out.push({ text: quote, source, source_verified: true });
+  }
+  return out.slice(0, 30);
 }
 var BUYER_BI_APP = "fba3f2f2-cf55-40a0-a79f-b74f5ce947c2";
 function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
@@ -41755,7 +41787,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-buyer-history-cache-v10-market-indicative"
+        version: "2026.11.12-evidence-citations-v1"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41804,7 +41836,7 @@ var worker_default = {
       const published = new Date(d2?.datePublished), modified = new Date(d2?.dateModified || d2?.datePublished);
       return cutoff && Number.isFinite(published.getTime()) && Number.isFinite(modified.getTime()) && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff;
     });
-    const documentExtracts = await readTenderDocuments(documentsForReading);
+    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({ ...doc, source_id: `DOC-${String(index + 1).padStart(2, "0")}` }));
     const payload = {
       model: env.AI_MODEL,
       messages: [
@@ -41846,10 +41878,10 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     } catch {
       return json({ error: "\u0428\u0406 \u043F\u043E\u0432\u0435\u0440\u043D\u0443\u0432 \u043D\u0435\u043A\u043E\u0440\u0435\u043A\u0442\u043D\u0438\u0439 JSON" }, 502, origin);
     }
-    parsed.conditions = cleanAiList(parsed.conditions, "conditions");
-    parsed.fuel_requirements = Array.isArray(parsed.fuel_requirements) ? parsed.fuel_requirements.filter((x2) => typeof x2 === "string" && x2.trim()).map((x2) => x2.trim().slice(0, 1e3)).slice(0, 30) : [];
-    parsed.document_read_status = documentExtracts.map(({ title, status, reason, pages }) => ({ title, status, reason: reason || null, pages: pages ?? null }));
-    parsed.actions = cleanAiList(parsed.actions, "actions");
+    parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
+    parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
+    parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
+    parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, source_url: source_url || null }));
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
     if (structuredFuel.gasolineVolumeL !== null) parsed.gasoline_volume_l = structuredFuel.gasolineVolumeL;
     if (structuredFuel.dieselVolumeL !== null) parsed.diesel_volume_l = structuredFuel.dieselVolumeL;
