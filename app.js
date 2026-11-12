@@ -160,7 +160,7 @@ function activeTenderData(){
   return confirmedData || lastExtraction;
 }
 
-function supplierScenarioData(expected){
+function supplierScenarioData(expected,cfg){
   const profile=activeTenderData()?.buyer_profile;
   const history=profile?.supplier_behavior;
   if(profile?.ready!==true||!Array.isArray(history?.suppliers))return {suppliers:[],note:'Історичні цінові орієнтири постачальників не надійшли; значення не підставлено.'};
@@ -168,11 +168,14 @@ function supplierScenarioData(expected){
     const ratio=Number(x.avg_price_pct_of_budget);
     const observations=Number(x.observation_count);
     const valid=Number.isFinite(ratio)&&ratio>0&&Number.isFinite(expected)&&expected>0&&Number.isFinite(observations)&&observations>0;
-    return {name:x.name.trim(),code:String(x.code||''),ratio:valid?ratio:null,observations:Number.isFinite(observations)?observations:0,amount:valid?expected*ratio/100:null};
+    const closestIndex=valid&&Array.isArray(cfg?.discounts)
+      ? cfg.discounts.reduce((best,discount,i)=>Math.abs(100-discount-ratio)<Math.abs(100-cfg.discounts[best]-ratio)?i:best,0)
+      : 0;
+    return {name:x.name.trim(),code:String(x.code||''),ratio:valid?ratio:null,observations:Number.isFinite(observations)?observations:0,amount:valid?expected*ratio/100:null,closestIndex};
   });
   const dates=profile.period?.start&&profile.period?.end?` Період історії: ${profile.period.start} — ${profile.period.end}.`:'';
   const basis=history.coverage_note||'Підтверджені історичні пропозиції постачальників.';
-  const note=`Орієнтир кожного постачальника — його медіанна історична пропозиція як % очікуваної вартості історичних тендерів. Орієнтовну суму отримано множенням цього відсотка на очікувану вартість поточного тендера без ПДВ. ${basis}${dates} Це порівняльна оцінка за попередньою поведінкою, а не фактична або гарантована пропозиція в поточному тендері.`;
+  const note=`Орієнтир кожного постачальника показано один раз біля найближчої за ціною ставки ЄВРО5. Його суму отримано множенням медіанного історичного відсотка від очікуваної вартості на очікувану вартість поточного тендера без ПДВ. ${basis}${dates} Це порівняльна оцінка за попередньою поведінкою, а не фактична або гарантована пропозиція в поточному тендері.`;
   return {suppliers,note};
 }
 
@@ -193,8 +196,9 @@ function renderScenarioHeader(suppliers){
   head.appendChild(row);
 }
 
-function appendSupplierEstimateCell(row,supplier){
+function appendSupplierEstimateCell(row,supplier,scenarioIndex){
   const td=document.createElement('td');
+  if(scenarioIndex!==supplier.closestIndex){row.appendChild(td);return;}
   if(supplier.ratio===null){td.textContent='Немає цінових даних';row.appendChild(td);return;}
   const amount=document.createElement('strong');amount.className='supplier-estimate-value';amount.textContent=`≈ ${money.format(supplier.amount)} грн`;
   const basis=document.createElement('small');basis.className='supplier-estimate-basis';basis.textContent=`${num.format(supplier.ratio)}% · ${supplier.observations} проп.`;
@@ -553,24 +557,50 @@ function renderReview(data){
   const reviewItems=[
     ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements.map(x=>({...x,type:'Технічний параметр пального'})):[]),
     ...(Array.isArray(data.conditions)?data.conditions.map(x=>({...x,type:'Умова тендера'})):[]),
-    ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[]),
-    ...(Array.isArray(data.document_read_status)?data.document_read_status.filter(x=>x.status!=='read').map(x=>({text:`${x.status==='truncated'?'Текст документа прочитано частково':'Документ не прочитано'}: ${x.reason||x.status}`,type:'Статус джерела',source:{title:x.title,url:x.source_url||null},source_verified:true})):[])
+    ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[])
   ];
-  renderRequirements(reviewItems);
+  renderDocumentReadSummary(data);
+  renderRequirements(reviewItems,data.document_read_summary?.read||0);
   document.getElementById('sourceScope').textContent=data.source_scope || '';
   document.getElementById('reviewValidation').textContent='';
   renderReviewMarket();
   renderCompetitionForecast(data);
 }
 
-function renderRequirements(items){
+function renderDocumentReadSummary(data){
+  const box=document.getElementById('documentReadSummary');
+  if(!box)return;
+  box.replaceChildren();
+  const summary=data.document_read_summary;
+  if(!summary){box.textContent='Worker не повернув статус читання документів. Оновіть обидва Worker-и.';return;}
+  const heading=document.createElement('strong');
+  heading.textContent=`Документи Prozorro: ${summary.supported_before_cutoff} PDF/DOCX до ${summary.cutoff_date||'дати подання'}, прочитано ${summary.read}.`;
+  box.appendChild(heading);
+  const statuses=Array.isArray(data.document_read_status)?data.document_read_status:[];
+  if(!statuses.length){
+    const p=document.createElement('p');p.textContent=summary.available?'Придатних PDF/DOCX за цю дату не відібрано.':'Prozorro не повернув вкладених документів.';box.appendChild(p);return;
+  }
+  const list=document.createElement('ul');
+  statuses.forEach(item=>{
+    const li=document.createElement('li');
+    const readable=item.status==='read'||(item.status==='truncated'&&item.extracted_chars>0);
+    const volume=item.paragraphs?`${item.paragraphs} абзаців`:item.pages?`${item.pages} сторінок`:'';
+    li.appendChild(document.createTextNode(`${readable?(item.status==='truncated'?'Частково прочитано':'Прочитано'):'Не прочитано'}: ${item.title}${volume?' · '+volume:''}${item.reason?' · '+item.reason:''}`));
+    const url=safeDocumentCitationUrl(item.source_url);
+    if(url){const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=' · Відкрити документ';li.appendChild(link);}
+    list.appendChild(li);
+  });
+  box.appendChild(list);
+}
+
+function renderRequirements(items,readCount=0){
   const ul=document.getElementById('requirementsList');
   if(!ul)return;
   ul.innerHTML='';
   const rows=items.filter(x=>x?.source_verified===true&&x?.source?.title&&typeof x.text==='string'&&x.text.trim());
   if(!rows.length){
     const li=document.createElement('li');
-    li.textContent='Підтверджених вимог або умов із прочитаних документів не знайдено. Це не підтверджує їх відсутність у документації.';
+    li.textContent=readCount?'Із прочитаних документів не отримано пунктів із перевіреною дослівною цитатою. Перегляньте файли вище.':'Умови не витягнуто, бо документи не прочитано. Причини показано вище.';
     ul.appendChild(li);
     return;
   }
@@ -1011,7 +1041,7 @@ function recalc(){
     modelVersion:String(lastExtraction?.competition_forecast?.model_version||'')
   });
   const tbody=document.getElementById('resultsBody'); tbody.innerHTML='';
-  const supplierEvidence=supplierScenarioData(expected);
+  const supplierEvidence=supplierScenarioData(expected,cfg);
   renderScenarioHeader(supplierEvidence.suppliers);
   document.getElementById('supplierScenarioSource').textContent=supplierEvidence.note;
   cfg.discounts.forEach((discount,i)=>{
@@ -1028,7 +1058,7 @@ function recalc(){
       <td>${complete?money.format(profit):'—'}</td>
       <td>${complete?pct(margin):'—'}</td>
       <td class="${ok===true?'ok':ok===false?'no':''}">${ok===true?'ТАК':ok===false?'НІ':'—'}</td>`;
-    supplierEvidence.suppliers.forEach(supplier=>appendSupplierEstimateCell(tr,supplier));
+    supplierEvidence.suppliers.forEach(supplier=>appendSupplierEstimateCell(tr,supplier,i));
     tr.title=POSITIONS[i][1];
     tbody.appendChild(tr);
   });
@@ -1046,9 +1076,14 @@ function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
-function listHtml(items,fallback){
-  const arr=Array.isArray(items)&&items.length?items:[fallback];
-  return `<ul>${arr.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+function evidenceListHtml(items,fallback){
+  const arr=Array.isArray(items)?items.filter(x=>x?.source_verified&&x?.source?.title&&x?.text):[];
+  if(!arr.length)return `<p>${escapeHtml(fallback)}</p>`;
+  return `<ul>${arr.map(x=>{
+    const url=safeDocumentCitationUrl(x.source.url);
+    const citation=`Джерело: ${escapeHtml(x.source.title)}${x.source.location?', '+escapeHtml(x.source.location):''}`;
+    return `<li>${escapeHtml(x.text)}<br><small>${citation}${url?` · <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Відкрити документ</a>`:''}</small></li>`;
+  }).join('')}</ul>`;
 }
 
 
@@ -1088,14 +1123,14 @@ function buildPdfReport(){
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
   const modeLabel=el.competitionMode.options[el.competitionMode.selectedIndex].text;
-  const supplierEvidence=supplierScenarioData(expected);
+  const supplierEvidence=supplierScenarioData(expected,cfg);
   const supplierHeaders=supplierEvidence.suppliers.map(s=>`<th>Орієнтир · ${escapeHtml(s.name)}<br><small>${s.observations?`${money.format(s.observations)} іст. проп.`:'без цінових даних'}</small></th>`).join('');
   const rows=cfg.discounts.map((discount,i)=>{
     const bid=expected*(1-discount/100);
     const profit=bid-full;
     const margin=bid>0?profit/bid*100:0;
     const ok=margin>=value('minMargin');
-    const supplierCells=supplierEvidence.suppliers.map(s=>s.ratio===null?'<td>Немає цінових даних</td>':`<td>≈ ${money.format(s.amount)} грн<br><small>${num.format(s.ratio)}% бюджету</small></td>`).join('');
+    const supplierCells=supplierEvidence.suppliers.map(s=>i!==s.closestIndex?'<td></td>':s.ratio===null?'<td>Немає цінових даних</td>':`<td>≈ ${money.format(s.amount)} грн<br><small>${num.format(s.ratio)}% бюджету</small></td>`).join('');
     return `<tr><td>${POSITIONS[i][0]}</td><td>${pct(cfg.competitiveness[i])}</td><td>${pct(discount)}</td><td>${money.format(bid)}</td><td>${money.format(profit)}</td><td>${pct(margin)}</td><td>${ok?'ТАК':'НІ'}</td>${supplierCells}</tr>`;
   }).join('');
   const report=document.getElementById('pdfReport');
@@ -1116,7 +1151,8 @@ function buildPdfReport(){
     </div>
     ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap,displayCmp.referenceContext))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
-    <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${listHtml(lastExtraction?.conditions,'Нетипових або суттєвих умов не виявлено.')}</div><div><h4>Що потрібно зробити перед участю</h4>${listHtml(lastExtraction?.actions,'Додаткових перевірок за завантаженими даними не потрібно.')}</div></div>
+    <p>Документи Prozorro: прочитано ${money.format(lastExtraction?.document_read_summary?.read??0)} із ${money.format(lastExtraction?.document_read_summary?.supported_before_cutoff??0)} відібраних PDF/DOCX.</p>
+    <div class="pdf-two"><div><h4>Нетипові або суттєві умови</h4>${evidenceListHtml(lastExtraction?.conditions,'Пунктів із перевіреною цитатою не отримано.')}</div><div><h4>Фрагменти для перевірки</h4>${evidenceListHtml(lastExtraction?.actions,'Пунктів із перевіреною цитатою не отримано.')}</div></div>
     <h3>Економіка ЄВРО5</h3>
     <div class="pdf-grid">
       <div><span>Вартість пального</span><strong>${money.format(fuelCost)} грн</strong></div>
