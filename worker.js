@@ -152,6 +152,19 @@ export function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat
   };
 }
 
+export function actualTenderParticipants(data) {
+  const end=new Date(data?.tenderPeriod?.endDate);
+  if(!Number.isFinite(end.getTime())||end.getTime()>Date.now()||!Array.isArray(data?.bids))return null;
+  const participants=new Set();
+  for(const bid of data.bids){
+    if(bid?.status==='deleted'||bid?.status==='draft')continue;
+    const entity=bid?.tenderers?.[0];
+    const code=String(entity?.identifier?.id||'').trim();
+    if(code)participants.add(code);
+  }
+  return {count:participants.size,source:'Структуровані пропозиції учасників Prozorro',as_of:end.toISOString()};
+}
+
 function cors(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : "";
   return {
@@ -1395,6 +1408,42 @@ function validateAiEvidenceList(items, kind, documents) {
   return out.slice(0,30);
 }
 
+// A read attachment is useful even when the language model returns an empty
+// evidence array. These excerpts are copied verbatim from numbered paragraphs
+// or pages; no condition or citation is generated from the file name.
+export function directDocumentHighlights(documents) {
+  const patterns=[
+    /(?:АЗС|автозаправн).{0,110}(?:мереж|адрес|місц|радіус|област|міст|не менш)|(?:мереж|адрес|місц|радіус|област|міст|не менш).{0,110}(?:АЗС|автозаправн)/iu,
+    /(?:талон|скретч-карт|паливн.{0,8}карт).{0,100}(?:строк|термін|дійсн|номінал|емітент|бренд|зразк|отриман|передач|обмін)|(?:строк|термін|дійсн|номінал|емітент|бренд).{0,80}(?:талон|скретч-карт|паливн.{0,8}карт)/iu,
+    /(?:оплат|розрахунк).{0,100}(?:дн|після|перед|рахунк|накладн)|(?:дн|після|перед).{0,80}оплат/iu,
+    /(?:змін|перегляд|коригуван).{0,80}(?:цін|вартіст)|(?:цін|вартіст).{0,80}(?:змін|перегляд|коригуван)/iu,
+    /(?:постав|передач).{0,90}(?:дн|строк|термін|адрес|парті)/iu,
+    /(?:забезпеченн|гаранті).{0,70}(?:пропозиці|договор|виконан)|(?:штраф|пеня).{0,80}(?:%|грн|вартіст)/iu,
+    /(?:А-95|Е10|E10|Євро.?5|дизельн).{0,80}(?:ДСТУ|стандарт|октан|сірк|сезон|температур|густин)/iu
+  ];
+  const result=[],seen=new Set();
+  for(const doc of documents){
+    if(!['read','truncated'].includes(doc.status)||!doc.text)continue;
+    const marker=/\[(сторінка|абзац) (\d+)\]\s*/gu;
+    const matches=[...doc.text.matchAll(marker)];
+    for(let i=0;i<matches.length;i++){
+      const m=matches[i],body=doc.text.slice(m.index+m[0].length,matches[i+1]?.index??doc.text.length);
+      const location=`${m[1]} ${m[2]}`;
+      const candidates=body.split(/(?<=[.!?;])\s+/u).map(s=>s.trim()).filter(s=>s.length>=25);
+      const matched=candidates.find(s=>patterns.some(re=>re.test(s)));
+      if(!matched)continue;
+      const quote=matched.slice(0,500).trim();
+      if(!quote||!citationBlock(doc,location)?.includes(normalizeEvidenceText(quote)))continue;
+      const key=normalizeEvidenceText(quote);
+      if(seen.has(key))continue;
+      seen.add(key);
+      result.push({text:quote,source:{title:doc.title,location,quote,url:doc.source_url||null},source_verified:true});
+      if(result.length>=12)return result;
+    }
+  }
+  return result;
+}
+
 // Buyer evidence: only snapshots confirmed before the proposal cutoff.
 const BUYER_BI_APP='fba3f2f2-cf55-40a0-a79f-b74f5ce947c2';
 function buyerHistoryPeriod(now=new Date()){
@@ -1475,7 +1524,7 @@ function validBuyerAsOf(value){
 const BUYER_VERIFIED_SNAPSHOTS = [{"tender_id":"UA-2025-12-04-020528-a","buyer_code":"20001645","created_day":"2025-12-04","modified_day":"2025-12-17","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2025-12-04-020528-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":5256009.6,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-03-09-011486-a","buyer_code":"20001645","created_day":"2026-03-09","modified_day":"2026-03-20","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-03-09-011486-a-L1","Лот":"ДК 021:2015 09130000-9 Нафта і дистиляти (Бензин А-95 по талонах, дизпаливо по талонах)","Очікувана вартість":3459016,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-05-08-012643-a","buyer_code":"20001645","created_day":"2026-05-08","modified_day":"2026-05-25","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-05-08-012643-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":5960000,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]},{"tender_id":"UA-2026-07-17-009760-a","buyer_code":"20001645","created_day":"2026-07-17","modified_day":"2026-07-28","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-17-009760-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":7542800,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Неуспішний лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"-","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":0}]},{"tender_id":"UA-2026-07-28-009801-a","buyer_code":"20001645","created_day":"2026-07-28","modified_day":"2026-08-07","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-28-009801-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":7542800,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":1}]},{"tender_id":"UA-2026-07-30-010070-a","buyer_code":"20001645","created_day":"2026-07-30","modified_day":"2026-08-19","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-07-30-010070-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":4648087.5,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"ПЕТРОЛ ПАРТНЕР\" | 44763104","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]},{"tender_id":"UA-2026-08-21-012048-a","buyer_code":"20001645","created_day":"2026-08-21","modified_day":"2026-09-14","source":"Prozorro public API; identity and dateModified verified 2026-10-23","rows":[{"Ідентифікатор лота":"UA-2026-08-21-012048-a-L1","Лот":"ДК 021:2015 : 09130000-9 «Нафта і дистиляти» (бензин А-95-Євро5 по талонах/скретч картах, та дизельне паливо-Євро5 по талонах/скретч картах)","Очікувана вартість":1598037.5,"ПДВ в очікуваній вартості":"без ПДВ","Процедура закупівлі":"Спрощена процедура закупівлі","Статус лота":"Завершено лот закупівлі","Організатор":"Управління Служби безпеки України в Одеській області | 20001645","Переможець":"ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ \"УКРНАФТА-ПОСТАЧ\" | 43012009","Класифікація CPV":"09130000-9 Нафта і дистиляти","Кіль-ть унікальних учасників лота":2}]}];
 // END VERIFIED BUYER SNAPSHOTS
 function buyerParentId(row){return String(row['Ідентифікатор лота']).match(/^UA-\d{4}-\d{2}-\d{2}-\d+-[a-z]/i)?.[0]}
-function extractSupplierBidEvidence(data, tenderId, lotRows) {
+export function extractSupplierBidEvidence(data, tenderId, lotRows) {
  const apiLots = Array.isArray(data?.lots) ? data.lots : [];
  const rowLots = [...lotRows].sort((a,b) => {
   const ai=Number(String(a['Ідентифікатор лота']).match(/-L(\d+)$/)?.[1]||0);
@@ -1485,6 +1534,9 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
  const lotsByApiId = new Map();
  if (apiLots.length === rowLots.length) apiLots.forEach((lot,i) => lotsByApiId.set(String(lot.id),rowLots[i]));
  else if (rowLots.length === 1) for (const lot of apiLots) lotsByApiId.set(String(lot.id),rowLots[0]);
+ // RFQ and other single-item procurements often have bids but no `lots` array.
+ // The BI record is then the sole lot; its budget is the bid comparison base.
+ const unpartitioned = rowLots.length === 1 && apiLots.length === 0 ? rowLots[0] : null;
  const awards = new Map();
  for (const award of Array.isArray(data?.awards) ? data.awards : []) {
   if (award?.status !== 'active') continue;
@@ -1506,15 +1558,15 @@ function extractSupplierBidEvidence(data, tenderId, lotRows) {
    if (lotId && Number.isFinite(amount) && amount > 0) amountByLot.set(lotId, amount);
   }
   const related = Array.isArray(bid.relatedLots) ? bid.relatedLots.map(String) : [...amountByLot.keys()];
-  const targets = related.length ? related : (lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : []);
+  const targets = unpartitioned ? ['__single__'] : related.length ? related : (lotsByApiId.size === 1 ? [...lotsByApiId.keys()] : []);
   const award = awards.get(bid.id);
   for (const lotId of targets) {
-   const row = lotsByApiId.get(lotId);
+   const row = unpartitioned || lotsByApiId.get(lotId);
    if (!row) continue;
    const amount = amountByLot.get(lotId) ?? Number(bid.value?.amount);
    const expected = Number(row['Очікувана вартість']);
    out.push({
-    tender_id: tenderId, lot_id: lotId, supplier_code: code, supplier_name: name,
+    tender_id: tenderId, lot_id: String(row['Ідентифікатор лота']), supplier_code: code, supplier_name: name,
     bid_value: Number.isFinite(amount) && amount > 0 ? amount : null,
     expected_value: Number.isFinite(expected) && expected > 0 ? expected : null,
     won: String(row['Переможець']||'').match(/(?:\|\s*|#)(\d{8,10})\s*$/)?.[1] === code,
@@ -1568,7 +1620,7 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const parents=[...new Set(unique.map(buyerParentId).filter(Boolean))].sort().reverse();
  const states=new Map(),proofs=new Map();let cursor=0;const deadline=Date.now()+40000;
  const cache=options.cache,base=options.baseUrl||'https://euro5-tender-bid-assistant.ukrsedo-e2e.workers.dev';
- const key=id=>new Request(new URL('/buyer-evidence/v4/'+code+'/'+period.as_of+'/'+id,base));
+ const key=id=>new Request(new URL('/buyer-evidence/v5/'+code+'/'+period.as_of+'/'+id,base));
  const usable=(e,id)=>e?.buyer_code===code&&e.tender_id===id&&/^\d{4}-\d{2}-\d{2}$/.test(e.modified_day)&&e.modified_day<=period.end&&e.created_day>=period.start&&e.created_day<=period.end&&e.modified_day>=e.created_day&&Array.isArray(e.rows)&&Array.isArray(e.supplier_bids)&&unique.filter(r=>buyerParentId(r)===id).every(r=>e.rows.some(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота']&&String(x['Організатор']).endsWith(' | '+code)));
  for(const id of parents){
   let e;
@@ -1619,7 +1671,7 @@ async function buyerHistoryRoute(request,origin,ctx){
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v10/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ const key=new Request(new URL('/buyer-history-cache/v11/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
  try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.buyer_history_cache_schema===6&&h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
   const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
@@ -1650,7 +1702,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-submission-history-documents-v2"
+        version: "2026.11.12-august-catalog-evidence-v3"
       }, 200, origin);
     }
 
@@ -1757,6 +1809,8 @@ response_format: { type: "json_object" }
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
+    parsed.document_highlights = directDocumentHighlights(documentExtracts).filter(item=>
+      ![...parsed.conditions,...parsed.fuel_requirements,...parsed.actions].some(other=>other.text===item.text));
     parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
     parsed.document_read_summary = {
       available: Array.isArray(source.data?.documents)?source.data.documents.length:0,
@@ -1886,11 +1940,12 @@ response_format: { type: "json_object" }
       usd_uah_start_date: fxData?.pastDate ?? null,
       currency_note: fx.note ?? null,
       competition_forecast: competitionForecast,
+      competition_actual: actualTenderParticipants(source.data),
       advance_payment_pct: parsed.advance_payment_pct ?? 0,
       payment_days: parsed.payment_days ?? null,
       payment_note: parsed.payment_note ?? null,
       scope_note: "Відповідність сфери застосування перевірено за структурованими даними публічного API Prozorro.",
-      source_scope: "Основні дані тендера завантажено з Prozorro. Вкладені файли поки що не аналізуються автоматично."
+      source_scope: "Основні дані тендера завантажено з Prozorro. Статус читання PDF/DOCX і підтверджені цитати наведено вище."
     }, 200, origin);
   }
 };
