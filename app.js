@@ -221,24 +221,26 @@ function indicativeStandardProductSupported(fuel,d){
   const selection=selectedProduct(fuel,d);
   // A deliberate non-standard selection always overrides any automatic guess.
   if(selection!=='unknown'&&selection!==standard)return false;
-  const profile=lastExtraction?.fuel_products?.[fuel];
-  if(!profile?.items?.length||profile.tier==='premium'||profile.tier==='ambiguous')return false;
-  if(profile.items.some(item=>item.tier==='premium'||item.tier==='ambiguous'))return false;
+  const profile=lastExtraction?.fuel_products?.[fuel]||{};
+  const items=Array.isArray(profile.items)?profile.items:[];
+  const title=String(lastExtraction?.tender_title||'');
+  if(profile.tier==='premium'||profile.tier==='ambiguous')return false;
+  if(items.some(item=>item.tier==='premium'||item.tier==='ambiguous'))return false;
   // Check contradictions as if the operator had chosen the standard grade.
   const checked={...d,[fuel==='gasoline'?'gasoline_product':'diesel_product']:standard};
   if(standardProductContradicted(fuel,checked))return false;
   if(fuel==='gasoline'){
     // Indicative only: explicit A-95 evidence may come from title or structured data.
     // A deployed older API might not expose indicative_grade yet.
-    const title=String(lastExtraction?.tender_title||'');
     const titleGrades=[...new Set([...title.matchAll(/(?:[аa](?:[іиi])?\s*[-–]?\s*|бензин\s*)9([2458])(?!\d)/gi)].map(x=>'9'+x[1]))];
-    const titleGrade=profile.items.length===1&&titleGrades.length===1?titleGrades[0]:null;
-    const candidateGrades=[profile.grade,profile.indicative_grade,titleGrade].filter(Boolean);
+    const candidateGrades=[profile.grade,profile.indicative_grade,...items.map(item=>item.grade),...titleGrades].filter(Boolean);
     return candidateGrades.length>0&&candidateGrades.every(g=>g==='95')&&
-      profile.items.every(item=>!item.grade||item.grade==='95');
+      items.every(item=>!item.grade||item.grade==='95');
   }
-  return ['unspecified','summer'].includes(profile.season)&&
-    profile.items.every(item=>['unspecified','summer'].includes(item.season));
+  const hasDieselEvidence=/дизел|дизель|\bдп\b|diesel/i.test(title)||items.length>0;
+  return hasDieselEvidence&&['unspecified','summer',undefined].includes(profile.season)&&
+    !/зимов|арктич|winter|arctic/i.test(title)&&
+    items.every(item=>['unspecified','summer',undefined].includes(item.season));
 }
 
 function benchmarkFor(format,fuel,d=activeTenderData(),indicative=false){
