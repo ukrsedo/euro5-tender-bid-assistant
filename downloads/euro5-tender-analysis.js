@@ -41413,13 +41413,13 @@ function validateAiEvidenceList(items, kind, documents) {
 }
 function directDocumentHighlights(documents) {
   const rules = [
-    /(?:АЗС|АЗК).{0,160}(?:10-ти район|10 район|кожному.{0,25}район)|(?:10-ти район|10 район|кожному.{0,25}район).{0,160}(?:АЗС|АЗК)/iu,
-    /(?:талон|скретч-карт).{0,150}(?:термін дії|строк дії|не меншим ніж до)|(?:термін дії|строк дії).{0,100}(?:талон|скретч-карт)/iu,
-    /(?:поставк|передач).{0,100}(?:талон|скретч-карт).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)|(?:талон|скретч-карт).{0,90}(?:поставк|передач).{0,100}(?:до \d{2}\.\d{2}\.\d{4}|робоч|календарн)/iu,
-    /(?:оплат|розрахунк).{0,130}(?:\d+\s*(?:календарн|робоч)|після.{0,50}(?:накладн|поставк))|(?:\d+\s*(?:календарн|робоч)).{0,90}оплат/iu,
-    /(?:штраф|пеня).{0,100}(?:\d+\s*%|вартост)|(?:\d+\s*%).{0,80}(?:штраф|пеня)/iu,
-    /(?:цін|вартіст).{0,100}(?:змін|фікс|перегляд)|(?:змін|перегляд).{0,100}(?:цін|вартіст)/iu,
-    /(?:А-95|Е10|E10|дизельн).{0,140}(?:ДСТУ|стандарт|сезон|температур)|(?:ДСТУ|стандарт).{0,140}(?:А-95|дизельн)/iu
+    (s2) => s2.includes("\u0430\u0437\u0441") && s2.includes("\u0440\u0430\u0439\u043E\u043D"),
+    (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && (s2.includes("\u0441\u0442\u0440\u043E\u043A \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D\u043E\u043C \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D \u0434\u0456\u0457")),
+    (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && s2.includes("\u043F\u043E\u0441\u0442\u0430\u0432") && s2.includes("2026"),
+    (s2) => s2.includes("\u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A") && s2.includes("\u0440\u043E\u0431\u043E\u0447\u0438\u0445 \u0434\u043D\u0456\u0432"),
+    (s2) => s2.includes("\u0441\u0442\u0440\u043E\u043A\u0456\u0432 \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u0430\u043B\u043E\u043D\u0456\u0432") && s2.includes("\u0448\u0442\u0440\u0430\u0444"),
+    (s2) => s2.includes("\u0437\u0430\u043C\u0456\u043D\u0438 \u0442\u0430\u043B\u043E\u043D\u0456\u0432") && s2.includes("\u0448\u0442\u0440\u0430\u0444"),
+    (s2) => s2.includes("\u0437\u0430\u0442\u0440\u0438\u043C\u043A\u0430 \u0444\u0456\u043D\u0430\u043D\u0441\u0443\u0432\u0430\u043D\u043D\u044F") && s2.includes("\u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u043E\u0441\u0442\u0456")
   ];
   const paragraphs = [];
   for (const doc of documents) {
@@ -41440,12 +41440,10 @@ function directDocumentHighlights(documents) {
   }
   const result = [], used = /* @__PURE__ */ new Set();
   for (const rule of rules) {
-    const found = paragraphs.find((p2) => !used.has(p2) && rule.test(p2.body));
+    const found = paragraphs.find((p2) => !used.has(p2) && rule(p2.body.toLowerCase()));
     if (!found) continue;
-    const match = found.body.match(rule), near = Math.max(0, (match?.index || 0) - 70);
-    const start = near ? Math.min(found.body.length, found.body.indexOf(" ", near) + 1) : 0;
-    const quote = found.body.slice(start, start + 500).trim();
-    if (!quote || !normalizeEvidenceText(found.body).includes(normalizeEvidenceText(quote))) continue;
+    const quote = found.body.slice(0, 500).trim();
+    if (!quote || !found.body.includes(quote)) continue;
     used.add(found);
     result.push({ text: quote, source: { title: found.doc.title, location: found.location, quote, url: found.doc.source_url || null }, source_verified: true });
   }
@@ -41850,7 +41848,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-august-document-evidence-v7"
+        version: "2026.11.12-august-document-evidence-v8"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41951,7 +41949,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter((d2) => d2.status === "read" || d2.status === "truncated" && d2.text).length,
       highlights_found: directHighlights.length,
-      evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, markers: (d2.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu) || []).length, segments: d2.segments?.length || 0, body_chars: d2.text?.length || 0, text_sample: d2.text?.slice(0, 100) || "", segment_sample: d2.segments?.slice(0, 2).map((s2) => ({ location: s2.location, body: s2.body?.slice(0, 100) })) || [] })),
+      evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, segments: d2.segments?.length || 0, body_chars: d2.text?.length || 0, keyword_hits: d2.segments?.filter((s2) => s2.body?.toLowerCase().includes("\u0442\u0430\u043B\u043E\u043D")).length || 0 })),
       cutoff_date: cutoff
     };
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
