@@ -1263,7 +1263,6 @@ function aiTenderPayload(data) {
       title: d?.title,
       documentType: d?.documentType,
       format: d?.format,
-      url: d?.url,
       datePublished: d?.datePublished
     })),
     tenderPeriod: data?.tenderPeriod,
@@ -1289,9 +1288,16 @@ CPV, очікувана вартість і ПДВ уже перевірені �
 Користувач обов'язково перегляне та за потреби виправить завантажені дані перед розрахунком.
 Не вгадуй відсутні значення.
 
+ЗАХИСТ ВІД ВИГАДАНИХ ВИМОГ І ПОСИЛАНЬ:
+- У масивах conditions, fuel_requirements та actions повертай лише пункти, прямо підтверджені прочитаним документом.
+- Кожен пункт має бути об'єктом з полями text, source_id, source_location та evidence_quote. text і evidence_quote мають бути тим самим дослівним уривком із документа; не переказуй і не узагальнюй його. source_id має точно відповідати ID документа, наданому перед текстом. source_location — тільки «сторінка N» для PDF або «абзац N» для DOCX.
+- Якщо текст, сторінка/абзац або дослівний уривок не підтверджуються наданим текстом, не повертай пункт.
+- Не створюй URL, посилань, назв документів, номерів сторінок чи абзаців. URL не потрібні у відповіді. Посилання на документ сформує програма лише з перевіреного URL Prozorro.
+- Не використовуй структуру Prozorro або власні припущення як підставу для пунктів цих трьох масивів. Дані Prozorro використовуються окремо для структурованих полів.
+
 НЕ рекомендуй ціну. НЕ оцінюй імовірність перемоги. НЕ змінюй розрахунок ціни.
 НЕ роби висновків за назвою файлу. Використовуй текст прочитаних вкладень нижче. Якщо текст вкладення відсутній або має статус помилки, прямо не стверджуй, що файл прочитано.
-У fuel_requirements витягай конкретні технічні параметри пального, зокрема стандарт/клас, марку, сезонність, екологічний клас, вміст сірки, густину, граничну температуру фільтрованості та інші задані числові або якісні параметри. Не доповнюй відсутні значення стандартними припущеннями. Кожен пункт має містити дослівно точне значення та джерело: назву документа і сторінку PDF або номер абзацу DOCX. За суперечностей між документами наведи обидва значення і обидва джерела.
+У fuel_requirements витягай конкретні технічні параметри пального: стандарт/клас, марку, сезонність, екологічний клас, вміст сірки, густину, граничну температуру фільтрованості та інші задані значення. За суперечностей поверни окремі підтверджені пункти з відповідними цитатами та джерелами.
 
 Не винось у «важливі умови» стандартні вимоги, які є звичайними для публічних закупівель або закупівель пального, якщо вони не мають нетипового обмеження. Зокрема, НЕ включай без окремої причини:
 - загальну вимогу відповідати технічним характеристикам пального;
@@ -1332,37 +1338,58 @@ CPV, очікувана вартість і ПДВ уже перевірені �
   "max_radius_km": number | null,
   "nationwide_coverage": boolean | null,
   "named_network": string | null,
-  "conditions": string[],
-  "fuel_requirements": string[],
-  "actions": string[]
+  "conditions": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}],
+  "fuel_requirements": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}],
+  "actions": [{"text":string,"source_id":string,"source_location":string,"evidence_quote":string}]
 }
 
-Кожен елемент fuel_requirements має містити параметр і посилання виду «Документ: назва, сторінка N» для PDF або «Документ: назва, абзац N» для DOCX. Якщо читаний текст не містить технічних параметрів пального, поверни fuel_requirements: []. Якщо нетипових умов не виявлено, поверни conditions: [] і actions: [].`;
+Для кожного пункту в цих масивах обов'язкові всі чотири поля. Якщо підтвердження немає — поверни порожній масив для відповідного поля.`;
 
-function cleanAiList(items, kind) {
-  if (!Array.isArray(items)) return [];
-  const generic = [
-    /санкц/i,
-    /бенефіціар/i,
-    /походжен.{0,20}товар/i,
-    /технічн.{0,30}характеристик/i,
-    /сертифікат.{0,20}якост/i,
-    /паспорт.{0,20}якост/i,
-    /підстав.{0,20}відмов/i,
-    /підтверд.{0,20}повноважен/i,
-    /реєстраційн.{0,20}дан/i
-  ];
-  const genericActions = [
-    /перевірити.{0,20}тендерн.{0,20}документац/i,
-    /підготувати.{0,30}технічн.{0,30}характеристик/i,
-    /перевірити.{0,20}відповідність.{0,20}учасник/i,
-    /перевірити.{0,20}санкц/i
-  ];
-  return items
-    .filter(x => typeof x === "string" && x.trim())
-    .map(x => x.trim())
-    .filter(x => !generic.some(re => re.test(x)))
-    .filter(x => kind !== "actions" || !genericActions.some(re => re.test(x)));
+function normalizeEvidenceText(value) {
+  return String(value || '').normalize('NFKC').replace(/[\u00a0\u202f\s]+/gu,' ').trim();
+}
+function citationBlock(document, location) {
+  const match=String(location||'').match(/^(сторінка|абзац)\s+(\d+)$/i);
+  if(!match||!document?.text)return null;
+  const kind=match[1].toLowerCase(),number=Number(match[2]);
+  if(!Number.isSafeInteger(number)||number<1)return null;
+  if(kind==='сторінка'&&document.kind!=='pdf')return null;
+  if(kind==='абзац'&&document.kind!=='docx')return null;
+  const marker=kind==='сторінка'?`[сторінка ${number}]`:`[абзац ${number}]`;
+  const start=document.text.indexOf(marker);
+  if(start<0)return null;
+  const contentStart=start+marker.length;
+  const nextPage=document.text.indexOf('[сторінка ',contentStart);
+  const nextParagraph=document.text.indexOf('[абзац ',contentStart);
+  const ends=[nextPage,nextParagraph].filter(n=>n>=0);
+  const end=ends.length?Math.min(...ends):document.text.length;
+  return normalizeEvidenceText(document.text.slice(contentStart,end));
+}
+function cleanAiText(value, kind) {
+  const text=typeof value==='string'?value.trim().slice(0,1000):'';
+  if(!text||/(?:https?:\/\/|www\.)/i.test(text)||/\[[^\]]+\]\([^)]*\)/.test(text))return '';
+  const generic=[/санкц/i,/бенефіціар/i,/походжен.{0,20}товар/i,/технічн.{0,30}характеристик/i,/сертифікат.{0,20}якост/i,/паспорт.{0,20}якост/i,/підстав.{0,20}відмов/i,/підтверд.{0,20}повноважен/i,/реєстраційн.{0,20}дан/i];
+  const genericActions=[/перевірити.{0,20}тендерн.{0,20}документац/i,/підготувати.{0,30}технічн.{0,30}характеристик/i,/перевірити.{0,20}відповідність.{0,20}учасник/i,/перевірити.{0,20}санкц/i];
+  if(generic.some(re=>re.test(text))||(kind==='actions'&&genericActions.some(re=>re.test(text))))return '';
+  return text;
+}
+function validateAiEvidenceList(items, kind, documents) {
+  if(!Array.isArray(items))return [];
+  const out=[];
+  for(const item of items.slice(0,50)){
+    if(!item||typeof item!=='object'||Array.isArray(item))continue;
+    const text=cleanAiText(item.text,kind),sourceId=String(item.source_id||'').trim();
+    const location=String(item.source_location||'').trim();
+    const quote=String(item.evidence_quote||'').trim().slice(0,500);
+    if(!text||!sourceId||!quote||normalizeEvidenceText(text)!==normalizeEvidenceText(quote))continue;
+    const document=documents.find(d=>d.source_id===sourceId&&['read','truncated'].includes(d.status)&&d.text);
+    if(!document)continue;
+    const block=citationBlock(document,location),normalizedQuote=normalizeEvidenceText(quote);
+    if(!block||normalizedQuote.length<2||!block.includes(normalizedQuote))continue;
+    const source={title:document.title,location,quote,url:document.source_url||null};
+    out.push({text:quote,source,source_verified:true});
+  }
+  return out.slice(0,30);
 }
 
 // Buyer evidence: only snapshots confirmed to predate the analysed announcement.
@@ -1620,7 +1647,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-buyer-history-cache-v10-market-indicative"
+        version: "2026.11.12-evidence-citations-v1"
       }, 200, origin);
     }
 
@@ -1676,7 +1703,7 @@ export default {
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
       return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
     });
-    const documentExtracts=await readTenderDocuments(documentsForReading);
+    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`}));
 
     const payload = {
       model: env.AI_MODEL,
@@ -1725,12 +1752,10 @@ response_format: { type: "json_object" }
       return json({ error: "ШІ повернув некоректний JSON" }, 502, origin);
     }
 
-    parsed.conditions = cleanAiList(parsed.conditions, "conditions");
-    parsed.fuel_requirements = Array.isArray(parsed.fuel_requirements)
-      ? parsed.fuel_requirements.filter(x => typeof x === "string" && x.trim()).map(x => x.trim().slice(0, 1000)).slice(0, 30)
-      : [];
-    parsed.document_read_status = documentExtracts.map(({title,status,reason,pages}) => ({title,status,reason:reason||null,pages:pages??null}));
-    parsed.actions = cleanAiList(parsed.actions, "actions");
+    parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
+    parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
+    parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
+    parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,source_url:source_url||null}));
 
     // Structured Prozorro item quantities override AI where they are available.
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
