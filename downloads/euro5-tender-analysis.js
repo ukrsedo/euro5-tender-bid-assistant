@@ -41716,7 +41716,7 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key = new Request(new URL("/buyer-history-cache/v7/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key = new Request(new URL("/buyer-history-cache/v8/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key);
     if (hit) {
