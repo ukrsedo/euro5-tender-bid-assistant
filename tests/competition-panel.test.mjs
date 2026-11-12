@@ -27,14 +27,23 @@ const render=vm.runInNewContext(app.slice(start,end)+';renderCompetitionForecast
 
 test('competition row is present in HTML',()=>{
   assert.match(html,/id="competitionForecast"/);
+  assert.match(html,/id="competitionProbabilityBars"/);
   assert.match(html,/id="reviewCompetitionMode"/);
 });
 test('missing forecast leaves panel visible and manual mode available',()=>{
   render({});
   assert.equal(el('competitionForecast').classList.hidden,false);
+  assert.equal(el('competitionProbabilityBars').classList.hidden,true);
   assert.equal(el('competitionConclusion').textContent,'Прогноз недоступний');
   assert.equal(el('reviewCompetitionMode').value,'market');
   assert.equal(el('competitionOnePct').textContent,'—');
+});
+test('observed participants are shown without empty forecast bars',()=>{
+  render({competition_actual:{count:5},competition_forecast:null});
+  assert.equal(el('competitionKicker').textContent,'Фактична конкуренція');
+  assert.equal(el('competitionConclusion').textContent,'5 учасників подали пропозиції');
+  assert.equal(el('competitionProbabilityBars').classList.hidden,true);
+  assert.equal(el('reviewCompetitionMode').value,'market');
 });
 test('null or invalid percentages are not rendered as 0%',()=>{
   render({competition_forecast:{one_participant_pct:null,two_plus_participants_pct:null}});
@@ -48,6 +57,7 @@ test('valid forecast shows probabilities and recommended mode',()=>{
   assert.equal(el('competitionTwoPct').textContent,'30%');
   assert.equal(el('reviewCompetitionMode').value,'n1');
   assert.equal(el('competitionForecast').classList.hidden,false);
+  assert.equal(el('competitionProbabilityBars').classList.hidden,false);
 });
 test('protected Worker recovers forecast from official tender data',()=>{
   assert.match(access,/buildCompetitionForecast\(tender,data\.fuel_type,Number\(data\.expected_value_uah\)\)/);
