@@ -57,3 +57,17 @@ test('document excerpt must occur verbatim in a numbered paragraph',()=>{
   assert.equal(highlights[0].source_verified,true);
   assert.equal(directDocumentHighlights([{...doc,status:'error'}]).length,0);
 });
+
+test('current buyer-history schema is assessed instead of rejected as unverified',()=>{
+  const policy=fs.readFileSync('buyer-competition.js','utf8');
+  const root={};
+  vm.runInNewContext(policy,{globalThis:root,Number,Math});
+  const h={ready:true,history_version:5,as_of:'2026-08-11',buyer_code:'01993807',period:{end:'2026-08-10'},
+    verification:{candidate_lots:30,verified_lots:29},count:29,
+    competition:{observed_count:27,known_count:27,one_count:3,zero_count:0,missing_count:0,final_count:27},
+    suppliers:{known_lots:27,distinct_count:8,leaders:[{name:'Постачальник',count:7}]},
+    states:{'Завершено лот закупівлі':27}};
+  const result=root.Euro5BuyerCompetition.assess(h,'2026-08-11','01993807');
+  assert.equal(result.level,'supported');
+  assert.equal(result.multi_lots,24);
+});
