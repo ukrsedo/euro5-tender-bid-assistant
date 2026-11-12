@@ -58,6 +58,16 @@ test('document excerpt must occur verbatim in a numbered paragraph',()=>{
   assert.equal(directDocumentHighlights([{...doc,status:'error'}]).length,0);
 });
 
+test('numbered document segments survive when text marker scan is unavailable',()=>{
+  const body='Талони повинні мати строк дії не менше 12 місяців від дати передачі.';
+  const doc={title:'Договір.docx',kind:'docx',status:'read',source_url:'https://public-docs.prozorro.gov.ua/get/document',
+    text:body,segments:[{location:'абзац 1',body}]};
+  const highlights=directDocumentHighlights([doc]);
+  assert.equal(highlights.length,1);
+  assert.equal(highlights[0].source.location,'абзац 1');
+  assert.equal(highlights[0].text,body);
+});
+
 test('current buyer-history schema is assessed instead of rejected as unverified',()=>{
   const policy=fs.readFileSync('buyer-competition.js','utf8');
   const root={};
