@@ -1374,9 +1374,9 @@ function buyerHistoryPeriod(now=new Date()){
  return {start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10)};
 }
 function buyerProcedureGroup(name){
- const normalized=String(name||'').normalize('NFKC').replace(/[\u00a0\u202f\s]+/gu,' ').trim().toLocaleLowerCase('uk-UA');
- if(/запит ціни пропозиції|запит пропозицій постачальників/.test(normalized))return 'catalog';
- if(/відкриті торги|спрощена(?: процедура)? закупівл[ія]|допорогова закупівля/.test(normalized)&&!/рамков|другий етап/.test(normalized))return 'open';
+ const normalized=String(name||'').normalize('NFKC').replace(/[\u00a0\u202f\s]+/gu,' ').trim().toLowerCase();
+ if(normalized.includes('запит ціни пропозиції')||normalized.includes('запит пропозицій постачальників'))return 'catalog';
+ if((normalized.includes('спрощена')&&normalized.includes('закупівл'))||/відкриті торги|допорогова закупівля/.test(normalized))return 'open';
  if(/без використання електронної системи|звіт про.*договір|переговорна процедура/.test(normalized))return 'direct';
  return 'other';
 }
@@ -1577,7 +1577,7 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const history=summarizeBuyerHistory(eligible,code,period);
  const supplierEvidence=[...proofs.values()].flatMap(e=>Array.isArray(e.supplier_bids)?e.supplier_bids:[]);
  history.supplier_behavior=summarizeSupplierBehavior(supplierEvidence,period);
- return {...history,history_version:5,as_of:period.as_of,excluded_tender_id:excludedTenderId,
+ return {...history,buyer_history_cache_schema:6,history_version:5,as_of:period.as_of,excluded_tender_id:excludedTenderId,
   verification:{candidate_lots:unique.length,verified_lots:eligible.length,unresolved_lots:unresolved.length,excluded_lots:unique.length-eligible.length-unresolved.length,complete:unresolved.length===0,excluded_or_unverified_lots:unique.length-eligible.length,details:reasons,
    method:'Preserved verified rows or public Prozorro snapshot last modified before announcement'},
   evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано збережені підтверджені дані до дати оголошення. Пізніші результати аналізованого тендера не враховано.'};
@@ -1589,8 +1589,8 @@ async function buyerHistoryRoute(request,origin,ctx){
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v9/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
- try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
+ const key=new Request(new URL('/buyer-history-cache/v10/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.buyer_history_cache_schema===6&&h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
   const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
   // Do not preserve a failed verification as the buyer's history for another day.
@@ -1620,7 +1620,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-buyer-history-cache-v9-market-indicative"
+        version: "2026.11.12-buyer-history-cache-v10-market-indicative"
       }, 200, origin);
     }
 
