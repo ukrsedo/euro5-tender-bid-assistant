@@ -41367,9 +41367,9 @@ function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 function buyerProcedureGroup(name) {
-  const normalized = String(name || "").normalize("NFKC").replace(/[\u00a0\u202f\s]+/gu, " ").trim().toLocaleLowerCase("uk-UA");
-  if (/запит ціни пропозиції|запит пропозицій постачальників/.test(normalized)) return "catalog";
-  if (/відкриті торги|спрощена(?: процедура)? закупівл[ія]|допорогова закупівля/.test(normalized) && !/рамков|другий етап/.test(normalized)) return "open";
+  const normalized = String(name || "").normalize("NFKC").replace(/[\u00a0\u202f\s]+/gu, " ").trim().toLowerCase();
+  if (normalized.includes("\u0437\u0430\u043F\u0438\u0442 \u0446\u0456\u043D\u0438 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457") || normalized.includes("\u0437\u0430\u043F\u0438\u0442 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0439 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043B\u044C\u043D\u0438\u043A\u0456\u0432")) return "catalog";
+  if (normalized.includes("\u0441\u043F\u0440\u043E\u0449\u0435\u043D\u0430") && normalized.includes("\u0437\u0430\u043A\u0443\u043F\u0456\u0432\u043B") || /відкриті торги|допорогова закупівля/.test(normalized)) return "open";
   if (/без використання електронної системи|звіт про.*договір|переговорна процедура/.test(normalized)) return "direct";
   return "other";
 }
@@ -41694,6 +41694,7 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   history.supplier_behavior = summarizeSupplierBehavior(supplierEvidence, period);
   return {
     ...history,
+    buyer_history_cache_schema: 6,
     history_version: 5,
     as_of: period.as_of,
     excluded_tender_id: excludedTenderId,
@@ -41716,12 +41717,12 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key = new Request(new URL("/buyer-history-cache/v9/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key = new Request(new URL("/buyer-history-cache/v10/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key);
     if (hit) {
       const h2 = await hit.json();
-      if (h2.verification?.complete) return json({ ...h2, cached: true }, 200, origin);
+      if (h2.buyer_history_cache_schema === 6 && h2.verification?.complete) return json({ ...h2, cached: true }, 200, origin);
     }
   } catch {
   }
@@ -41754,7 +41755,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-buyer-history-cache-v9-market-indicative"
+        version: "2026.11.12-buyer-history-cache-v10-market-indicative"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
