@@ -73,13 +73,13 @@ async function extractOne(document, fetcher, remainingBytes) {
     const title = document?.title || url.pathname.split('/').pop() || 'Без назви';
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, segments: paragraphs.map((line, i) => ({location: 'абзац ' + (i + 1), body: line})), text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16_777_216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF має понад ' + MAX_PDF_PAGES + ' сторінок.');
     const result = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(result.text) ? result.text : [result.text];
-    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
+    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, segments: pages.map((page, i) => ({location: 'сторінка ' + (i + 1), body: String(page || '').trim()})).filter(s => s.body), text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
   } catch (error) {
     return { title: document?.title || 'Без назви', kind, status: 'error', reason: String(error?.message || 'Не вдалося прочитати файл').slice(0, 240) };
   }
