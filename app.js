@@ -224,7 +224,7 @@ function indicativeStandardProductSupported(fuel,d){
   const profile=lastExtraction?.fuel_products?.[fuel]||{};
   const items=Array.isArray(profile.items)?profile.items:[];
   const title=String(lastExtraction?.tender_title||'');
-  if(profile.tier==='premium'||profile.tier==='ambiguous')return false;
+  if(profile.tier==='premium'||(items.length>0&&profile.tier==='ambiguous'))return false;
   if(items.some(item=>item.tier==='premium'||item.tier==='ambiguous'))return false;
   // Check contradictions as if the operator had chosen the standard grade.
   const checked={...d,[fuel==='gasoline'?'gasoline_product':'diesel_product']:standard};
@@ -238,7 +238,7 @@ function indicativeStandardProductSupported(fuel,d){
       items.every(item=>!item.grade||item.grade==='95');
   }
   const hasDieselEvidence=/дизел|дизель|\bдп\b|diesel/i.test(title)||items.length>0;
-  return hasDieselEvidence&&['unspecified','summer',undefined].includes(profile.season)&&
+  return hasDieselEvidence&&(items.length===0||['unspecified','summer',undefined].includes(profile.season))&&
     !/зимов|арктич|winter|arctic/i.test(title)&&
     items.every(item=>['unspecified','summer',undefined].includes(item.season));
 }
