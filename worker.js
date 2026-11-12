@@ -1424,6 +1424,13 @@ export function directDocumentHighlights(documents) {
   const paragraphs=[];
   for(const doc of documents){
     if(!['read','truncated'].includes(doc.status)||!doc.text)continue;
+    if(Array.isArray(doc.segments)&&doc.segments.length){
+      for(const segment of doc.segments){
+        if(typeof segment.body==='string'&&segment.body.length>=25&&typeof segment.location==='string')
+          paragraphs.push({doc,location:segment.location,body:segment.body.trim()});
+      }
+      continue;
+    }
     const marker=/\[(сторінка|абзац)\s+(\d+)\]\s*/gu;
     const matches=[...doc.text.matchAll(marker)];
     for(let i=0;i<matches.length;i++){
@@ -1705,7 +1712,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-document-evidence-v5"
+        version: "2026.11.12-august-document-evidence-v6"
       }, 200, origin);
     }
 
@@ -1821,7 +1828,7 @@ response_format: { type: "json_object" }
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,
-      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,body_chars:d.text?.length||0})),
+      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,segments:d.segments?.length||0,body_chars:d.text?.length||0})),
       cutoff_date: cutoff
     };
 
