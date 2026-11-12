@@ -41424,6 +41424,13 @@ function directDocumentHighlights(documents) {
   const paragraphs = [];
   for (const doc of documents) {
     if (!["read", "truncated"].includes(doc.status) || !doc.text) continue;
+    if (Array.isArray(doc.segments) && doc.segments.length) {
+      for (const segment of doc.segments) {
+        if (typeof segment.body === "string" && segment.body.length >= 25 && typeof segment.location === "string")
+          paragraphs.push({ doc, location: segment.location, body: segment.body.trim() });
+      }
+      continue;
+    }
     const marker = /\[(сторінка|абзац)\s+(\d+)\]\s*/gu;
     const matches = [...doc.text.matchAll(marker)];
     for (let i2 = 0; i2 < matches.length; i2++) {
@@ -41843,7 +41850,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-august-document-evidence-v5"
+        version: "2026.11.12-august-document-evidence-v6"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41944,7 +41951,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter((d2) => d2.status === "read" || d2.status === "truncated" && d2.text).length,
       highlights_found: directHighlights.length,
-      evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, markers: (d2.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu) || []).length, body_chars: d2.text?.length || 0 })),
+      evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, markers: (d2.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu) || []).length, segments: d2.segments?.length || 0, body_chars: d2.text?.length || 0 })),
       cutoff_date: cutoff
     };
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
