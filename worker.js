@@ -1589,7 +1589,7 @@ async function buyerHistoryRoute(request,origin,ctx){
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v7/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ const key=new Request(new URL('/buyer-history-cache/v8/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
  try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
   const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
