@@ -1705,7 +1705,7 @@ export default {
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
       return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
     });
-    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`}));
+    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({extracted_chars:0,...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`}));
 
     const payload = {
       model: env.AI_MODEL,
