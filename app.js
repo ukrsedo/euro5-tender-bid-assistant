@@ -435,6 +435,7 @@ function renderCompetitionForecast(data){
   if(!valid){
     const actual=Number(data?.competition_actual?.count);
     const actualKnown=Number.isInteger(actual)&&actual>0;
+    document.getElementById('competitionProbabilityBars').classList.add('hidden');
     document.getElementById('competitionKicker').textContent=actualKnown?'Фактична конкуренція':'Очікувана конкуренція';
     document.getElementById('competitionConclusion').textContent=actualKnown?`${actual} учасників подали пропозиції`:'Прогноз недоступний';
     document.getElementById('competitionOnePct').textContent='—';
@@ -451,6 +452,7 @@ function renderCompetitionForecast(data){
   }
   const one=Number(fc.one_participant_pct);
   const two=Number(fc.two_plus_participants_pct);
+  document.getElementById('competitionProbabilityBars').classList.remove('hidden');
   document.getElementById('competitionKicker').textContent='Очікувана конкуренція';
   box.classList.remove('hidden');
   document.getElementById('competitionConclusion').textContent=fc.conclusion || '—';
@@ -1096,7 +1098,12 @@ function evidenceListHtml(items,fallback){
 
 function competitionPdfHtml(){
   const fc=lastExtraction?.competition_forecast;
-  if(!fc) return '';
+  if(!fc){
+    const actual=Number(lastExtraction?.competition_actual?.count);
+    return Number.isInteger(actual)&&actual>0
+      ? `<section class="pdf-competition"><h3>Фактична конкуренція</h3><p>${num.format(actual)} учасників подали пропозиції за даними Prozorro. Прогноз на дату тендера недоступний; фактична кількість не є прогнозом.</p></section>`
+      : '';
+  }
   const confirmedMode=activeTenderData()?.competition_mode==='n1'?'Очікується 1 учасник':'Ринок (два або більше постачальників)';
   return `<section class="pdf-competition"><h3>Очікувана конкуренція</h3><div class="pdf-grid"><div><span>Один учасник</span><strong>${num.format(fc.one_participant_pct)}%</strong></div><div><span>Два або більше</span><strong>${num.format(fc.two_plus_participants_pct)}%</strong></div><div><span>Підтверджений режим</span><strong>${escapeHtml(confirmedMode)}</strong></div></div><p>${escapeHtml(fc.conclusion||'')}</p><p>${escapeHtml(fc.history_note||'')}</p></section>`;
 }
