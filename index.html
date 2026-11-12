@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="euro5-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20261024-unified-access" />
+  <link rel="stylesheet" href="styles.css?v=20261112-supplier-scenario-prices" />
 </head>
 <body>
   <aside id="sessionBar" class="card hidden" aria-live="polite"><span id="sessionName">Перевіряю сесію…</span> <form action="/logout" method="post"><button class="btn secondary-btn" type="submit">Вийти</button></form></aside>
@@ -336,7 +336,8 @@
       <section id="resultsCard" class="card results-card hidden">
         <div class="section-head"><div><div class="eyebrow ai-eyebrow">КАРТКА 1 · PROZORRO BI</div><h2>Історична конкурентність</h2><p>У якій частці завершених схожих тендерів наша ціна була б не вищою за ціну переможця? Це не ймовірність перемоги. Статистична модель об’єднує різні марки, преміальність і сезонність; точність для окремого різновиду не підтверджена.</p></div><button id="exportPdfBtn" class="btn secondary-btn">Вивантажити в PDF</button></div>
         <div id="costWarning" class="notice warning">Введіть закупівельну собівартість потрібного виду пального, щоб отримати коректний прибуток і маржу.</div>
-        <div class="table-wrap"><table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead id="resultsHead"><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція ЄВРО5, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+        <p id="supplierScenarioSource" class="muted"></p>
         <div class="notice"><strong>Рекомендація:</strong> <span id="historicalRecommendation"></span></div>
       </section>
 
@@ -394,7 +395,7 @@
   <script src="buyer-competition.js?v=20261023-buyer-competition"></script>
   <script src="buyer-card.js?v=20261023-buyer-competition"></script>
   <script src="memory.js?v=20261111-hide-public-memory-signin"></script>
-  <script src="app.js?v=20261111-remove-profit-reliability"></script>
+  <script src="app.js?v=20261112-supplier-scenario-prices"></script>
 </body>
 </html>
 
