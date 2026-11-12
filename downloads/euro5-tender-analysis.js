@@ -40043,7 +40043,7 @@ var MAX_DOCUMENTS = 8;
 var MAX_FILE_BYTES = 8 * 1024 * 1024;
 var MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 var MAX_PDF_PAGES = 60;
-var MAX_EXTRACTED_CHARS = 48e3;
+var MAX_EXTRACTED_CHARS = 12e4;
 function docKind(document2) {
   const descriptor = [document2?.title, document2?.format, document2?.mimeType, document2?.mediaType, document2?.url].filter(Boolean).join(" ").toLowerCase();
   if (/\.pdf(?:\b|\?)/i.test(descriptor) || /application\/pdf/.test(descriptor)) return "pdf";
@@ -40126,20 +40126,22 @@ async function readTenderDocuments(documents, fetcher = fetch) {
   const candidates = (documents || []).filter((d2) => docKind(d2)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
+  let totalChars = 0;
   for (const document2 of candidates) {
     const item = await extractOne(document2, fetcher, MAX_TOTAL_BYTES - totalBytes);
     totalBytes += item.bytes || 0;
     if (item.text) {
-      const remaining = MAX_EXTRACTED_CHARS - totalBytes;
+      const remaining = MAX_EXTRACTED_CHARS - totalChars;
       if (remaining <= 0) {
         item.text = "";
         item.status = "truncated";
-        item.reason = "\u0414\u043E\u0441\u044F\u0433\u043D\u0443\u0442\u043E \u043B\u0456\u043C\u0456\u0442 \u0441\u043F\u0456\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u0431\u0441\u044F\u0433\u0443 \u0442\u0435\u043A\u0441\u0442\u0443.";
+        item.reason = "\u0414\u043E\u0441\u044F\u0433\u043D\u0443\u0442\u043E \u043B\u0456\u043C\u0456\u0442 \u0441\u043F\u0456\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u0431\u0441\u044F\u0433\u0443 \u0442\u0435\u043A\u0441\u0442\u0443 \u2014 120 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
       } else if (item.text.length > remaining) {
         item.text = item.text.slice(0, remaining);
         item.status = "truncated";
-        item.reason = "\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u0440\u043E\u0447\u0435\u043D\u043E \u0447\u0435\u0440\u0435\u0437 \u043B\u0456\u043C\u0456\u0442 48 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
+        item.reason = "\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u0440\u043E\u0447\u0435\u043D\u043E \u0447\u0435\u0440\u0435\u0437 \u0441\u043F\u0456\u043B\u044C\u043D\u0438\u0439 \u043B\u0456\u043C\u0456\u0442 120 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
       }
+      totalChars += item.text.length;
       item.status ||= "read";
     } else {
       item.status ||= "no_text";
