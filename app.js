@@ -510,11 +510,10 @@ function renderReview(data){
   note.classList.toggle('hidden',!volumeParts.length);
 
   const reviewItems=[
-    ...(Array.isArray(data.requirements)?data.requirements:[]),
-    ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements:[]).map(x=>({text:x,type:'Технічний параметр пального'})),
-    ...(Array.isArray(data.conditions)?data.conditions:[]).map(x=>({text:x,type:'Умова тендера'})),
-    ...(Array.isArray(data.actions)?data.actions:[]).map(x=>({text:x,type:'Перевірка перед участю'})),
-    ...(Array.isArray(data.document_read_status)?data.document_read_status.filter(x=>x.status!=='read').map(x=>({text:`${x.title}: ${x.reason||x.status}`,type:'Документ не прочитано'})):[])
+    ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements.map(x=>({...x,type:'Технічний параметр пального'})):[]),
+    ...(Array.isArray(data.conditions)?data.conditions.map(x=>({...x,type:'Умова тендера'})):[]),
+    ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[]),
+    ...(Array.isArray(data.document_read_status)?data.document_read_status.filter(x=>x.status!=='read').map(x=>({text:`${x.status==='truncated'?'Текст документа прочитано частково':'Документ не прочитано'}: ${x.reason||x.status}`,type:'Статус джерела',source:{title:x.title,url:x.source_url||null},source_verified:true})):[])
   ];
   renderRequirements(reviewItems);
   document.getElementById('sourceScope').textContent=data.source_scope || '';
@@ -527,20 +526,45 @@ function renderRequirements(items){
   const ul=document.getElementById('requirementsList');
   if(!ul)return;
   ul.innerHTML='';
-  const rows=items.filter(x=>typeof x==='string'||x?.text||x?.requirement);
+  const rows=items.filter(x=>x?.source_verified===true&&x?.source?.title&&typeof x.text==='string'&&x.text.trim());
   if(!rows.length){
     const li=document.createElement('li');
-    li.textContent='Умови й дії, виявлені в даних тендера, не надані.';
+    li.textContent='Підтверджених вимог або умов із прочитаних документів не знайдено. Це не підтверджує їх відсутність у документації.';
     ul.appendChild(li);
     return;
   }
   for(const item of rows){
     const li=document.createElement('li');
-    const text=typeof item==='string'?item:(item.text||item.requirement);
-    const label=typeof item==='string'?'':(item.type||item.category||'');
-    li.textContent=label?label+': '+text:text;
+    const body=document.createElement('div');
+    const label=document.createElement('strong');
+    label.textContent=(item.type||'Підтверджений фрагмент')+': ';
+    body.append(label,document.createTextNode(item.text));
+    li.appendChild(body);
+    const citation=document.createElement('small');
+    citation.className='requirement-source';
+    citation.appendChild(document.createTextNode(`Джерело: ${item.source.title}${item.source.location?`, ${item.source.location}`:''}`));
+    const sourceUrl=safeDocumentCitationUrl(item.source.url);
+    if(sourceUrl){
+      citation.appendChild(document.createTextNode(' · '));
+      const link=document.createElement('a');
+      link.href=sourceUrl;
+      link.target='_blank';
+      link.rel='noopener noreferrer';
+      link.textContent='Відкрити документ';
+      citation.appendChild(link);
+    }
+    li.appendChild(citation);
     ul.appendChild(li);
   }
+}
+
+function safeDocumentCitationUrl(value){
+  try{
+    const url=new URL(value);
+    const host=url.hostname.toLowerCase();
+    const trusted=['prozorro.gov.ua','openprocurement.org'].some(domain=>host===domain||host.endsWith('.'+domain));
+    return url.protocol==='https:'&&!url.username&&!url.password&&(!url.port||url.port==='443')&&trusted?url.href:null;
+  }catch{return null;}
 }
 
 function fillList(id,items,fallback){
