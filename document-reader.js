@@ -5,7 +5,9 @@ const MAX_DOCUMENTS = 8;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const MAX_PDF_PAGES = 60;
-const MAX_EXTRACTED_CHARS = 48_000;
+// Keep attachment text within a bounded prompt budget. Count extracted text,
+// not binary file bytes; the two quantities are unrelated.
+const MAX_EXTRACTED_CHARS = 120_000;
 
 function docKind(document) {
   const descriptor = [document?.title, document?.format, document?.mimeType, document?.mediaType, document?.url].filter(Boolean).join(' ').toLowerCase();
@@ -86,14 +88,16 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   const candidates = (documents || []).filter(d => docKind(d)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
+  let totalChars = 0;
   for (const document of candidates) {
     const item = await extractOne(document, fetcher, MAX_TOTAL_BYTES - totalBytes);
     totalBytes += item.bytes || 0;
     // The file size is enforced per attachment. Keep prompt content bounded at aggregate level.
     if (item.text) {
-      const remaining = MAX_EXTRACTED_CHARS - totalBytes;
-      if (remaining <= 0) { item.text = ''; item.status = 'truncated'; item.reason = 'Досягнуто ліміт спільного обсягу тексту.'; }
-      else if (item.text.length > remaining) { item.text = item.text.slice(0, remaining); item.status = 'truncated'; item.reason = 'Текст скорочено через ліміт 48 000 символів.'; }
+      const remaining = MAX_EXTRACTED_CHARS - totalChars;
+      if (remaining <= 0) { item.text = ''; item.status = 'truncated'; item.reason = 'Досягнуто ліміт спільного обсягу тексту — 120 000 символів.'; }
+      else if (item.text.length > remaining) { item.text = item.text.slice(0, remaining); item.status = 'truncated'; item.reason = 'Текст скорочено через спільний ліміт 120 000 символів.'; }
+      totalChars += item.text.length;
       item.status ||= 'read';
     } else {
       item.status ||= 'no_text';
