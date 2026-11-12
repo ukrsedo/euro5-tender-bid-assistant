@@ -1712,7 +1712,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-document-evidence-v6"
+        version: "2026.11.12-august-document-evidence-v7"
       }, 200, origin);
     }
 
@@ -1828,7 +1828,7 @@ response_format: { type: "json_object" }
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,
-      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,segments:d.segments?.length||0,body_chars:d.text?.length||0})),
+      evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,markers:(d.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu)||[]).length,segments:d.segments?.length||0,body_chars:d.text?.length||0,text_sample:d.text?.slice(0,100)||'',segment_sample:d.segments?.slice(0,2).map(s=>({location:s.location,body:s.body?.slice(0,100)}))||[]})),
       cutoff_date: cutoff
     };
 
