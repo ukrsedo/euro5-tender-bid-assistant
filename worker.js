@@ -654,12 +654,16 @@ function tenderAnnouncementDate(data) {
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==match[1] || date.getTime()>Date.now()) return null;
   return date;
 }
-// Buyer history only needs a conservative cutoff before the tender's official
-// announcement day. The UA identifier carries that day even when Prozorro
-// omits dateCreated or the enquiry period starts on a different day.
-// This does not relax the stricter evidence checks used for market benchmarks.
-function buyerHistoryAnnouncementDay(data, tenderId) {
+// History is sampled before the proposal deadline, or through the current day
+// when that deadline is still in the future. Market benchmarks retain their
+// separate announcement-date cutoff.
+function buyerHistoryDecisionDay(data, tenderId) {
   if (data?.status === "draft") return null;
+  const deadline = new Date(data?.tenderPeriod?.endDate);
+  if (Number.isFinite(deadline.getTime())) {
+    const day=euro5ObservationDate(deadline),today=euro5ObservationDate();
+    return day<=today?day:today;
+  }
   const officialId = String(data?.tenderID || tenderId || "");
   const match = officialId.match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
   if (!match) return null;
@@ -1245,8 +1249,7 @@ function validateScope(data) {
 }
 
 function aiTenderPayload(data) {
-  const announcement=tenderAnnouncementDate(data);
-  const cutoff=announcement?euro5ObservationDate(announcement):null;
+  const cutoff=buyerHistoryDecisionDay(data,data?.tenderID);
   const prospectiveDocuments=(data?.documents||[]).filter(d=>{
     const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
     return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
@@ -1370,7 +1373,7 @@ function cleanAiText(value, kind) {
   if(!text||/(?:https?:\/\/|www\.)/i.test(text)||/\[[^\]]+\]\([^)]*\)/.test(text))return '';
   const generic=[/санкц/i,/бенефіціар/i,/походжен.{0,20}товар/i,/технічн.{0,30}характеристик/i,/сертифікат.{0,20}якост/i,/паспорт.{0,20}якост/i,/підстав.{0,20}відмов/i,/підтверд.{0,20}повноважен/i,/реєстраційн.{0,20}дан/i];
   const genericActions=[/перевірити.{0,20}тендерн.{0,20}документац/i,/підготувати.{0,30}технічн.{0,30}характеристик/i,/перевірити.{0,20}відповідність.{0,20}учасник/i,/перевірити.{0,20}санкц/i];
-  if(generic.some(re=>re.test(text))||(kind==='actions'&&genericActions.some(re=>re.test(text))))return '';
+  if((kind!=='fuel_requirements'&&generic.some(re=>re.test(text)))||(kind==='actions'&&genericActions.some(re=>re.test(text))))return '';
   return text;
 }
 function validateAiEvidenceList(items, kind, documents) {
@@ -1378,10 +1381,10 @@ function validateAiEvidenceList(items, kind, documents) {
   const out=[];
   for(const item of items.slice(0,50)){
     if(!item||typeof item!=='object'||Array.isArray(item))continue;
-    const text=cleanAiText(item.text,kind),sourceId=String(item.source_id||'').trim();
+    const sourceId=String(item.source_id||'').trim();
     const location=String(item.source_location||'').trim();
     const quote=String(item.evidence_quote||'').trim().slice(0,500);
-    if(!text||!sourceId||!quote||normalizeEvidenceText(text)!==normalizeEvidenceText(quote))continue;
+    if(!cleanAiText(quote,kind)||!sourceId)continue;
     const document=documents.find(d=>d.source_id===sourceId&&['read','truncated'].includes(d.status)&&d.text);
     if(!document)continue;
     const block=citationBlock(document,location),normalizedQuote=normalizeEvidenceText(quote);
@@ -1392,7 +1395,7 @@ function validateAiEvidenceList(items, kind, documents) {
   return out.slice(0,30);
 }
 
-// Buyer evidence: only snapshots confirmed to predate the analysed announcement.
+// Buyer evidence: only snapshots confirmed before the proposal cutoff.
 const BUYER_BI_APP='fba3f2f2-cf55-40a0-a79f-b74f5ce947c2';
 function buyerHistoryPeriod(now=new Date()){
  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
@@ -1606,13 +1609,13 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  history.supplier_behavior=summarizeSupplierBehavior(supplierEvidence,period);
  return {...history,buyer_history_cache_schema:6,history_version:5,as_of:period.as_of,excluded_tender_id:excludedTenderId,
   verification:{candidate_lots:unique.length,verified_lots:eligible.length,unresolved_lots:unresolved.length,excluded_lots:unique.length-eligible.length-unresolved.length,complete:unresolved.length===0,excluded_or_unverified_lots:unique.length-eligible.length,details:reasons,
-   method:'Preserved verified rows or public Prozorro snapshot last modified before announcement'},
-  evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано збережені підтверджені дані до дати оголошення. Пізніші результати аналізованого тендера не враховано.'};
+   method:'Preserved verified rows or public Prozorro snapshot last modified before proposal cutoff'},
+  evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано підтверджені дані до кінцевої дати подання пропозицій; поточний тендер виключено.'};
 }
 async function buyerHistoryRoute(request,origin,ctx){
  if(origin&&!ALLOWED_ORIGINS.includes(origin))return json({error:'Forbidden origin'},403,origin);
  const body=await request.json().catch(()=>({})),code=String(body.buyerCode||''),asOf=body.asOf;
- if(!/^\d{8,10}$/.test(code)||!validBuyerAsOf(asOf))return json({ready:false,reason:'Потрібні код замовника та дата оголошення тендера.'},400,origin);
+ if(!/^\d{8,10}$/.test(code)||!validBuyerAsOf(asOf))return json({ready:false,reason:'Потрібні код замовника та дата зрізу історії.'},400,origin);
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
@@ -1647,7 +1650,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-evidence-citations-v1"
+        version: "2026.11.12-submission-history-documents-v2"
       }, 200, origin);
     }
 
@@ -1697,8 +1700,7 @@ export default {
 
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
-    const announcement=tenderAnnouncementDate(source.data);
-    const cutoff=announcement?euro5ObservationDate(announcement):null;
+    const cutoff=buyerHistoryDecisionDay(source.data,normalized.parent);
     const documentsForReading=(source.data?.documents||[]).filter(d=>{
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
       return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
@@ -1755,7 +1757,13 @@ response_format: { type: "json_object" }
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
-    parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,source_url:source_url||null}));
+    parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
+    parsed.document_read_summary = {
+      available: Array.isArray(source.data?.documents)?source.data.documents.length:0,
+      supported_before_cutoff: documentExtracts.length,
+      read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
+      cutoff_date: cutoff
+    };
 
     // Structured Prozorro item quantities override AI where they are available.
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
@@ -1825,7 +1833,7 @@ response_format: { type: "json_object" }
     return json({
       ...parsed,
       buyer_code: buyerCode(source.data),
-      buyer_history_as_of: buyerHistoryAnnouncementDay(source.data, normalized.parent),
+      buyer_history_as_of: buyerHistoryDecisionDay(source.data, normalized.parent),
       buyer_name: source.data?.procuringEntity?.name || null,
       tender_id: normalized.parent,
       entered_id: normalized.entered,
