@@ -160,6 +160,47 @@ function activeTenderData(){
   return confirmedData || lastExtraction;
 }
 
+function supplierScenarioData(expected){
+  const profile=activeTenderData()?.buyer_profile;
+  const history=profile?.supplier_behavior;
+  if(profile?.ready!==true||!Array.isArray(history?.suppliers))return {suppliers:[],note:'Історичні цінові орієнтири постачальників не надійшли; значення не підставлено.'};
+  const suppliers=history.suppliers.filter(x=>typeof x?.name==='string'&&x.name.trim()).map(x=>{
+    const ratio=Number(x.avg_price_pct_of_budget);
+    const observations=Number(x.observation_count);
+    const valid=Number.isFinite(ratio)&&ratio>0&&Number.isFinite(expected)&&expected>0&&Number.isFinite(observations)&&observations>0;
+    return {name:x.name.trim(),code:String(x.code||''),ratio:valid?ratio:null,observations:Number.isFinite(observations)?observations:0,amount:valid?expected*ratio/100:null};
+  });
+  const dates=profile.period?.start&&profile.period?.end?` Період історії: ${profile.period.start} — ${profile.period.end}.`:'';
+  const basis=history.coverage_note||'Підтверджені історичні пропозиції постачальників.';
+  const note=`Орієнтир кожного постачальника — його медіанна історична пропозиція як % очікуваної вартості історичних тендерів. Орієнтовну суму отримано множенням цього відсотка на очікувану вартість поточного тендера без ПДВ. ${basis}${dates} Це порівняльна оцінка за попередньою поведінкою, а не фактична або гарантована пропозиція в поточному тендері.`;
+  return {suppliers,note};
+}
+
+function renderScenarioHeader(suppliers){
+  const head=document.getElementById('resultsHead');
+  if(!head)return;
+  head.replaceChildren();
+  const row=document.createElement('tr');
+  ['Варіант','Історична конкурентність','Знижка','Пропозиція ЄВРО5, грн','Прибуток, грн','Маржа','Мін. маржа?'].forEach(label=>{
+    const th=document.createElement('th');th.textContent=label;row.appendChild(th);
+  });
+  suppliers.forEach(supplier=>{
+    const th=document.createElement('th');
+    th.textContent=`Орієнтир · ${supplier.name}`;
+    th.title=supplier.ratio===null?'Немає підтверджених цінових спостережень':`${supplier.observations} історичних цінових спостережень; медіана від очікуваної вартості.`;
+    row.appendChild(th);
+  });
+  head.appendChild(row);
+}
+
+function appendSupplierEstimateCell(row,supplier){
+  const td=document.createElement('td');
+  if(supplier.ratio===null){td.textContent='Немає цінових даних';row.appendChild(td);return;}
+  const amount=document.createElement('strong');amount.className='supplier-estimate-value';amount.textContent=`≈ ${money.format(supplier.amount)} грн`;
+  const basis=document.createElement('small');basis.className='supplier-estimate-basis';basis.textContent=`${num.format(supplier.ratio)}% · ${supplier.observations} проп.`;
+  td.append(amount,basis);row.appendChild(td);
+}
+
 function supplyFormatLabel(format,gasFormat,dieselFormat){
   if(format==='bulk') return 'Налив';
   if(format==='retail') return 'Талони / паливні картки';
@@ -970,6 +1011,9 @@ function recalc(){
     modelVersion:String(lastExtraction?.competition_forecast?.model_version||'')
   });
   const tbody=document.getElementById('resultsBody'); tbody.innerHTML='';
+  const supplierEvidence=supplierScenarioData(expected);
+  renderScenarioHeader(supplierEvidence.suppliers);
+  document.getElementById('supplierScenarioSource').textContent=supplierEvidence.note;
   cfg.discounts.forEach((discount,i)=>{
     const bid=expected*(1-discount/100);
     const profit=complete ? bid-full : null;
@@ -984,6 +1028,7 @@ function recalc(){
       <td>${complete?money.format(profit):'—'}</td>
       <td>${complete?pct(margin):'—'}</td>
       <td class="${ok===true?'ok':ok===false?'no':''}">${ok===true?'ТАК':ok===false?'НІ':'—'}</td>`;
+    supplierEvidence.suppliers.forEach(supplier=>appendSupplierEstimateCell(tr,supplier));
     tr.title=POSITIONS[i][1];
     tbody.appendChild(tr);
   });
@@ -1043,12 +1088,15 @@ function buildPdfReport(){
   const rating=buildParticipationRating({expected,full,complete:true,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   const fuelLabel=el.fuelType.options[el.fuelType.selectedIndex].text;
   const modeLabel=el.competitionMode.options[el.competitionMode.selectedIndex].text;
+  const supplierEvidence=supplierScenarioData(expected);
+  const supplierHeaders=supplierEvidence.suppliers.map(s=>`<th>Орієнтир · ${escapeHtml(s.name)}<br><small>${s.observations?`${money.format(s.observations)} іст. проп.`:'без цінових даних'}</small></th>`).join('');
   const rows=cfg.discounts.map((discount,i)=>{
     const bid=expected*(1-discount/100);
     const profit=bid-full;
     const margin=bid>0?profit/bid*100:0;
     const ok=margin>=value('minMargin');
-    return `<tr><td>${POSITIONS[i][0]}</td><td>${pct(cfg.competitiveness[i])}</td><td>${pct(discount)}</td><td>${money.format(bid)}</td><td>${money.format(profit)}</td><td>${pct(margin)}</td><td>${ok?'ТАК':'НІ'}</td></tr>`;
+    const supplierCells=supplierEvidence.suppliers.map(s=>s.ratio===null?'<td>Немає цінових даних</td>':`<td>≈ ${money.format(s.amount)} грн<br><small>${num.format(s.ratio)}% бюджету</small></td>`).join('');
+    return `<tr><td>${POSITIONS[i][0]}</td><td>${pct(cfg.competitiveness[i])}</td><td>${pct(discount)}</td><td>${money.format(bid)}</td><td>${money.format(profit)}</td><td>${pct(margin)}</td><td>${ok?'ТАК':'НІ'}</td>${supplierCells}</tr>`;
   }).join('');
   const report=document.getElementById('pdfReport');
   report.innerHTML=`
@@ -1080,7 +1128,8 @@ function buildPdfReport(){
       <div><span>Мінімальна маржа</span><strong>${pct(value('minMargin'))}</strong></div>
     </div>
     <h3>Картка 1 · Історична конкурентність</h3>
-    <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>Варіант</th><th>Історична конкурентність</th><th>Знижка</th><th>Пропозиція ЄВРО5, грн</th><th>Прибуток, грн</th><th>Маржа</th><th>Мін. маржа?</th>${supplierHeaders}</tr></thead><tbody>${rows}</tbody></table>
+    <p>${escapeHtml(supplierEvidence.note)}</p>
     <p>${escapeHtml(document.getElementById('historicalRecommendation').textContent)}</p>
     <div class="pdf-footnotes"><p><sup>1</sup> ${statisticalModelNote()} Підтверджений продукт: бензин — ${productLabel("gasoline")}; дизель — ${productLabel("diesel")}.</p><p><sup>2</sup> Історична конкурентність — частка контрольних завершених тендерів, де така ціна була б не вищою за ціну переможця; це не ймовірність перемоги.</p><p><sup>3</sup> Для рейтингу маржа рахується за ціною, що відповідає 50% історичної конкурентності. Рейтинг також враховує бюджет до ринку, розмір тендера, підтверджені умови тендера.</p><p><sup>4</sup> Порівняння бюджету й тренд пального використовують стелу / архів Євро5 та історичні дані Minfin / Консалтингової групи А-95. Окремий валютний стрес не застосовується.</p><p><sup>5</sup> Прогноз конкуренції формує рекомендований режим. У розрахунку використовується лише режим, який користувач підтвердив або змінив перед переходом у калькулятор.</p></div>`;
 }
