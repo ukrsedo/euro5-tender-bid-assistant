@@ -300,9 +300,19 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
 }
 
 function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
-  return marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData)||
+  const calculated=marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData)||
     marketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData,true)||
     currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData);
+  if(calculated)return calculated;
+  // The Worker has already calculated the announcement-date comparison. Keep
+  // that result visible when the browser cannot reproduce its classification.
+  const gap=Number(lastExtraction?.budget_vs_market_pct);
+  const marketValue=Number(lastExtraction?.market_value_uah_without_vat);
+  if(!Number.isFinite(gap)||!(marketValue>0))return null;
+  const format=lastExtraction.market_benchmark_type||'unknown';
+  const source=lastExtraction.market_benchmark_label
+    ?`${lastExtraction.market_benchmark_label}${lastExtraction.market_reference_date?` (${lastExtraction.market_reference_date})`:''}.`:'';
+  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,indicative:false,referenceContext:'announcement',source};
 }
 
 function currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
