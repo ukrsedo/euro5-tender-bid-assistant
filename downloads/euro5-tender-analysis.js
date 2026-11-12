@@ -40111,13 +40111,13 @@ async function extractOne(document2, fetcher, remainingBytes) {
     const title = document2?.title || url.pathname.split("/").pop() || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438";
     if (kind === "docx") {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, segments: paragraphs.map((line, i2) => ({ location: "\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1), body: line })), text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16777216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error("PDF \u043C\u0430\u0454 \u043F\u043E\u043D\u0430\u0434 " + MAX_PDF_PAGES + " \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A.");
     const result = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(result.text) ? result.text : [result.text];
-    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i2) => "[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 " + (i2 + 1) + "] " + String(page || "").trim()).filter(Boolean).join("\n") };
+    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, segments: pages.map((page, i2) => ({ location: "\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 " + (i2 + 1), body: String(page || "").trim() })).filter((s2) => s2.body), text: pages.map((page, i2) => "[\u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0430 " + (i2 + 1) + "] " + String(page || "").trim()).filter(Boolean).join("\n") };
   } catch (error) {
     return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", kind, status: "error", reason: String(error?.message || "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u0438 \u0444\u0430\u0439\u043B").slice(0, 240) };
   }
