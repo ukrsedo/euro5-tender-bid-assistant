@@ -55,6 +55,20 @@ test('regression: title-only A-95 and generic diesel evidence displays market co
   ctx.lastExtraction.fuel_products=oldProducts;
   ctx.lastExtraction.tender_title=oldTitle;
 });
+test('live regression: empty item profiles marked ambiguous still allow title-evidenced A-95 and diesel estimate',()=>{
+  const oldProducts=ctx.lastExtraction.fuel_products,oldTitle=ctx.lastExtraction.tender_title;
+  try{
+    ctx.lastExtraction.tender_title='Бензин А-95-Євро5 по талонах/скретч картах, дизельне паливо-Євро5 по талонах';
+    ctx.lastExtraction.fuel_products={gasoline:{tier:'ambiguous',season:'ambiguous',items:[]},diesel:{tier:'ambiguous',season:'ambiguous',items:[]}};
+    const c=displayMarketComparison(6462929.5,46000,35000,'mixed',{...data,gasoline_product:'unknown',diesel_product:'unknown'});
+    assert.ok(c);
+    assert.equal(c.indicative,true);
+    assert.equal(c.marketValue,46000*50+35000*45);
+  }finally{
+    ctx.lastExtraction.fuel_products=oldProducts;
+    ctx.lastExtraction.tender_title=oldTitle;
+  }
+});
 test('unknown grade cannot be guessed from a generic gasoline description',()=>{
   const old=ctx.lastExtraction.fuel_products.gasoline;
   ctx.lastExtraction.fuel_products.gasoline={...old,grade:null,items:[{grade:null,tier:'unspecified'}]};
