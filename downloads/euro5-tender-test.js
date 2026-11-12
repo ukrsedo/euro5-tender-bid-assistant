@@ -40097,8 +40097,8 @@ async function extractOne(document2, fetcher, remainingBytes) {
   } catch {
     return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "unavailable", reason: "\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0454." };
   }
-  if (url.protocol !== "https:" || !/(^|\.)prozorro\.gov\.ua$/i.test(url.hostname))
-    return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "blocked", reason: "\u0414\u043E\u0437\u0432\u043E\u043B\u0435\u043D\u0456 \u043B\u0438\u0448\u0435 \u0437\u0430\u0445\u0438\u0449\u0435\u043D\u0456 \u043F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043D\u0430 Prozorro." };
+  if (!isTrustedProzorroDocumentUrl(url))
+    return { title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "blocked", reason: "\u0410\u0434\u0440\u0435\u0441\u0430 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u043D\u0435 \u043D\u0430\u043B\u0435\u0436\u0438\u0442\u044C \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u043E\u043C\u0443 \u0441\u0445\u043E\u0432\u0438\u0449\u0443 Prozorro." };
   try {
     const response = await fetchProzorroDocument(url, fetcher);
     if (!response.ok) throw new Error("HTTP " + response.status);
@@ -40111,7 +40111,7 @@ async function extractOne(document2, fetcher, remainingBytes) {
     const title = document2?.title || url.pathname.split("/").pop() || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438";
     if (kind === "docx") {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, text: paragraphs.map((line, i2) => "[\u0430\u0431\u0437\u0430\u0446 " + (i2 + 1) + "] " + line).join("\n") };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16777216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error("PDF \u043C\u0430\u0454 \u043F\u043E\u043D\u0430\u0434 " + MAX_PDF_PAGES + " \u0441\u0442\u043E\u0440\u0456\u043D\u043E\u043A.");
@@ -40126,33 +40126,39 @@ async function readTenderDocuments(documents, fetcher = fetch) {
   const candidates = (documents || []).filter((d2) => docKind(d2)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
-  let totalChars = 0;
   for (const document2 of candidates) {
     const item = await extractOne(document2, fetcher, MAX_TOTAL_BYTES - totalBytes);
     totalBytes += item.bytes || 0;
-    if (item.text) {
-      const remaining = MAX_EXTRACTED_CHARS - totalChars;
-      if (remaining <= 0) {
-        item.text = "";
-        item.status = "truncated";
-        item.reason = "\u0414\u043E\u0441\u044F\u0433\u043D\u0443\u0442\u043E \u043B\u0456\u043C\u0456\u0442 \u0441\u043F\u0456\u043B\u044C\u043D\u043E\u0433\u043E \u043E\u0431\u0441\u044F\u0433\u0443 \u0442\u0435\u043A\u0441\u0442\u0443 \u2014 120 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
-      } else if (item.text.length > remaining) {
-        item.text = item.text.slice(0, remaining);
-        item.status = "truncated";
-        item.reason = "\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u0440\u043E\u0447\u0435\u043D\u043E \u0447\u0435\u0440\u0435\u0437 \u0441\u043F\u0456\u043B\u044C\u043D\u0438\u0439 \u043B\u0456\u043C\u0456\u0442 120 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
-      }
-      totalChars += item.text.length;
-      item.status ||= "read";
-    } else {
+    if (!item.text) {
       item.status ||= "no_text";
       item.reason ||= "\u041D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0433\u043E \u0448\u0430\u0440\u0443. PDF \u043C\u043E\u0436\u0435 \u0431\u0443\u0442\u0438 \u0441\u043A\u0430\u043D-\u043A\u043E\u043F\u0456\u0454\u044E.";
     }
     out.push(item);
   }
+  const readable = out.filter((item) => item.text);
+  if (readable.length) {
+    const share = Math.floor(MAX_EXTRACTED_CHARS / readable.length);
+    const quotas = readable.map((item) => Math.min(item.text.length, share));
+    let remaining = MAX_EXTRACTED_CHARS - quotas.reduce((sum, n2) => sum + n2, 0);
+    readable.forEach((item, i2) => {
+      const extra = Math.min(remaining, item.text.length - quotas[i2]);
+      quotas[i2] += extra;
+      remaining -= extra;
+    });
+    readable.forEach((item, i2) => {
+      const original = item.text.length;
+      item.text = item.text.slice(0, quotas[i2]);
+      item.extracted_chars = item.text.length;
+      if (item.text.length < original) {
+        item.status = "truncated";
+        item.reason = "\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u0440\u043E\u0447\u0435\u043D\u043E \u0447\u0435\u0440\u0435\u0437 \u0441\u043F\u0456\u043B\u044C\u043D\u0438\u0439 \u043B\u0456\u043C\u0456\u0442 120 000 \u0441\u0438\u043C\u0432\u043E\u043B\u0456\u0432.";
+      } else item.status = "read";
+    });
+  }
   return out;
 }
 function formatTenderDocumentsForAI(items) {
-  if (!items?.length) return "\u0412\u043A\u043B\u0430\u0434\u0435\u043D\u044C PDF \u0430\u0431\u043E DOCX, \u043E\u043F\u0443\u0431\u043B\u0456\u043A\u043E\u0432\u0430\u043D\u0438\u0445 \u0434\u043E \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F, \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E.";
+  if (!items?.length) return "\u0412\u043A\u043B\u0430\u0434\u0435\u043D\u044C PDF \u0430\u0431\u043E DOCX, \u043E\u043F\u0443\u0431\u043B\u0456\u043A\u043E\u0432\u0430\u043D\u0438\u0445 \u0434\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043D\u044F \u043F\u043E\u0434\u0430\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0439, \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E.";
   return items.map((item) => {
     const sourceId = item.source_id ? "ID \u0434\u0436\u0435\u0440\u0435\u043B\u0430: " + item.source_id + " | " : "";
     if (!item.text) return sourceId + "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.reason ? " | \u043F\u0440\u0438\u0447\u0438\u043D\u0430: " + item.reason : "");
@@ -40714,8 +40720,13 @@ function tenderAnnouncementDate(data) {
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== match[1] || date.getTime() > Date.now()) return null;
   return date;
 }
-function buyerHistoryAnnouncementDay(data, tenderId) {
+function buyerHistoryDecisionDay(data, tenderId) {
   if (data?.status === "draft") return null;
+  const deadline = new Date(data?.tenderPeriod?.endDate);
+  if (Number.isFinite(deadline.getTime())) {
+    const day = euro5ObservationDate(deadline), today = euro5ObservationDate();
+    return day <= today ? day : today;
+  }
   const officialId = String(data?.tenderID || tenderId || "");
   const match = officialId.match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
   if (!match) return null;
@@ -41248,8 +41259,7 @@ function validateScope(data) {
   };
 }
 function aiTenderPayload(data) {
-  const announcement = tenderAnnouncementDate(data);
-  const cutoff = announcement ? euro5ObservationDate(announcement) : null;
+  const cutoff = buyerHistoryDecisionDay(data, data?.tenderID);
   const prospectiveDocuments = (data?.documents || []).filter((d2) => {
     const published = new Date(d2?.datePublished), modified = new Date(d2?.dateModified || d2?.datePublished);
     return cutoff && Number.isFinite(published.getTime()) && Number.isFinite(modified.getTime()) && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff;
@@ -41368,7 +41378,7 @@ function cleanAiText(value, kind) {
   if (!text || /(?:https?:\/\/|www\.)/i.test(text) || /\[[^\]]+\]\([^)]*\)/.test(text)) return "";
   const generic = [/санкц/i, /бенефіціар/i, /походжен.{0,20}товар/i, /технічн.{0,30}характеристик/i, /сертифікат.{0,20}якост/i, /паспорт.{0,20}якост/i, /підстав.{0,20}відмов/i, /підтверд.{0,20}повноважен/i, /реєстраційн.{0,20}дан/i];
   const genericActions = [/перевірити.{0,20}тендерн.{0,20}документац/i, /підготувати.{0,30}технічн.{0,30}характеристик/i, /перевірити.{0,20}відповідність.{0,20}учасник/i, /перевірити.{0,20}санкц/i];
-  if (generic.some((re2) => re2.test(text)) || kind === "actions" && genericActions.some((re2) => re2.test(text))) return "";
+  if (kind !== "fuel_requirements" && generic.some((re2) => re2.test(text)) || kind === "actions" && genericActions.some((re2) => re2.test(text))) return "";
   return text;
 }
 function validateAiEvidenceList(items, kind, documents) {
@@ -41376,10 +41386,10 @@ function validateAiEvidenceList(items, kind, documents) {
   const out = [];
   for (const item of items.slice(0, 50)) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const text = cleanAiText(item.text, kind), sourceId = String(item.source_id || "").trim();
+    const sourceId = String(item.source_id || "").trim();
     const location = String(item.source_location || "").trim();
     const quote = String(item.evidence_quote || "").trim().slice(0, 500);
-    if (!text || !sourceId || !quote || normalizeEvidenceText(text) !== normalizeEvidenceText(quote)) continue;
+    if (!cleanAiText(quote, kind) || !sourceId) continue;
     const document2 = documents.find((d2) => d2.source_id === sourceId && ["read", "truncated"].includes(d2.status) && d2.text);
     if (!document2) continue;
     const block = citationBlock(document2, location), normalizedQuote = normalizeEvidenceText(quote);
@@ -41738,15 +41748,15 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
       complete: unresolved.length === 0,
       excluded_or_unverified_lots: unique.length - eligible.length,
       details: reasons,
-      method: "Preserved verified rows or public Prozorro snapshot last modified before announcement"
+      method: "Preserved verified rows or public Prozorro snapshot last modified before proposal cutoff"
     },
-    evidence_note: unresolved.length ? "\u041F\u0435\u0440\u0435\u0432\u0456\u0440\u043A\u0430 \u043D\u0435\u043F\u043E\u0432\u043D\u0430 \u0447\u0435\u0440\u0435\u0437 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0456 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0456. \u0417\u043D\u0430\u0439\u0434\u0435\u043D\u0456 \u043B\u043E\u0442\u0438 \u043D\u0435 \u0437\u043D\u0438\u043A\u043B\u0438; \u043F\u043E\u043A\u0430\u0437\u043D\u0438\u043A\u0438 \u043D\u0438\u0436\u0447\u0435 \u0441\u0442\u043E\u0441\u0443\u044E\u0442\u044C\u0441\u044F \u043B\u0438\u0448\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043E\u0457 \u0447\u0430\u0441\u0442\u0438\u043D\u0438." : "\u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u0430\u043D\u043E \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043D\u0456 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u0434\u0430\u043D\u0456 \u0434\u043E \u0434\u0430\u0442\u0438 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F. \u041F\u0456\u0437\u043D\u0456\u0448\u0456 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0438 \u0430\u043D\u0430\u043B\u0456\u0437\u043E\u0432\u0430\u043D\u043E\u0433\u043E \u0442\u0435\u043D\u0434\u0435\u0440\u0430 \u043D\u0435 \u0432\u0440\u0430\u0445\u043E\u0432\u0430\u043D\u043E."
+    evidence_note: unresolved.length ? "\u041F\u0435\u0440\u0435\u0432\u0456\u0440\u043A\u0430 \u043D\u0435\u043F\u043E\u0432\u043D\u0430 \u0447\u0435\u0440\u0435\u0437 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0456 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0456. \u0417\u043D\u0430\u0439\u0434\u0435\u043D\u0456 \u043B\u043E\u0442\u0438 \u043D\u0435 \u0437\u043D\u0438\u043A\u043B\u0438; \u043F\u043E\u043A\u0430\u0437\u043D\u0438\u043A\u0438 \u043D\u0438\u0436\u0447\u0435 \u0441\u0442\u043E\u0441\u0443\u044E\u0442\u044C\u0441\u044F \u043B\u0438\u0448\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043E\u0457 \u0447\u0430\u0441\u0442\u0438\u043D\u0438." : "\u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u0430\u043D\u043E \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u0434\u0430\u043D\u0456 \u0434\u043E \u043A\u0456\u043D\u0446\u0435\u0432\u043E\u0457 \u0434\u0430\u0442\u0438 \u043F\u043E\u0434\u0430\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0439; \u043F\u043E\u0442\u043E\u0447\u043D\u0438\u0439 \u0442\u0435\u043D\u0434\u0435\u0440 \u0432\u0438\u043A\u043B\u044E\u0447\u0435\u043D\u043E."
   };
 }
 async function buyerHistoryRoute(request, origin, ctx) {
   if (origin && !ALLOWED_ORIGINS.includes(origin)) return json({ error: "Forbidden origin" }, 403, origin);
   const body = await request.json().catch(() => ({})), code = String(body.buyerCode || ""), asOf = body.asOf;
-  if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u043E\u0433\u043E\u043B\u043E\u0448\u0435\u043D\u043D\u044F \u0442\u0435\u043D\u0434\u0435\u0440\u0430." }, 400, origin);
+  if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u0437\u0440\u0456\u0437\u0443 \u0456\u0441\u0442\u043E\u0440\u0456\u0457." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
   const key2 = new Request(new URL("/buyer-history-cache/v10/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
@@ -41787,7 +41797,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-evidence-citations-v1"
+        version: "2026.11.12-submission-history-documents-v2"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41830,13 +41840,12 @@ var worker_default = {
     }
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
-    const announcement = tenderAnnouncementDate(source.data);
-    const cutoff = announcement ? euro5ObservationDate(announcement) : null;
+    const cutoff = buyerHistoryDecisionDay(source.data, normalized.parent);
     const documentsForReading = (source.data?.documents || []).filter((d2) => {
       const published = new Date(d2?.datePublished), modified = new Date(d2?.dateModified || d2?.datePublished);
       return cutoff && Number.isFinite(published.getTime()) && Number.isFinite(modified.getTime()) && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff;
     });
-    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({ ...doc, source_id: `DOC-${String(index + 1).padStart(2, "0")}` }));
+    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({ extracted_chars: 0, ...doc, source_id: `DOC-${String(index + 1).padStart(2, "0")}` }));
     const payload = {
       model: env.AI_MODEL,
       messages: [
@@ -41881,7 +41890,13 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
-    parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, source_url: source_url || null }));
+    parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, paragraphs, extracted_chars, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, paragraphs: paragraphs ?? null, extracted_chars: extracted_chars ?? 0, source_url: source_url || null }));
+    parsed.document_read_summary = {
+      available: Array.isArray(source.data?.documents) ? source.data.documents.length : 0,
+      supported_before_cutoff: documentExtracts.length,
+      read: documentExtracts.filter((d2) => d2.status === "read" || d2.status === "truncated" && d2.text).length,
+      cutoff_date: cutoff
+    };
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
     if (structuredFuel.gasolineVolumeL !== null) parsed.gasoline_volume_l = structuredFuel.gasolineVolumeL;
     if (structuredFuel.dieselVolumeL !== null) parsed.diesel_volume_l = structuredFuel.dieselVolumeL;
@@ -41942,7 +41957,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     return json({
       ...parsed,
       buyer_code: buyerCode(source.data),
-      buyer_history_as_of: buyerHistoryAnnouncementDay(source.data, normalized.parent),
+      buyer_history_as_of: buyerHistoryDecisionDay(source.data, normalized.parent),
       buyer_name: source.data?.procuringEntity?.name || null,
       tender_id: normalized.parent,
       entered_id: normalized.entered,
