@@ -3,7 +3,7 @@
  function assess(h,asOf,buyerCode){
   const unknown=reason=>({level:'unknown',points:0,label:'Конкурентність не встановлена',reason,conditional:true});
   if(!h?.ready)return unknown(h?.reason||'Історія замовника ще завантажується.');
-  if(h.history_version!==2||h.as_of!==asOf||!asOf||!h.period?.end||h.period.end>=asOf||h.buyer_code!==buyerCode)return unknown('Немає підтвердженої історії цього замовника до дати оголошення тендера.');
+  if(h.history_version!==5||h.as_of!==asOf||!asOf||!h.period?.end||h.period.end>=asOf||h.buyer_code!==buyerCode)return unknown('Немає підтвердженої історії цього замовника до кінцевої дати подання пропозицій.');
   const v=h.verification;
   if(!v||!Number.isInteger(v.candidate_lots)||!Number.isInteger(v.verified_lots)||v.candidate_lots<0||v.verified_lots<0||v.verified_lots>v.candidate_lots)return unknown('Не підтверджено дату історичних даних.');
   if(v.candidate_lots===0)return unknown('Попередніх паливних закупівель за цей період не знайдено.');
