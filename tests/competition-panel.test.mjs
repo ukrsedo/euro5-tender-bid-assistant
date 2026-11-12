@@ -32,7 +32,7 @@ test('competition row is present in HTML',()=>{
 test('missing forecast leaves panel visible and manual mode available',()=>{
   render({});
   assert.equal(el('competitionForecast').classList.hidden,false);
-  assert.equal(el('competitionConclusion').textContent,'Прогноз поки недоступний');
+  assert.equal(el('competitionConclusion').textContent,'Прогноз недоступний');
   assert.equal(el('reviewCompetitionMode').value,'market');
   assert.equal(el('competitionOnePct').textContent,'—');
 });
