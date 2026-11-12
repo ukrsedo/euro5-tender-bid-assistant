@@ -41438,7 +41438,7 @@ function directDocumentHighlights(documents) {
     const match = found.body.match(rule), near = Math.max(0, (match?.index || 0) - 70);
     const start = near ? Math.min(found.body.length, found.body.indexOf(" ", near) + 1) : 0;
     const quote = found.body.slice(start, start + 500).trim();
-    if (!quote || !citationBlock(found.doc, found.location)?.includes(normalizeEvidenceText(quote))) continue;
+    if (!quote || !normalizeEvidenceText(found.body).includes(normalizeEvidenceText(quote))) continue;
     used.add(found);
     result.push({ text: quote, source: { title: found.doc.title, location: found.location, quote, url: found.doc.source_url || null }, source_verified: true });
   }
@@ -41843,7 +41843,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-august-document-evidence-v4"
+        version: "2026.11.12-august-document-evidence-v5"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41944,6 +41944,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter((d2) => d2.status === "read" || d2.status === "truncated" && d2.text).length,
       highlights_found: directHighlights.length,
+      evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, markers: (d2.text?.match(/\[(?:сторінка|абзац)\s+\d+\]/gu) || []).length, body_chars: d2.text?.length || 0 })),
       cutoff_date: cutoff
     };
     if (structuredFuel.fuelType) parsed.fuel_type = structuredFuel.fuelType;
