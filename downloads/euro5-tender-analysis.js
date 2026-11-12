@@ -41365,9 +41365,10 @@ function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 function buyerProcedureGroup(name) {
-  if (/Запит ціни пропозиції|Запит пропозицій постачальників/i.test(name)) return "catalog";
-  if (/Відкриті торги|Спрощена (?:процедура )?закупівл[ія]|Допорогова закупівля/i.test(name) && !/рамков|другий етап/i.test(name)) return "open";
-  if (/без використання електронної системи|Звіт про.*договір|Переговорна процедура/i.test(name)) return "direct";
+  const normalized = String(name || "").normalize("NFKC").replace(/[\u00a0\u202f\s]+/gu, " ").trim().toLocaleLowerCase("uk-UA");
+  if (/запит ціни пропозиції|запит пропозицій постачальників/.test(normalized)) return "catalog";
+  if (/відкриті торги|спрощена(?: процедура)? закупівл[ія]|допорогова закупівля/.test(normalized) && !/рамков|другий етап/.test(normalized)) return "open";
+  if (/без використання електронної системи|звіт про.*договір|переговорна процедура/.test(normalized)) return "direct";
   return "other";
 }
 function summarizeBuyerHistory(rows, code, period) {
