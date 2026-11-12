@@ -73,13 +73,13 @@ async function extractOne(document, fetcher, remainingBytes) {
     const title = document?.title || url.pathname.split('/').pop() || 'Без назви';
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
-      return { title, kind, bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16_777_216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF має понад ' + MAX_PDF_PAGES + ' сторінок.');
     const result = await extractText(pdf, { mergePages: false });
     const pages = Array.isArray(result.text) ? result.text : [result.text];
-    return { title, kind, bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
+    return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: result.totalPages, text: pages.map((page, i) => '[сторінка ' + (i + 1) + '] ' + String(page || '').trim()).filter(Boolean).join('\n') };
   } catch (error) {
     return { title: document?.title || 'Без назви', kind, status: 'error', reason: String(error?.message || 'Не вдалося прочитати файл').slice(0, 240) };
   }
@@ -110,7 +110,8 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
 export function formatTenderDocumentsForAI(items) {
   if (!items?.length) return 'Вкладень PDF або DOCX, опублікованих до оголошення, не знайдено.';
   return items.map(item => {
-    if (!item.text) return 'Документ: ' + item.title + ' | статус: ' + item.status + (item.reason ? ' | причина: ' + item.reason : '');
-    return 'Документ: ' + item.title + ' | статус: ' + item.status + (item.pages ? ' | сторінок: ' + item.pages : ' | посилання на сторінки у DOCX не визначаються; цитуй номер абзацу') + '\n' + item.text;
+    const sourceId = item.source_id ? 'ID джерела: ' + item.source_id + ' | ' : '';
+    if (!item.text) return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.reason ? ' | причина: ' + item.reason : '');
+    return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.pages ? ' | сторінок: ' + item.pages : ' | посилання на сторінки у DOCX не визначаються; цитуй номер абзацу') + '\n' + item.text;
   }).join('\n\n');
 }
