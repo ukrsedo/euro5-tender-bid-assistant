@@ -43,7 +43,7 @@ test('explicit fuel wording in a read contract is classified with its exact cita
   const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replaceAll('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const quote='1.2. Найменування Товару: бензин автомобільний А-95-Євро5 та дизельне паливо ДП-Євро5 (наливом).';
   const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 14] ${quote}`,segments:[{location:'абзац 14',body:quote}]}]);
@@ -57,7 +57,7 @@ test('capitalized Ukrainian contract terms are classified and payment evidence i
   const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replaceAll('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const body='4.1. Розрахунки проводяться шляхом оплати Замовником суми згідно рахунку та видаткової накладної в строк 10 (десять) календарних днів.';
   const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 33] ${body}`,segments:[{location:'абзац 33',body}]}]);
@@ -71,7 +71,7 @@ test('contract extracts include only payment, operative supply and specific fuel
   const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replaceAll('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const bodies=[
     ['абзац 3','м. Київ “___” ________ 2026 року'],
@@ -102,7 +102,7 @@ test('UA-2026-11-12-017662-a clauses are extracted from the same paragraphs read
   const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replaceAll('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const bodies=[
     ['абзац 6','1.1. АЗС – автозаправні станції, на яких Покупець має право отримати паливо відповідно до умов даного Договору.'],
@@ -141,13 +141,28 @@ test('irrelevant or boilerplate contract text produces no fallback excerpts',()=
   const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replaceAll('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const result=ctx.h([{status:'read',kind:'docx',title:'Договір.docx',text:'[абзац 3] м. Київ “___” ________ 2026 року\n[абзац 4] Продавець гарантує, що Товар належить йому на праві власності.',segments:[
     {location:'абзац 3',body:'м. Київ “___” ________ 2026 року'},
     {location:'абзац 4',body:'Продавець гарантує, що Товар належить йому на праві власності.'}
   ]}]);
   assert.equal(result.length,0);
+});
+
+test('core clauses survive a read document with numbered segments even if its combined text is missing',()=>{
+  const start=worker.indexOf('export function coreDocumentClauses(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const ctx={Array,RegExp,String};vm.createContext(ctx);
+  vm.runInContext(worker.slice(start,end).replace('export function','function')+';this.extract=coreDocumentClauses',ctx);
+  const result=ctx.extract([{status:'read',title:'ПРОЕКТ ДОГОВОРУ.docx',source_url:'/doc',segments:[
+    {location:'абзац 7',body:'1.2. Талон/скретч-карта – документ, який дозволяє отримати паливо на АЗС.'},
+    {location:'абзац 26',body:'5.1. Спосіб розрахунків за Товар – у безготівковій формі шляхом перерахування коштів.'},
+    {location:'абзац 31',body:'6.1. Строк поставки Товару – до 30 листопада 2026 року.'},
+    {location:'абзац 183',body:'Бензин А-95 (Євро 5) в талонах/скретч-картах, 9 000 літрів.'}
+  ]}]);
+  assert.deepEqual(Array.from(result,x=>x.source.location),['абзац 26','абзац 31','абзац 183']);
+  assert.ok(result.every(x=>x.source_verified&&x.text===x.source.quote));
 });
 
 test('retail benchmark uses the last verified observation within five business days and keeps its date',async()=>{
