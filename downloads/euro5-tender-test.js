@@ -45507,7 +45507,7 @@ function classifyContractParagraph(value) {
   const gradeOrSpec = /(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*5|ДСТУ\s*768[78](?:\s*:\s*2015)?|768[78]\s*:\s*2015|октанов.{0,20}\d|цетанов.{0,20}\d|вміст.{0,20}сірк|густин.{0,20}\d|температур.{0,35}(?:фільтр|застиган)|сезонн.{0,20}(?:літн|зимов|арктич)|біокомпонент.{0,20}\d)/iu.test(text);
   if (fuel && gradeOrSpec) categories.push("\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E");
   if (payment) categories.push("\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438");
-  const directSupply = /(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}(?:передати|поставити|здійснювати постачання)|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
+  const directSupply = /(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}здійснювати постачання|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
   const measurableNetwork = /АЗС/iu.test(text) && /(?:не менш\s*(?:як\s*)?\d|щонайменше\s*\d|по всій території|в кожній області|в кожному обласному центрі)/iu.test(text);
   const couponValidity = /(?:талон|скретч.?карт|паливн.{0,12}карт)/iu.test(text) && /(?:строк|термін) дії/iu.test(text) && /(?:не менш|продовж|пролонг|\d+\s*(?:місяц|рік|рок))/iu.test(text);
   const placeOrDeadline = /(?:місце|строк|термін) поставки/iu.test(text) && /(?:міст|област|адрес|до\s+\d|протягом\s+\d|\d{1,2}[.\-/]\d{1,2})/iu.test(text);
@@ -45545,7 +45545,26 @@ function directDocumentHighlights(documents) {
     candidates.push({ index, score: categories.length * 10 + Math.min(5, Math.floor(body.length / 250)), item: { text: quote, category: categories.join(" \xB7 "), source: { title: p4.doc.title, location: p4.location, quote, url: p4.doc.source_url || null }, source_verified: true } });
   }
   if (!candidates.length) return [];
-  return candidates.sort((a4, b6) => b6.score - a4.score || a4.index - b6.index).slice(0, 60).sort((a4, b6) => a4.index - b6.index).map((x2) => x2.item);
+  const deduplicated = /* @__PURE__ */ new Map();
+  for (const candidate of candidates) {
+    const { item } = candidate, text = item.text;
+    let key2 = null;
+    if (item.category.includes("\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E")) {
+      if (/(?:ДСТУ\s*768[78]|768[78]\s*:\s*2015|технічн.{0,25}регламент)/iu.test(text)) key2 = "technical-standards";
+      else if (/(?:А\s*[-–]?\s*95|бензин)/iu.test(text)) key2 = "product-gasoline";
+      else if (/(?:дизел|ДП\s*[-–]?\s*Євро)/iu.test(text)) key2 = "product-diesel";
+    }
+    if (item.category.includes("\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A")) {
+      if (/номінал.{0,30}талон/iu.test(text)) key2 = "coupon-denomination";
+      else if (/(?:термін|строк) дії.{0,100}(?:талон|скретч.?карт)|(?:термін|строк) дії невикористаних талон/iu.test(text)) key2 = "coupon-validity";
+    }
+    const previous = key2 ? deduplicated.get(key2) : null;
+    if (key2 && previous) {
+      if (candidate.score > previous.score) deduplicated.set(key2, candidate);
+    } else if (key2) deduplicated.set(key2, candidate);
+    else deduplicated.set(`paragraph:${candidate.index}`, candidate);
+  }
+  return [...deduplicated.values()].sort((a4, b6) => a4.index - b6.index).map((x2) => x2.item);
 }
 function directDocumentConditionEvidence(documents) {
   const rules = [
@@ -46010,7 +46029,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-contract-scope-v19"
+        version: "2026.11.13-contract-scope-v20"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
