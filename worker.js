@@ -1442,7 +1442,7 @@ function classifyContractParagraph(value) {
   const gradeOrSpec=/(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*5|ДСТУ\s*768[78](?:\s*:\s*2015)?|768[78]\s*:\s*2015|октанов.{0,20}\d|цетанов.{0,20}\d|вміст.{0,20}сірк|густин.{0,20}\d|температур.{0,35}(?:фільтр|застиган)|сезонн.{0,20}(?:літн|зимов|арктич)|біокомпонент.{0,20}\d)/iu.test(text);
   if(fuel&&gradeOrSpec)categories.push('Технічні вимоги до пального');
   if(payment)categories.push('Оплата та розрахунки');
-  const directSupply=/(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}(?:передати|поставити|здійснювати постачання)|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
+  const directSupply=/(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}здійснювати постачання|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
   const measurableNetwork=/АЗС/iu.test(text)&&/(?:не менш\s*(?:як\s*)?\d|щонайменше\s*\d|по всій території|в кожній області|в кожному обласному центрі)/iu.test(text);
   const couponValidity=/(?:талон|скретч.?карт|паливн.{0,12}карт)/iu.test(text)&&/(?:строк|термін) дії/iu.test(text)&&/(?:не менш|продовж|пролонг|\d+\s*(?:місяц|рік|рок))/iu.test(text);
   const placeOrDeadline=/(?:місце|строк|термін) поставки/iu.test(text)&&/(?:міст|област|адрес|до\s+\d|протягом\s+\d|\d{1,2}[.\-/]\d{1,2})/iu.test(text);
@@ -1486,7 +1486,28 @@ export function directDocumentHighlights(documents) {
     candidates.push({index,score:categories.length*10+Math.min(5,Math.floor(body.length/250)),item:{text:quote,category:categories.join(' · '),source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true}});
   }
   if(!candidates.length)return [];
-  return candidates.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,60).sort((a,b)=>a.index-b.index).map(x=>x.item);
+  // Contracts often repeat identical fuel grades, standards and coupon terms
+  // in the body and annex tables. Keep the richest source paragraph for each
+  // repeated fact, while retaining distinct payment and delivery conditions.
+  const deduplicated=new Map();
+  for(const candidate of candidates){
+    const {item}=candidate,text=item.text;
+    let key=null;
+    if(item.category.includes('Технічні вимоги до пального')){
+      if(/(?:ДСТУ\s*768[78]|768[78]\s*:\s*2015|технічн.{0,25}регламент)/iu.test(text))key='technical-standards';
+      else if(/(?:А\s*[-–]?\s*95|бензин)/iu.test(text))key='product-gasoline';
+      else if(/(?:дизел|ДП\s*[-–]?\s*Євро)/iu.test(text))key='product-diesel';
+    }
+    if(item.category.includes('Постачання та відпуск')){
+      if(/номінал.{0,30}талон/iu.test(text))key='coupon-denomination';
+      else if(/(?:термін|строк) дії.{0,100}(?:талон|скретч.?карт)|(?:термін|строк) дії невикористаних талон/iu.test(text))key='coupon-validity';
+    }
+    const previous=key?deduplicated.get(key):null;
+    if(key&&previous){if(candidate.score>previous.score)deduplicated.set(key,candidate);}
+    else if(key)deduplicated.set(key,candidate);
+    else deduplicated.set(`paragraph:${candidate.index}`,candidate);
+  }
+  return [...deduplicated.values()].sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
 // Extract only simple, explicit numeric terms from the source text. The full
@@ -1813,7 +1834,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-contract-scope-v19"
+        version: "2026.11.13-contract-scope-v20"
       }, 200, origin);
     }
 
