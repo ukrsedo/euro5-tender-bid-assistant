@@ -343,7 +343,7 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
   } else return null;
   if(!(expectedValue>0) || !(marketValue>0)) return null;
   const gap=(expectedValue/marketValue-1)*100;
-  return {gap,marketValue,format,gasFormat,dieselFormat,indicative,source:benchmarkDescription(format,gasFormat,dieselFormat)};
+  return {gap,marketValue,format,gasFormat,dieselFormat,gasPrice,dieselPrice,indicative,source:benchmarkDescription(format,gasFormat,dieselFormat)};
 }
 
 function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
@@ -359,7 +359,7 @@ function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelT
   const format=lastExtraction.market_benchmark_type||'unknown';
   const source=lastExtraction.market_benchmark_label
     ?`${lastExtraction.market_benchmark_label}${lastExtraction.market_reference_date?` (${lastExtraction.market_reference_date})`:''}.`:'';
-  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,indicative:false,referenceContext:'announcement',source};
+  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,gasPrice:Number(lastExtraction?.market_wholesale_gasoline_price_uah_l_without_vat)||null,dieselPrice:Number(lastExtraction?.market_wholesale_diesel_price_uah_l_without_vat)||null,indicative:false,referenceContext:'announcement',source};
 }
 
 function currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
@@ -381,8 +381,17 @@ function currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelT
     if(gasFormat!=='bulk'||dieselFormat!=='bulk'||!indicativeStandardProductSupported('gasoline',d)||!indicativeStandardProductSupported('diesel',d)||!(gasolineVolume>0)||!(dieselVolume>0)||!(candidates.gasoline>0)||!(candidates.diesel>0))return null;
     marketValue=gasolineVolume*candidates.gasoline+dieselVolume*candidates.diesel;
   }else return null;
-  return {gap:(expectedValue/marketValue-1)*100,marketValue,format,gasFormat,dieselFormat,
+  return {gap:(expectedValue/marketValue-1)*100,marketValue,format,gasFormat,dieselFormat,gasPrice:candidates.gasoline||null,dieselPrice:candidates.diesel||null,
     indicative:true,referenceContext:'current',source:`Поточний гуртовий орієнтир Enkorr (${date}); ціна після оголошення тендера.`};
+}
+
+function marketCalculationText(cmp,fuelType,gasolineVolume,dieselVolume){
+  const parts=[];
+  if((fuelType==='gasoline'||fuelType==='mixed')&&gasolineVolume>0&&cmp.gasPrice>0)
+    parts.push(`Бензин: ${num.format(gasolineVolume)} л × ${num.format(cmp.gasPrice)} грн/л = ${money.format(gasolineVolume*cmp.gasPrice)} грн`);
+  if((fuelType==='diesel'||fuelType==='mixed')&&dieselVolume>0&&cmp.dieselPrice>0)
+    parts.push(`Дизель: ${num.format(dieselVolume)} л × ${num.format(cmp.dieselPrice)} грн/л = ${money.format(dieselVolume*cmp.dieselPrice)} грн`);
+  return `Розрахункова ринкова вартість без ПДВ: ${money.format(cmp.marketValue)} грн.${parts.length?' '+parts.join('; ')+'.':''}`;
 }
 
 function marketGapText(gap,referenceContext='announcement'){
@@ -421,6 +430,7 @@ function renderReviewMarket(){
   document.getElementById('marketComparisonReviewText').textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext);
   const sourceBox=document.getElementById('marketBenchmarkSource');
   sourceBox.replaceChildren(document.createTextNode((cmp.indicative?'Марку не підтверджено автоматично. ':'')+(cmp.source || '')));
+  sourceBox.append(document.createElement('br'),document.createTextNode(marketCalculationText(cmp,v.fuelType,v.gasolineVolume,v.dieselVolume)));
   const sourceUrl=lastExtraction?.market_wholesale_source_url;
   try{
     const verifiedUrl=new URL(sourceUrl);
@@ -591,7 +601,7 @@ function renderDocumentReadSummary(data){
   const summary=data.document_read_summary;
   if(!summary){box.textContent='Worker не повернув статус читання документів. Оновіть обидва Worker-и.';return;}
   const heading=document.createElement('strong');
-  heading.textContent=`Документи Prozorro: ${summary.supported_before_cutoff} PDF/DOCX до ${summary.cutoff_date||'дати подання'}, прочитано ${summary.read}.`;
+  heading.textContent=`Вкладення Prozorro: ${summary.available} загалом; ${summary.supported_before_cutoff} PDF/DOCX допущено до аналізу станом на ${summary.cutoff_date||'дату подання'}, прочитано ${summary.read}.`;
   box.appendChild(heading);
   if(Number.isFinite(Number(summary.paragraphs_scanned))){
     const detail=document.createElement('p');
@@ -606,8 +616,9 @@ function renderDocumentReadSummary(data){
   statuses.forEach(item=>{
     const li=document.createElement('li');
     const readable=item.status==='read'||(item.status==='truncated'&&item.extracted_chars>0);
+    const labels={excluded_after_cutoff:'Виключено за датою',date_unverified:'Дату не підтверджено',unsupported:'Формат не підтримується',not_processed_limit:'Не оброблено: ліміт',blocked:'Заблоковано',unavailable:'Недоступний',error:'Помилка читання',no_text:'Текст не знайдено'};
     const volume=item.paragraphs?`${item.paragraphs} абзаців`:item.pages?`${item.pages} сторінок`:'';
-    li.appendChild(document.createTextNode(`${readable?(item.status==='truncated'?'Частково прочитано':'Прочитано'):'Не прочитано'}: ${item.title}${volume?' · '+volume:''}${item.reason?' · '+item.reason:''}`));
+    li.appendChild(document.createTextNode(`${readable?(item.status==='truncated'?'Частково прочитано':'Прочитано'):(labels[item.status]||'Не прочитано')}: ${item.title}${volume?' · '+volume:''}${item.reason?' · '+item.reason:''}`));
     const url=safeDocumentCitationUrl(item.source_url);
     if(url){const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=' · Відкрити документ';li.appendChild(link);}
     list.appendChild(li);

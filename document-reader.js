@@ -85,7 +85,8 @@ async function extractOne(document, fetcher, remainingBytes) {
   }
 }
 export async function readTenderDocuments(documents, fetcher = fetch) {
-  const candidates = (documents || []).filter(d => docKind(d)).slice(0, MAX_DOCUMENTS);
+  const all = Array.isArray(documents) ? documents : [];
+  const candidates = all.filter(d => docKind(d)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
   for (const document of candidates) {
@@ -97,6 +98,16 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
     }
     out.push(item);
   }
+  // Report unsupported and over-limit attachments explicitly. Never silently
+  // imply that every Prozorro attachment was reviewed.
+  for (const document of all.filter(d => !docKind(d))) out.push({
+    title: document?.title || 'Без назви', status: 'unsupported',
+    reason: 'Підтримуються вкладення PDF і DOCX.'
+  });
+  for (const document of all.filter(d => docKind(d)).slice(MAX_DOCUMENTS)) out.push({
+    title: document?.title || 'Без назви', kind: docKind(document), status: 'not_processed_limit',
+    reason: `Перевищено ліміт обробки ${MAX_DOCUMENTS} документів за один запит.`
+  });
   // Give every readable attachment a share of the prompt budget. A large
   // contract must not consume all the space before the announcement is read.
   const readable = out.filter(item => item.text);

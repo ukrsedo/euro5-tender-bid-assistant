@@ -132,11 +132,11 @@ export function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat
 
   let historyNote;
   if (count >= 3) {
-    historyNote = `В історії цього замовника враховано ${count} завершених паливних тендерів; середня кількість учасників — ${meanParticipants.toFixed(1)}.`;
+    historyNote = `У навчальному зрізі моделі для цього замовника є ${count} завершених паливних тендерів; середня кількість учасників у цьому зрізі — ${meanParticipants.toFixed(1)}. Це окрема вибірка від картки історії замовника за останні 12 місяців.`;
   } else if (count > 0) {
-    historyNote = `Історія цього замовника обмежена: у вибірці лише ${count} завершених паливних тендерів.`;
+    historyNote = `Навчальний зріз моделі містить лише ${count} завершених паливних тендерів цього замовника. Це окрема вибірка від картки історії за останні 12 місяців.`;
   } else {
-    historyNote = "У навчальній вибірці немає достатньої історії цього замовника; прогноз більше спирається на тип процедури, вартість і вид пального.";
+    historyNote = "Навчальний зріз моделі не містить достатньої історії цього замовника; прогноз спирається на тип процедури, вартість і вид пального. Ця вибірка окрема від картки історії замовника за останні 12 місяців.";
   }
 
   return {
@@ -841,7 +841,7 @@ async function fetchEnkorrCurrentPrices() {
     if (!res.ok) return null;
     const parsed = parseEnkorrCurrentPrices(await res.text());
     if (!parsed?.gasoline && !parsed?.diesel) return null;
-    return { source: "Enkorr", ...parsed };
+    return { source: "Enkorr", sourceUrl: null, evidenceNote: null, ...parsed };
   } catch (_) {
     return null;
   }
@@ -1475,6 +1475,42 @@ export function directDocumentHighlights(documents) {
   return candidates.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,60).sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
+// Extract only simple, explicit numeric terms from the source text. The full
+// paragraph is retained as the citation; conflicting values are not promoted.
+export function directDocumentConditionEvidence(documents) {
+  const rules = [
+    ['payment_days', /(?:післяоплат|оплат|розрахунк)[\s\S]{0,80}?(\d{1,3})\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, 'Строк оплати'],
+    ['bid_security_pct', /забезпеченн\w*.{0,40}тендерн\w*.{0,25}пропозиц\w*.{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення пропозиції'],
+    ['performance_security_pct', /забезпеченн\w*.{0,40}(?:виконан\w*|договор\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення договору'],
+    ['advance_payment_pct', /(?:передоплат\w*|аванс\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Передоплата']
+  ];
+  const found = new Map();
+  for (const doc of documents || []) {
+    if (!['read','truncated'].includes(doc.status) || !Array.isArray(doc.segments)) continue;
+    for (const segment of doc.segments) {
+      const body = String(segment.body || '').trim();
+      for (const [field, re, label] of rules) {
+        const match = body.match(re);
+        if (!match) continue;
+        const value = Number(String(match[1]).replace(',', '.'));
+        if (!Number.isFinite(value) || value < 0 || value > 1000) continue;
+        const rows = found.get(field) || [];
+        rows.push({field, value, text: `${label}: ${body}`, source:{title:doc.title,location:segment.location,quote:body,url:doc.source_url||null}, source_verified:true});
+        found.set(field, rows);
+      }
+    }
+  }
+  const evidence = [];
+  const values = {};
+  for (const [field, rows] of found) {
+    const unique = [...new Set(rows.map(row => row.value))];
+    if (unique.length !== 1) continue;
+    values[field] = unique[0];
+    evidence.push(...rows.filter(row => row.value === unique[0]));
+  }
+  return {values, evidence};
+}
+
 // Buyer evidence: only snapshots confirmed before the proposal cutoff.
 const BUYER_BI_APP='fba3f2f2-cf55-40a0-a79f-b74f5ce947c2';
 function buyerHistoryPeriod(now=new Date()){
@@ -1758,7 +1794,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-enkorr-and-document-scan-v12"
+        version: "2026.11.13-qa-signoff-v13"
       }, 200, origin);
     }
 
@@ -1810,14 +1846,32 @@ export default {
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
     const cutoff=buyerHistoryDecisionDay(source.data,normalized.parent);
-    const documentsForReading=(source.data?.documents||[]).filter(d=>{
+    const allTenderDocuments=Array.isArray(source.data?.documents)?source.data.documents:[];
+    const supportedDocuments=allTenderDocuments.filter(d=>/\.pdf(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.docx(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/application\/(?:pdf|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d?.format||d?.mimeType||'')));
+    const documentInventory=allTenderDocuments.map((d,index)=>{
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
-      return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
+      const validPublished=Number.isFinite(published.getTime()),validModified=Number.isFinite(modified.getTime());
+      const eligible=Boolean(cutoff&&validPublished&&validModified&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff);
+      const supported=supportedDocuments.includes(d);
+      let status='pending',reason=null;
+      if(!validPublished||!validModified){status='date_unverified';reason='Не вдалося підтвердити дату публікації/зміни; документ не передавався на аналіз.';}
+      else if(cutoff&&!eligible){status='excluded_after_cutoff';reason='Документ опубліковано або змінено після дати завершення подання; не використовувався.';}
+      else if(!supported){status='unsupported';reason='Формат вкладення не підтримується для текстового читання (PDF/DOCX).';}
+      return {document:d,index,eligible,supported,status,reason,source_id:`DOC-${String(index+1).padStart(2,'0')}`};
     });
-    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({extracted_chars:0,...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`,
-      source_url:doc.text&&/^[a-f0-9]{32}$/i.test(documentsForReading[index]?.id||'')
-        ?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${documentsForReading[index].id}`:null}));
+    const eligibleRecords=documentInventory.filter(row=>row.eligible&&row.supported);
+    const toRead=eligibleRecords.slice(0,8);
+    for(const row of eligibleRecords.slice(8)){row.status='not_processed_limit';row.reason='Перевищено ліміт обробки 8 документів за один запит.';}
+    const readItems=await readTenderDocuments(toRead.map(row=>row.document));
+    const documentExtracts=documentInventory.map(row=>{
+      if(row.status!=='pending')return {title:row.document?.title||'Без назви',status:row.status,reason:row.reason,source_id:row.source_id,source_url:/^[a-f0-9]{32}$/i.test(row.document?.id||'')?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}`:null};
+      const readIndex=toRead.indexOf(row);
+      const item=readItems[readIndex]||{title:row.document?.title||'Без назви',status:'error',reason:'Результат читання відсутній.'};
+      return {extracted_chars:0,...item,source_id:row.source_id,
+        source_url:/^[a-f0-9]{32}$/i.test(row.document?.id||'')?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}`:null};
+    });
     const directHighlights=directDocumentHighlights(documentExtracts);
+    const directConditions=directDocumentConditionEvidence(documentExtracts);
 
     const payload = {
       model: env.AI_MODEL,
@@ -1871,10 +1925,24 @@ response_format: { type: "json_object" }
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
     parsed.document_highlights = directHighlights.filter(item=>
       ![...parsed.conditions,...parsed.fuel_requirements,...parsed.actions].some(other=>other.text===item.text));
+    for(const item of directConditions.evidence){
+      if(!parsed.conditions.some(existing=>existing.source?.location===item.source.location&&existing.text===item.text))parsed.conditions.unshift(item);
+    }
+    parsed.document_condition_evidence=directConditions.evidence;
+    parsed.document_condition_values=directConditions.values;
+    // Numeric commercial terms must be grounded in a verified document or in
+    // the structured Prozorro milestones applied below. Uncited model values
+    // are not carried into the calculator.
+    for(const field of ['bid_security_pct','performance_security_pct','advance_payment_pct','payment_days'])
+      parsed[field]=Object.prototype.hasOwnProperty.call(directConditions.values,field)?directConditions.values[field]:null;
     parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
     parsed.document_read_summary = {
-      available: Array.isArray(source.data?.documents)?source.data.documents.length:0,
-      supported_before_cutoff: documentExtracts.length,
+      available: allTenderDocuments.length,
+      supported_before_cutoff: eligibleRecords.length,
+      excluded_after_cutoff: documentExtracts.filter(d=>d.status==='excluded_after_cutoff').length,
+      date_unverified: documentExtracts.filter(d=>d.status==='date_unverified').length,
+      unsupported: documentExtracts.filter(d=>d.status==='unsupported').length,
+      not_processed_limit: documentExtracts.filter(d=>d.status==='not_processed_limit').length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,
       paragraphs_scanned: documentExtracts.reduce((sum,d)=>sum+(d.segments?.length||0),0),
