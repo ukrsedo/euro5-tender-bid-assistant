@@ -45473,15 +45473,10 @@ function cleanAiText(value, kind) {
   return text;
 }
 function evidenceTopicAllowed(kind, quote) {
-  const text = String(quote || "");
-  const payment = /оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк|ціна.{0,35}(?:зменш|кориг|змін)|зміна.{0,25}цін/iu.test(text);
-  const supplyOperative = /(?:зобов.?язується|повинен|повинна|повинні|повинно|має право|здійснюється|здійснюються|поставля(?:є|ється|ти)|переда(?:є|ється|ти)|відпуска(?:є|ється|ти)|виключно|повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш.{0,30}|протягом|за адресою|місце поставки)/iu.test(text);
-  const supplySubject = /(?:поставк|постачан|доставк|відпуск|отриман.{0,20}пальн|талон|скретч.?карт|паливн.{0,12}карт|АЗС|автозаправ|обсяг.{0,20}закуп)/iu.test(text);
-  const fuel = /бензин|дизел|палив/iu.test(text);
-  const explicitGrade = /(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)/iu.test(text);
-  if (kind === "conditions") return payment || supplyOperative && supplySubject;
-  if (kind === "fuel_requirements") return fuel && explicitGrade;
-  if (kind === "actions") return payment || supplyOperative && supplySubject || fuel && explicitGrade;
+  const categories = classifyContractParagraph(quote);
+  if (kind === "conditions") return categories.includes("\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438") || categories.includes("\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A");
+  if (kind === "fuel_requirements") return categories.includes("\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E");
+  if (kind === "actions") return categories.length > 0;
   return false;
 }
 function validateAiEvidenceList(items, kind, documents) {
@@ -45502,12 +45497,26 @@ function validateAiEvidenceList(items, kind, documents) {
   }
   return out.slice(0, 30);
 }
+function classifyContractParagraph(value) {
+  const text = String(value || "").replace(/[\u00a0\u202f]/gu, " ").replace(/\s+/gu, " ").trim();
+  if (!text || /санкц|країн.{0,20}походжен|бенефіціар/iu.test(text)) return [];
+  if (/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Погашен.{0,30}Талон|Дійсн.{0,30}Талон|Паливо\s*\(Товар\))[^\n]{0,120}\s[-–—]\s/iu.test(text)) return [];
+  const categories = [];
+  const payment = /(?:оплата|розрахунк|платіж)[\s\S]{0,220}(?:безготівк|перерахуван|рахунок|(?:протягом|в строк|у строк)\s+\d|відстроч|лише за фактично|після фактично|авансу?\s+\d)|(?:безготівк|перерахуван|відстроч)[\s\S]{0,160}(?:оплата|розрахунк|платіж)/iu.test(text);
+  const fuel = /(?:бензин|дизел|паливн.{0,12}пальн)/iu.test(text);
+  const gradeOrSpec = /(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*5|ДСТУ\s*768[78](?:\s*:\s*2015)?|768[78]\s*:\s*2015|октанов.{0,20}\d|цетанов.{0,20}\d|вміст.{0,20}сірк|густин.{0,20}\d|температур.{0,35}(?:фільтр|застиган)|сезонн.{0,20}(?:літн|зимов|арктич)|біокомпонент.{0,20}\d)/iu.test(text);
+  if (fuel && gradeOrSpec) categories.push("\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E");
+  if (payment) categories.push("\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438");
+  const directSupply = /(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}(?:передати|поставити|здійснювати постачання)|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
+  const measurableNetwork = /АЗС/iu.test(text) && /(?:не менш\s*(?:як\s*)?\d|щонайменше\s*\d|по всій території|в кожній області|в кожному обласному центрі)/iu.test(text);
+  const couponValidity = /(?:талон|скретч.?карт|паливн.{0,12}карт)/iu.test(text) && /(?:строк|термін) дії/iu.test(text) && /(?:не менш|продовж|пролонг|\d+\s*(?:місяц|рік|рок))/iu.test(text);
+  const placeOrDeadline = /(?:місце|строк|термін) поставки/iu.test(text) && /(?:міст|област|адрес|до\s+\d|протягом\s+\d|\d{1,2}[.\-/]\d{1,2})/iu.test(text);
+  const couponFormat = /(?:номінал|вид нафтопродукту|талон.{0,40}(?:літр|мікрочіп|цифрового захисту))/iu.test(text) && /(?:талон|скретч.?карт)/iu.test(text) && /\d/iu.test(text);
+  const prohibitedGeneric = /відповідно до інструкц|затверджен.{0,30}наказом|сертифікат.{0,20}відповідност|паспорт.{0,20}виробника/iu.test(text) && !/(?:дсту\s*768[78]|технічн.{0,30}регламент.{0,30}пальн|відповідати вимогам.*дсту)/iu.test(text);
+  if ((directSupply || measurableNetwork || couponValidity || placeOrDeadline || couponFormat) && !prohibitedGeneric) categories.push("\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A");
+  return categories;
+}
 function directDocumentHighlights(documents) {
-  const groups = [
-    { category: "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", re: /(?:бензин|дизел|палив)[\s\S]{0,100}(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)|(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)[\s\S]{0,100}(?:бензин|дизел|палив)/iu },
-    { category: "\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", re: /(?:поставк|постачан|доставк|відпуск|отриман)[\s\S]{0,120}(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш|АЗС|талон|скретч.?карт|паливн.{0,12}карт|за адресою)|(?:талон|скретч.?карт|паливн.{0,12}карт)[\s\S]{0,120}(?:повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш)|(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш)[\s\S]{0,120}(?:поставк|постачан|доставк|відпуск|отриман|АЗС|талон|скретч.?карт|паливн.{0,12}карт)/iu },
-    { category: "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438", re: /(?:оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк)[\s\S]{0,160}(?:провод|здійсню|строк|протягом|днів|день|після|аванс|передоплат|рахунк|накладн|шляхом|безготів|перерахуван)|(?:провод|здійсню)[\s\S]{0,120}(?:оплат|розрахунк|платіж)/iu }
-  ];
   const paragraphs = [];
   for (const doc of documents) {
     if (!["read", "truncated"].includes(doc.status) || !doc.text) continue;
@@ -45528,8 +45537,8 @@ function directDocumentHighlights(documents) {
   const candidates = [];
   for (let index = 0; index < paragraphs.length; index++) {
     const p4 = paragraphs[index], body = p4.body.trim();
-    if (body.length < 35) continue;
-    const categories = groups.filter((group) => group.re.test(body)).map((group) => group.category);
+    if (body.length < 20) continue;
+    const categories = classifyContractParagraph(body);
     if (!categories.length) continue;
     const quote = body.slice(0, 700).trim();
     if (!quote || !body.includes(quote)) continue;
@@ -46001,7 +46010,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-contract-scope-v18"
+        version: "2026.11.13-contract-scope-v19"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
