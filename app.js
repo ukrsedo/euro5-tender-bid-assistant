@@ -639,6 +639,14 @@ function renderRequirements(items,readCount=0){
 
 function safeDocumentCitationUrl(value){
   try{
+    if(typeof value==='string'&&value.startsWith('/tender-document?')){
+      const api=String(window.EURO5_CONFIG?.apiUrl||'');
+      const url=new URL(value,api.endsWith('/')?api:api+'/');
+      if(url.pathname==='/tender-document'&&/^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z]$/i.test(url.searchParams.get('tid')||'')&&
+        /^[a-f0-9]{32}$/i.test(url.searchParams.get('doc')||'')&&url.searchParams.size===2&&
+        url.origin===new URL(api).origin&&url.protocol==='https:')return url.href;
+      return null;
+    }
     const url=new URL(value);
     const host=url.hostname.toLowerCase();
     const trusted=['prozorro.gov.ua','openprocurement.org'].some(domain=>host===domain||host.endsWith('.'+domain));
