@@ -45567,24 +45567,25 @@ function directDocumentHighlights(documents) {
   return [...deduplicated.values()].sort((a4, b6) => a4.index - b6.index).map((x2) => x2.item);
 }
 function coreDocumentClauses(documents) {
-  const rules = [
-    ["\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438", /(?:спосіб розрахунків|оплата за товар).{0,260}(?:безготівк|перерахуван|відстроч|фактично отриман)/iu],
-    ["\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", /(?:передача\s*\/\s*отримання товару здійснюється|термін дії талон|строк поставки товару|термін поставки товару|місце поставки товару|здійснювати постачання товару|товар передається за талонами|поставка товару здійснюється у робочі години|відпуск товару покупцю здійснюється цілодобово)/iu],
-    ["\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", /(?:бензин\s+[АA]\s*[-–]?\s*95.{0,35}євро\s*5|дизельн.{0,12}палив.{0,35}євро\s*5|технічні та якісні вимоги.{0,300}дсту\s*768[78])/iu]
-  ];
+  const payment = ["\u0441\u043F\u043E\u0441\u0456\u0431 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0456\u0432 \u0437\u0430 \u0442\u043E\u0432\u0430\u0440", "\u043E\u043F\u043B\u0430\u0442\u0430 \u0437\u0430 \u0442\u043E\u0432\u0430\u0440 \u0437\u0434\u0456\u0439\u0441\u043D\u044E\u0454\u0442\u044C\u0441\u044F"];
+  const supply = ["\u043F\u0435\u0440\u0435\u0434\u0430\u0447\u0430/\u043E\u0442\u0440\u0438\u043C\u0430\u043D\u043D\u044F \u0442\u043E\u0432\u0430\u0440\u0443 \u0437\u0434\u0456\u0439\u0441\u043D\u044E\u0454\u0442\u044C\u0441\u044F", "\u0442\u0435\u0440\u043C\u0456\u043D \u0434\u0456\u0457 \u0442\u0430\u043B\u043E\u043D", "\u0441\u0442\u0440\u043E\u043A \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u043E\u0432\u0430\u0440\u0443", "\u0442\u0435\u0440\u043C\u0456\u043D \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u043E\u0432\u0430\u0440\u0443", "\u043C\u0456\u0441\u0446\u0435 \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u043E\u0432\u0430\u0440\u0443", "\u0437\u0434\u0456\u0439\u0441\u043D\u044E\u0432\u0430\u0442\u0438 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u043E\u0432\u0430\u0440\u0443", "\u0442\u043E\u0432\u0430\u0440 \u043F\u0435\u0440\u0435\u0434\u0430\u0454\u0442\u044C\u0441\u044F \u0437\u0430 \u0442\u0430\u043B\u043E\u043D\u0430\u043C\u0438", "\u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0430 \u0442\u043E\u0432\u0430\u0440\u0443 \u0437\u0434\u0456\u0439\u0441\u043D\u044E\u0454\u0442\u044C\u0441\u044F \u0443 \u0440\u043E\u0431\u043E\u0447\u0456 \u0433\u043E\u0434\u0438\u043D\u0438", "\u0432\u0456\u0434\u043F\u0443\u0441\u043A \u0442\u043E\u0432\u0430\u0440\u0443 \u043F\u043E\u043A\u0443\u043F\u0446\u044E \u0437\u0434\u0456\u0439\u0441\u043D\u044E\u0454\u0442\u044C\u0441\u044F \u0446\u0456\u043B\u043E\u0434\u043E\u0431\u043E\u0432\u043E"];
+  const technical = ["\u0431\u0435\u043D\u0437\u0438\u043D \u0430-95", "\u0431\u0435\u043D\u0437\u0438\u043D \u0430 95", "\u0434\u0438\u0437\u0435\u043B\u044C\u043D\u0435 \u043F\u0430\u043B\u0438\u0432\u043E \u0454\u0432\u0440\u043E 5", "\u0434\u0438\u0437\u0435\u043B\u044C\u043D\u0435 \u043F\u0430\u043B\u044C\u043D\u0435 \u0454\u0432\u0440\u043E 5", "\u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0442\u0430 \u044F\u043A\u0456\u0441\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u0442\u043E\u0432\u0430\u0440\u0443"];
   const out = [];
   for (const doc of documents || []) {
-    if (!["read", "truncated"].includes(doc.status) || !Array.isArray(doc.segments)) continue;
+    if (doc.status !== "read" && doc.status !== "truncated") continue;
+    if (!doc.segments || typeof doc.segments[Symbol.iterator] !== "function") continue;
     for (const segment of doc.segments) {
       const body = String(segment.body || "").trim();
-      if (body.length < 20 || !segment.location || /санкц|країн.{0,20}походжен|бенефіціар/iu.test(body)) continue;
-      if (/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Паливо\s*\(Товар\)).{0,120}\s[-–—]\s/iu.test(body)) continue;
-      for (const [category, re2] of rules) {
-        if (!re2.test(body)) continue;
-        const quote = body.slice(0, 700).trim();
-        out.push({ text: quote, category, source: { title: doc.title, location: segment.location, quote, url: doc.source_url || null }, source_verified: true });
-        break;
-      }
+      if (body.length < 20 || !segment.location) continue;
+      const normalized = body.toLowerCase().replaceAll("\xA0", " ").replaceAll("\u202F", " ").replaceAll("\u2019", "'");
+      if (normalized.includes("\u0441\u0430\u043D\u043A\u0446") || normalized.includes("\u043A\u0440\u0430\u0457\u043D\u043E\u044E \u043F\u043E\u0445\u043E\u0434\u0436\u0435\u043D\u043D\u044F") || normalized.includes("\u0431\u0435\u043D\u0435\u0444\u0456\u0446\u0456\u0430\u0440")) continue;
+      let category = "";
+      if (payment.some((term) => normalized.includes(term))) category = "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438";
+      else if (supply.some((term) => normalized.includes(term))) category = "\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A";
+      else if (technical.some((term) => normalized.includes(term))) category = "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E";
+      if (!category) continue;
+      const quote = body.slice(0, 700).trim();
+      out.push({ text: quote, category, source: { title: doc.title, location: segment.location, quote, url: doc.source_url || null }, source_verified: true });
     }
   }
   return out.slice(0, 30);
@@ -46052,8 +46053,8 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-contract-scope-v21",
-        extraction_policy: "source-segments-v21"
+        version: "2026.11.13-contract-scope-v22",
+        extraction_policy: "literal-segments-v22"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -46211,9 +46212,11 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       highlights_found: directHighlights.length,
       paragraphs_scanned: documentExtracts.reduce((sum, d5) => sum + (d5.segments?.length || 0), 0),
       evidence_items_found: parsed.conditions.length + parsed.fuel_requirements.length + parsed.actions.length + parsed.document_highlights.length,
-      extraction_policy: "source-segments-v21",
+      extraction_policy: "literal-segments-v22",
       core_clause_count: coreHighlights.length,
       classified_clause_count: classifiedHighlights.length,
+      literal_payment_hits: documentExtracts.reduce((sum, d5) => sum + (d5.segments?.filter((s3) => String(s3.body || "").toLowerCase().includes("\u0441\u043F\u043E\u0441\u0456\u0431 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0456\u0432 \u0437\u0430 \u0442\u043E\u0432\u0430\u0440")).length || 0), 0),
+      literal_delivery_hits: documentExtracts.reduce((sum, d5) => sum + (d5.segments?.filter((s3) => String(s3.body || "").toLowerCase().includes("\u0441\u0442\u0440\u043E\u043A \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u043E\u0432\u0430\u0440\u0443")).length || 0), 0),
       evidence_scan: documentExtracts.map((d5) => ({ kind: d5.kind || null, segments: d5.segments?.length || 0, body_chars: d5.text?.length || 0, keyword_hits: d5.segments?.filter((s3) => s3.body?.toLowerCase().includes("\u0442\u0430\u043B\u043E\u043D")).length || 0 })),
       cutoff_date: cutoff
     };
