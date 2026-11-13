@@ -609,7 +609,7 @@ function renderDocumentReadSummary(data){
   const summary=data.document_read_summary;
   if(!summary){box.textContent='Worker не повернув статус читання документів. Оновіть обидва Worker-и.';return;}
   const heading=document.createElement('strong');
-  heading.textContent=`Вкладення Prozorro: ${summary.available} загалом; ${summary.supported_before_cutoff} PDF/DOCX допущено до аналізу станом на ${summary.cutoff_date||'дату подання'}, прочитано ${summary.read}.`;
+  heading.textContent=`Вкладення Prozorro: ${summary.available} загалом; ${summary.supported_before_cutoff} PDF/DOC/DOCX допущено до аналізу станом на ${summary.cutoff_date||'дату подання'}, прочитано ${summary.read}.`;
   box.appendChild(heading);
   if(Number.isFinite(Number(summary.paragraphs_scanned))){
     const detail=document.createElement('p');
@@ -618,14 +618,14 @@ function renderDocumentReadSummary(data){
   }
   const statuses=Array.isArray(data.document_read_status)?data.document_read_status:[];
   if(!statuses.length){
-    const p=document.createElement('p');p.textContent=summary.available?'Придатних PDF/DOCX за цю дату не відібрано.':'Prozorro не повернув вкладених документів.';box.appendChild(p);return;
+    const p=document.createElement('p');p.textContent=summary.available?'Придатних PDF/DOC/DOCX за цю дату не відібрано.':'Prozorro не повернув вкладених документів.';box.appendChild(p);return;
   }
   const list=document.createElement('ul');
   statuses.forEach(item=>{
     const li=document.createElement('li');
     const readable=item.status==='read'||(item.status==='truncated'&&item.extracted_chars>0);
     const labels={excluded_after_cutoff:'Виключено за датою',date_unverified:'Дату не підтверджено',unsupported:'Формат не підтримується',not_processed_limit:'Не оброблено: ліміт',blocked:'Заблоковано',unavailable:'Недоступний',error:'Помилка читання',no_text:'Текст не знайдено'};
-    const volume=item.paragraphs?`${item.paragraphs} абзаців`:item.pages?`${item.pages} сторінок`:'';
+    const volume=item.kind==='doc'&&item.paragraphs?`${item.paragraphs} фрагментів`:item.paragraphs?`${item.paragraphs} абзаців`:item.pages?`${item.pages} сторінок`:'';
     li.appendChild(document.createTextNode(`${readable?(item.status==='truncated'?'Частково прочитано':'Прочитано'):(labels[item.status]||'Не прочитано')}: ${item.title}${volume?' · '+volume:''}${item.reason?' · '+item.reason:''}`));
     const url=safeDocumentCitationUrl(item.source_url);
     if(url){const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=' · Відкрити документ';li.appendChild(link);}
@@ -1205,7 +1205,7 @@ function buildPdfReport(){
     </div>
     ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap,displayCmp.referenceContext))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
-    <p>Документи Prozorro: прочитано ${money.format(lastExtraction?.document_read_summary?.read??0)} із ${money.format(lastExtraction?.document_read_summary?.supported_before_cutoff??0)} відібраних PDF/DOCX.</p>
+    <p>Документи Prozorro: прочитано ${money.format(lastExtraction?.document_read_summary?.read??0)} із ${money.format(lastExtraction?.document_read_summary?.supported_before_cutoff??0)} відібраних PDF/DOC/DOCX.</p>
     <div class="pdf-two"><div><h4>Умови та технічні параметри</h4>${evidenceListHtml([...(lastExtraction?.conditions||[]),...(lastExtraction?.fuel_requirements||[])],'Пунктів із перевіреною цитатою не отримано.')}</div><div><h4>Дослівні витяги з документів</h4>${evidenceListHtml(lastExtraction?.document_highlights,'Підтверджених витягів не отримано.')}</div></div>
     <h3>Економіка ЄВРО5</h3>
     <div class="pdf-grid">

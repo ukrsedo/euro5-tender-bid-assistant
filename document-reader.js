@@ -1,5 +1,6 @@
 import { extractText, getDocumentProxy } from 'unpdf';
 import { unzipSync } from 'fflate';
+import { toMarkdown as legacyWordToMarkdown } from '@mdgate/doc';
 
 const MAX_DOCUMENTS = 8;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -13,6 +14,7 @@ function docKind(document) {
   const descriptor = [document?.title, document?.format, document?.mimeType, document?.mediaType, document?.url].filter(Boolean).join(' ').toLowerCase();
   if (/\.pdf(?:\b|\?)/i.test(descriptor) || /application\/pdf/.test(descriptor)) return 'pdf';
   if (/\.docx(?:\b|\?)/i.test(descriptor) || /wordprocessingml\.document/.test(descriptor)) return 'docx';
+  if (/\.doc(?:\b|\?)/i.test(descriptor) || /application\/(?:msword|vnd\.ms-word)/.test(descriptor)) return 'doc';
   return null;
 }
 const TRUSTED_DOCUMENT_DOMAINS = ['prozorro.gov.ua', 'openprocurement.org'];
@@ -56,7 +58,7 @@ function docxParagraphs(buffer) {
 }
 async function extractOne(document, fetcher, remainingBytes) {
   const kind = docKind(document);
-  if (!kind) return { title: document?.title || 'Без назви', status: 'unsupported', reason: 'Підтримуються вкладення PDF і DOCX.' };
+  if (!kind) return { title: document?.title || 'Без назви', status: 'unsupported', reason: 'Підтримуються вкладення PDF, DOC і DOCX.' };
   let url;
   try { url = new URL(document?.url); } catch { return { title: document?.title || 'Без назви', status: 'unavailable', reason: 'Посилання на документ відсутнє.' }; }
   if (!isTrustedProzorroDocumentUrl(url))
@@ -74,6 +76,12 @@ async function extractOne(document, fetcher, remainingBytes) {
     if (kind === 'docx') {
       const paragraphs = docxParagraphs(buffer);
       return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: paragraphs.length, segments: paragraphs.map((line, i) => ({location: 'абзац ' + (i + 1), body: line})), text: paragraphs.map((line, i) => '[абзац ' + (i + 1) + '] ' + line).join('\n') };
+    }
+    if (kind === 'doc') {
+      const markdown = await legacyWordToMarkdown(new Uint8Array(buffer));
+      const fragments = String(markdown || '').replace(/\r\n?/g, '\n').split(/\n\s*\n+/).map(x => x.trim()).filter(Boolean);
+      if (!fragments.length) throw new Error('У DOC не знайдено текстових фрагментів.');
+      return { title, kind, source_url: finalUrl.toString(), bytes: buffer.byteLength, pages: null, paragraphs: fragments.length, segments: fragments.map((line, i) => ({location: 'фрагмент ' + (i + 1), body: line})), text: fragments.map((line, i) => '[фрагмент ' + (i + 1) + '] ' + line).join('\n') };
     }
     const pdf = await getDocumentProxy(new Uint8Array(buffer), { isOffscreenCanvasSupported: false, isImageDecoderSupported: false, maxImageSize: 16_777_216 });
     if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF має понад ' + MAX_PDF_PAGES + ' сторінок.');
@@ -102,7 +110,7 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   // imply that every Prozorro attachment was reviewed.
   for (const document of all.filter(d => !docKind(d))) out.push({
     title: document?.title || 'Без назви', status: 'unsupported',
-    reason: 'Підтримуються вкладення PDF і DOCX.'
+    reason: 'Підтримуються вкладення PDF, DOC і DOCX.'
   });
   for (const document of all.filter(d => docKind(d)).slice(MAX_DOCUMENTS)) out.push({
     title: document?.title || 'Без назви', kind: docKind(document), status: 'not_processed_limit',
@@ -133,10 +141,11 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   return out;
 }
 export function formatTenderDocumentsForAI(items) {
-  if (!items?.length) return 'Вкладень PDF або DOCX, опублікованих до завершення подання пропозицій, не знайдено.';
+  if (!items?.length) return 'Вкладень PDF, DOC або DOCX, опублікованих до завершення подання пропозицій, не знайдено.';
   return items.map(item => {
     const sourceId = item.source_id ? 'ID джерела: ' + item.source_id + ' | ' : '';
     if (!item.text) return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.reason ? ' | причина: ' + item.reason : '');
-    return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.pages ? ' | сторінок: ' + item.pages : ' | посилання на сторінки у DOCX не визначаються; цитуй номер абзацу') + '\n' + item.text;
+    const locationHint = item.kind === 'pdf' ? 'цитуй сторінку' : item.kind === 'doc' ? 'цитуй номер фрагмента' : 'цитуй номер абзацу';
+    return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.pages ? ' | сторінок: ' + item.pages : ' | ' + locationHint) + '\n' + item.text;
   }).join('\n\n');
 }
