@@ -44076,7 +44076,12 @@ var MAX_FILE_BYTES = 8 * 1024 * 1024;
 var MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 var MAX_PDF_PAGES = 60;
 var MAX_EXTRACTED_CHARS = 12e4;
+function isSignatureAttachment(document2) {
+  const descriptor = [document2?.title, document2?.format, document2?.mimeType, document2?.mediaType, document2?.url].filter(Boolean).join(" ").toLowerCase();
+  return /\.p7s(?:\b|\?)/i.test(descriptor) || /application\/(?:x-)?pkcs7-signature/i.test(descriptor);
+}
 function docKind(document2) {
+  if (isSignatureAttachment(document2)) return null;
   const descriptor = [document2?.title, document2?.format, document2?.mimeType, document2?.mediaType, document2?.url].filter(Boolean).join(" ").toLowerCase();
   if (/\.pdf(?:\b|\?)/i.test(descriptor) || /application\/pdf/.test(descriptor)) return "pdf";
   if (/\.docx(?:\b|\?)/i.test(descriptor) || /wordprocessingml\.document/.test(descriptor)) return "docx";
@@ -44165,6 +44170,11 @@ async function readTenderDocuments(documents, fetcher = fetch) {
   const all = Array.isArray(documents) ? documents : [];
   const candidates = all.filter((d5) => docKind(d5)).slice(0, MAX_DOCUMENTS);
   const out = [];
+  for (const document2 of all.filter(isSignatureAttachment)) out.push({
+    title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438",
+    status: "signature_file",
+    reason: "\u0424\u0430\u0439\u043B \u0435\u043B\u0435\u043A\u0442\u0440\u043E\u043D\u043D\u043E\u0433\u043E \u043F\u0456\u0434\u043F\u0438\u0441\u0443; \u0439\u043E\u0433\u043E \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u043B\u0438 \u043D\u0430 \u0447\u0438\u0442\u0430\u043D\u043D\u044F."
+  });
   let totalBytes = 0;
   for (const document2 of candidates) {
     const item = await extractOne(document2, fetcher, MAX_TOTAL_BYTES - totalBytes);
@@ -44175,7 +44185,7 @@ async function readTenderDocuments(documents, fetcher = fetch) {
     }
     out.push(item);
   }
-  for (const document2 of all.filter((d5) => !docKind(d5))) out.push({
+  for (const document2 of all.filter((d5) => !docKind(d5) && !isSignatureAttachment(d5))) out.push({
     title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438",
     status: "unsupported",
     reason: "\u041F\u0456\u0434\u0442\u0440\u0438\u043C\u0443\u044E\u0442\u044C\u0441\u044F \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F PDF, DOC \u0456 DOCX."
@@ -44210,7 +44220,9 @@ async function readTenderDocuments(documents, fetcher = fetch) {
 }
 function formatTenderDocumentsForAI(items) {
   if (!items?.length) return "\u0412\u043A\u043B\u0430\u0434\u0435\u043D\u044C PDF, DOC \u0430\u0431\u043E DOCX, \u043E\u043F\u0443\u0431\u043B\u0456\u043A\u043E\u0432\u0430\u043D\u0438\u0445 \u0434\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043D\u044F \u043F\u043E\u0434\u0430\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0439, \u043D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E.";
-  return items.map((item) => {
+  const promptItems = items.filter((item) => item.status !== "signature_file");
+  if (!promptItems.length) return "\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u0438\u0445 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u044C PDF, DOC \u0430\u0431\u043E DOCX \u0434\u043B\u044F \u0430\u043D\u0430\u043B\u0456\u0437\u0443 \u043D\u0435 \u0437\u0430\u043B\u0438\u0448\u0438\u043B\u043E\u0441\u044F.";
+  return promptItems.map((item) => {
     const sourceId = item.source_id ? "ID \u0434\u0436\u0435\u0440\u0435\u043B\u0430: " + item.source_id + " | " : "";
     if (!item.text) return sourceId + "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442: " + item.title + " | \u0441\u0442\u0430\u0442\u0443\u0441: " + item.status + (item.reason ? " | \u043F\u0440\u0438\u0447\u0438\u043D\u0430: " + item.reason : "");
     const locationHint = item.kind === "pdf" ? "\u0446\u0438\u0442\u0443\u0439 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0443" : item.kind === "doc" ? "\u0446\u0438\u0442\u0443\u0439 \u043D\u043E\u043C\u0435\u0440 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442\u0430" : "\u0446\u0438\u0442\u0443\u0439 \u043D\u043E\u043C\u0435\u0440 \u0430\u0431\u0437\u0430\u0446\u0443";
@@ -45391,21 +45403,11 @@ CPV, \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u
 
 \u041D\u0415 \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0439 \u0446\u0456\u043D\u0443. \u041D\u0415 \u043E\u0446\u0456\u043D\u044E\u0439 \u0456\u043C\u043E\u0432\u0456\u0440\u043D\u0456\u0441\u0442\u044C \u043F\u0435\u0440\u0435\u043C\u043E\u0433\u0438. \u041D\u0415 \u0437\u043C\u0456\u043D\u044E\u0439 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043E\u043A \u0446\u0456\u043D\u0438.
 \u041D\u0415 \u0440\u043E\u0431\u0438 \u0432\u0438\u0441\u043D\u043E\u0432\u043A\u0456\u0432 \u0437\u0430 \u043D\u0430\u0437\u0432\u043E\u044E \u0444\u0430\u0439\u043B\u0443. \u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0439 \u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u0438\u0445 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u044C \u043D\u0438\u0436\u0447\u0435. \u042F\u043A\u0449\u043E \u0442\u0435\u043A\u0441\u0442 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0439 \u0430\u0431\u043E \u043C\u0430\u0454 \u0441\u0442\u0430\u0442\u0443\u0441 \u043F\u043E\u043C\u0438\u043B\u043A\u0438, \u043F\u0440\u044F\u043C\u043E \u043D\u0435 \u0441\u0442\u0432\u0435\u0440\u0434\u0436\u0443\u0439, \u0449\u043E \u0444\u0430\u0439\u043B \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u043E.
-\u0423 fuel_requirements \u0432\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E: \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442/\u043A\u043B\u0430\u0441, \u043C\u0430\u0440\u043A\u0443, \u0441\u0435\u0437\u043E\u043D\u043D\u0456\u0441\u0442\u044C, \u0435\u043A\u043E\u043B\u043E\u0433\u0456\u0447\u043D\u0438\u0439 \u043A\u043B\u0430\u0441, \u0432\u043C\u0456\u0441\u0442 \u0441\u0456\u0440\u043A\u0438, \u0433\u0443\u0441\u0442\u0438\u043D\u0443, \u0433\u0440\u0430\u043D\u0438\u0447\u043D\u0443 \u0442\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0443 \u0444\u0456\u043B\u044C\u0442\u0440\u043E\u0432\u0430\u043D\u043E\u0441\u0442\u0456 \u0442\u0430 \u0456\u043D\u0448\u0456 \u0437\u0430\u0434\u0430\u043D\u0456 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F. \u0417\u0430 \u0441\u0443\u043F\u0435\u0440\u0435\u0447\u043D\u043E\u0441\u0442\u0435\u0439 \u043F\u043E\u0432\u0435\u0440\u043D\u0438 \u043E\u043A\u0440\u0435\u043C\u0456 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u043F\u0443\u043D\u043A\u0442\u0438 \u0437 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0438\u043C\u0438 \u0446\u0438\u0442\u0430\u0442\u0430\u043C\u0438 \u0442\u0430 \u0434\u0436\u0435\u0440\u0435\u043B\u0430\u043C\u0438.
-
-\u041F\u0435\u0440\u0435\u0433\u043B\u044F\u043D\u044C \u0443\u0441\u0456 \u043D\u0430\u0434\u0430\u043D\u0456 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0438 \u0439 \u0430\u0431\u0437\u0430\u0446\u0438, \u0430 \u043D\u0435 \u043B\u0438\u0448\u0435 \u043F\u0435\u0440\u0448\u0438\u0439 \u0437\u0431\u0456\u0433. \u0412\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0443\u043C\u043E\u0432\u0438 \u043E\u043F\u043B\u0430\u0442\u0438, \u0441\u0442\u0440\u043E\u043A\u0456\u0432 \u0456 \u043C\u0456\u0441\u0446\u044F \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438, \u0432\u0456\u0434\u043F\u0443\u0441\u043A\u0443 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u0437\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u044C, \u043A\u0432\u0430\u043B\u0456\u0444\u0456\u043A\u0430\u0446\u0456\u0457, \u043F\u0440\u0438\u0439\u043C\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u043E\u0441\u0442\u0456. \u041D\u0435 \u043E\u0431\u043C\u0435\u0436\u0443\u0439\u0441\u044F \u043D\u0430\u0437\u0432\u043E\u044E \u0442\u043E\u0432\u0430\u0440\u0443.
-
-\u041D\u0435 \u0432\u0438\u043D\u043E\u0441\u044C \u0443 \xAB\u0432\u0430\u0436\u043B\u0438\u0432\u0456 \u0443\u043C\u043E\u0432\u0438\xBB \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438, \u044F\u043A\u0456 \u0454 \u0437\u0432\u0438\u0447\u0430\u0439\u043D\u0438\u043C\u0438 \u0434\u043B\u044F \u043F\u0443\u0431\u043B\u0456\u0447\u043D\u0438\u0445 \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u0430\u0431\u043E \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u044F\u043A\u0449\u043E \u0432\u043E\u043D\u0438 \u043D\u0435 \u043C\u0430\u044E\u0442\u044C \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u043D\u044F. \u0417\u043E\u043A\u0440\u0435\u043C\u0430, \u041D\u0415 \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u0431\u0435\u0437 \u043E\u043A\u0440\u0435\u043C\u043E\u0457 \u043F\u0440\u0438\u0447\u0438\u043D\u0438:
-- \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0443 \u0432\u0438\u043C\u043E\u0433\u0443 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u0442\u0438 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u043C \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\u0430\u043C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E;
-- \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0456 \u0441\u0435\u0440\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u0438/\u043F\u0430\u0441\u043F\u043E\u0440\u0442\u0438 \u044F\u043A\u043E\u0441\u0442\u0456;
-- \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0449\u043E\u0434\u043E \u0441\u0430\u043D\u043A\u0446\u0456\u0439, \u0431\u0435\u043D\u0435\u0444\u0456\u0446\u0456\u0430\u0440\u0456\u0432, \u043F\u043E\u0445\u043E\u0434\u0436\u0435\u043D\u043D\u044F \u0442\u043E\u0432\u0430\u0440\u0443 \u0430\u0431\u043E \u043F\u0456\u0434\u0441\u0442\u0430\u0432 \u0434\u043B\u044F \u0432\u0456\u0434\u043C\u043E\u0432\u0438;
-- \u0444\u043E\u0440\u043C\u0430\u043B\u044C\u043D\u0435 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043D\u044F \u043F\u043E\u0432\u043D\u043E\u0432\u0430\u0436\u0435\u043D\u044C, \u043F\u0456\u0434\u043F\u0438\u0441\u0443 \u0447\u0438 \u0440\u0435\u0454\u0441\u0442\u0440\u0430\u0446\u0456\u0439\u043D\u0438\u0445 \u0434\u0430\u043D\u0438\u0445;
-- \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0443 \u0444\u0440\u0430\u0437\u0443 \xAB\u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0438\u0442\u0438 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u0443 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0446\u0456\u044E\xBB;
-- \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0443 \u043F\u043E\u0440\u0430\u0434\u0443 \xAB\u043F\u0456\u0434\u0433\u043E\u0442\u0443\u0432\u0430\u0442\u0438 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u043D\u044F \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u0445 \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\xBB.
-
-\u0423 \xAB\u0432\u0430\u0436\u043B\u0438\u0432\u0456 \u0443\u043C\u043E\u0432\u0438\xBB \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u043B\u0438\u0448\u0435 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0440\u0435\u0447\u0456 \u043D\u0430 \u043A\u0448\u0442\u0430\u043B\u0442: \u0437\u043D\u0430\u0447\u043D\u0435 \u0437\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457/\u0432\u0438\u043A\u043E\u043D\u0430\u043D\u043D\u044F \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0443, \u043D\u0435\u0437\u0432\u0438\u0447\u043D\u0430 \u0431\u0430\u043D\u043A\u0456\u0432\u0441\u044C\u043A\u0430 \u0433\u0430\u0440\u0430\u043D\u0442\u0456\u044F, \u0434\u0443\u0436\u0435 \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 \u0441\u0442\u0440\u043E\u043A \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438, \u0436\u043E\u0440\u0441\u0442\u043A\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043C\u0435\u0440\u0435\u0436\u0456 \u0410\u0417\u0421/\u0440\u0430\u0434\u0456\u0443\u0441\u0430, \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0430 \u0442\u0435\u0440\u0438\u0442\u043E\u0440\u0456\u044F \u043F\u043E\u043A\u0440\u0438\u0442\u0442\u044F, \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u0456 \u0443\u043C\u043E\u0432\u0438 \u043E\u043F\u043B\u0430\u0442\u0438, \u0432\u0438\u043C\u043E\u0433\u0430 \u0441\u043F\u0435\u0446\u0456\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0434\u043E\u0441\u0432\u0456\u0434\u0443 \u0430\u0431\u043E \u0444\u0456\u043D\u0430\u043D\u0441\u043E\u0432\u043E\u0457 \u0441\u043F\u0440\u043E\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0456, \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u043D\u044F \u0441\u043F\u043E\u0441\u043E\u0431\u0443 \u0432\u0456\u0434\u043F\u0443\u0441\u043A\u0443, \u044F\u043A\u0456 \u0440\u0435\u0430\u043B\u044C\u043D\u043E \u0437\u0432\u0443\u0436\u0443\u044E\u0442\u044C \u043A\u043E\u043B\u043E \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043B\u044C\u043D\u0438\u043A\u0456\u0432.
-
-\u0423 \xAB\u0449\u043E \u043F\u043E\u0442\u0440\u0456\u0431\u043D\u043E \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0438\u0442\u0438\xBB \u0434\u043E\u0434\u0430\u0432\u0430\u0439 \u0442\u0456\u043B\u044C\u043A\u0438 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0443 \u0434\u0456\u044E, \u044F\u043A\u0430 \u043F\u0440\u044F\u043C\u043E \u0432\u0438\u043F\u043B\u0438\u0432\u0430\u0454 \u0437 \u0432\u0438\u044F\u0432\u043B\u0435\u043D\u043E\u0457 \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u043E\u0457 \u0443\u043C\u043E\u0432\u0438. \u042F\u043A\u0449\u043E \u0442\u0430\u043A\u043E\u0457 \u0434\u0456\u0457 \u043D\u0435\u043C\u0430\u0454 \u2014 \u043F\u043E\u0432\u0435\u0440\u043D\u0438 \u043F\u043E\u0440\u043E\u0436\u043D\u0456\u0439 \u043C\u0430\u0441\u0438\u0432.
+\u0423 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u044F\u0445 \u043F\u0440\u043E\u0430\u043D\u0430\u043B\u0456\u0437\u0443\u0439 \u043B\u0438\u0448\u0435 \u0442\u0440\u0438 \u0442\u0435\u043C\u0438: (1) \u043E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438; (2) \u0444\u0430\u043A\u0442\u0438\u0447\u043D\u0438\u0439 \u043F\u043E\u0440\u044F\u0434\u043E\u043A, \u043C\u0456\u0441\u0446\u0435 \u0439 \u0441\u0442\u0440\u043E\u043A\u0438 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F/\u0432\u0456\u0434\u043F\u0443\u0441\u043A\u0443 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E; (3) \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E.
+\u0414\u043E \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u0445 \u0432\u0438\u043C\u043E\u0433 \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u043C\u0430\u0440\u043A\u0443/\u043A\u043B\u0430\u0441 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0430\u0431\u043E \u0447\u0438\u0441\u043B\u043E\u0432\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043B\u0438\u0448\u0435 \u0442\u0430\u043C, \u0434\u0435 \u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u044F\u043C\u043E \u0437\u0430\u0434\u0430\u0454 \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\u0443 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E. \u0417\u0430\u0433\u0430\u043B\u044C\u043D\u0456 \u0444\u0440\u0430\u0437\u0438 \u043F\u0440\u043E \u0441\u0435\u0440\u0442\u0438\u0444\u0456\u043A\u0430\u0442, \u043F\u0430\u0441\u043F\u043E\u0440\u0442 \u044F\u043A\u043E\u0441\u0442\u0456 \u0447\u0438 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0456\u0441\u0442\u044C \u0437\u0430\u043A\u043E\u043D\u043E\u0434\u0430\u0432\u0441\u0442\u0432\u0443 \u043D\u0435 \u0454 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u043C\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0430\u043C\u0438.
+\u0414\u043E \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u043B\u0438\u0448\u0435 \u0434\u0456\u0454\u0432\u0456 \u0443\u043C\u043E\u0432\u0438 \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0443. \u041D\u0435 \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u0441\u043B\u043E\u0432\u043D\u0438\u043A\u043E\u0432\u0456 \u0432\u0438\u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F (\xAB\u0410\u0417\u0421 \u2014 ...\xBB, \xAB\u0442\u0430\u043B\u043E\u043D \u2014 ...\xBB), \u0440\u0435\u043A\u0432\u0456\u0437\u0438\u0442\u0438 \u0441\u0442\u043E\u0440\u0456\u043D, \u0434\u0430\u0442\u0443/\u043C\u0456\u0441\u0446\u0435 \u043F\u0456\u0434\u043F\u0438\u0441\u0430\u043D\u043D\u044F, \u0448\u0430\u0431\u043B\u043E\u043D\u043D\u0456 \u043F\u043E\u043B\u044F, \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0456 \u0433\u0430\u0440\u0430\u043D\u0442\u0456\u0457 \u0432\u043B\u0430\u0441\u043D\u043E\u0441\u0442\u0456, \u043F\u043E\u0445\u043E\u0434\u0436\u0435\u043D\u043D\u044F, \u0441\u0430\u043D\u043A\u0446\u0456\u0457, \u043F\u0456\u0434\u0441\u0442\u0430\u0432\u0438 \u0432\u0456\u0434\u043C\u043E\u0432\u0438, \u0437\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F, \u043A\u0432\u0430\u043B\u0456\u0444\u0456\u043A\u0430\u0446\u0456\u044E, \u043F\u0440\u0438\u0439\u043C\u0430\u043D\u043D\u044F, \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u0456\u0441\u0442\u044C \u0447\u0438 \u0456\u043D\u0448\u0456 \u0442\u0435\u043C\u0438 \u043F\u043E\u0437\u0430 \u0442\u0440\u044C\u043E\u043C\u0430 \u0432\u0438\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u043C\u0438.
+\u042F\u043A\u0449\u043E \u0430\u0431\u0437\u0430\u0446 \u043B\u0438\u0448\u0435 \u043D\u0430\u0437\u0438\u0432\u0430\u0454 \u0432\u0438\u0434 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0431\u0435\u0437 \u043C\u0430\u0440\u043A\u0438/\u043A\u043B\u0430\u0441\u0443/\u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\u0438 \u0430\u0431\u043E \u043D\u0435 \u0432\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u044E\u0454 \u0443\u043C\u043E\u0432\u0443 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0447\u0438 \u043E\u043F\u043B\u0430\u0442\u0438, \u043D\u0435 \u043F\u043E\u0432\u0435\u0440\u0442\u0430\u0439 \u0439\u043E\u0433\u043E. \u041D\u0435 \u0434\u043E\u0434\u0430\u0432\u0430\u0439 \u0434\u043E\u0432\u0456\u043B\u044C\u043D\u0456 \u0430\u0431\u0437\u0430\u0446\u0438 \u044F\u043A \u0437\u0430\u043F\u0430\u0441\u043D\u0438\u0439 \u0432\u0430\u0440\u0456\u0430\u043D\u0442.
+\u041F\u0435\u0440\u0435\u0433\u043B\u044F\u043D\u044C \u0443\u0441\u0456 \u043D\u0430\u0434\u0430\u043D\u0456 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0438 \u0439 \u0430\u0431\u0437\u0430\u0446\u0438, \u0430\u043B\u0435 \u043F\u043E\u0432\u0435\u0440\u0442\u0430\u0439 \u043B\u0438\u0448\u0435 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u043F\u0443\u043D\u043A\u0442\u0438 \u0437 \u0446\u0438\u0445 \u0442\u0440\u044C\u043E\u0445 \u0442\u0435\u043C.
 
 \u041E\u043A\u0440\u0435\u043C\u043E \u0432\u0438\u0437\u043D\u0430\u0447 \u0444\u043E\u0440\u043C\u0430\u0442 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E. \u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0439: bulk = \u043D\u0430\u043B\u0438\u0432/\u0431\u0435\u043D\u0437\u043E\u0432\u043E\u0437/\u0440\u0435\u0437\u0435\u0440\u0432\u0443\u0430\u0440; retail = \u0442\u0430\u043B\u043E\u043D\u0438, \u043F\u0430\u043B\u0438\u0432\u043D\u0456 \u043A\u0430\u0440\u0442\u043A\u0438 \u0430\u0431\u043E \u0432\u0456\u0434\u043F\u0443\u0441\u043A \u0447\u0435\u0440\u0435\u0437 \u0410\u0417\u0421; split = \u0443 \u0440\u0456\u0437\u043D\u0438\u0445 \u043F\u043E\u0437\u0438\u0446\u0456\u0439 \u0440\u0456\u0437\u043D\u0438\u0439 \u0444\u043E\u0440\u043C\u0430\u0442; unknown = \u0434\u0430\u043D\u0438\u0445 \u043D\u0435\u0434\u043E\u0441\u0442\u0430\u0442\u043D\u044C\u043E. \u041D\u0435 \u0432\u0433\u0430\u0434\u0443\u0439. \u0414\u043B\u044F \u0437\u043C\u0456\u0448\u0430\u043D\u043E\u0433\u043E \u0442\u0435\u043D\u0434\u0435\u0440\u0430, \u044F\u043A\u0449\u043E \u043C\u043E\u0436\u043B\u0438\u0432\u043E, \u043E\u043A\u0440\u0435\u043C\u043E \u0432\u0438\u0437\u043D\u0430\u0447 \u0444\u043E\u0440\u043C\u0430\u0442 \u0434\u043B\u044F \u0431\u0435\u043D\u0437\u0438\u043D\u0443 \u0442\u0430 \u0434\u0438\u0437\u0435\u043B\u044F.
 
@@ -45470,6 +45472,18 @@ function cleanAiText(value, kind) {
   if (kind !== "fuel_requirements" && generic.some((re2) => re2.test(text)) || kind === "actions" && genericActions.some((re2) => re2.test(text))) return "";
   return text;
 }
+function evidenceTopicAllowed(kind, quote) {
+  const text = String(quote || "");
+  const payment = /оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк|ціна.{0,35}(?:зменш|кориг|змін)|зміна.{0,25}цін/iu.test(text);
+  const supplyOperative = /(?:зобов.?язується|повинен|повинна|повинні|повинно|має право|здійснюється|здійснюються|поставля(?:є|ється|ти)|переда(?:є|ється|ти)|відпуска(?:є|ється|ти)|виключно|повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш.{0,30}|протягом|за адресою|місце поставки)/iu.test(text);
+  const supplySubject = /(?:поставк|постачан|доставк|відпуск|отриман.{0,20}пальн|талон|скретч.?карт|паливн.{0,12}карт|АЗС|автозаправ|обсяг.{0,20}закуп)/iu.test(text);
+  const fuel = /бензин|дизел|палив/iu.test(text);
+  const explicitGrade = /(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)/iu.test(text);
+  if (kind === "conditions") return payment || supplyOperative && supplySubject;
+  if (kind === "fuel_requirements") return fuel && explicitGrade;
+  if (kind === "actions") return payment || supplyOperative && supplySubject || fuel && explicitGrade;
+  return false;
+}
 function validateAiEvidenceList(items, kind, documents) {
   if (!Array.isArray(items)) return [];
   const out = [];
@@ -45478,7 +45492,7 @@ function validateAiEvidenceList(items, kind, documents) {
     const sourceId = String(item.source_id || "").trim();
     const location = String(item.source_location || "").trim();
     const quote = String(item.evidence_quote || "").trim().slice(0, 500);
-    if (!cleanAiText(quote, kind) || !sourceId) continue;
+    if (!cleanAiText(quote, kind) || !evidenceTopicAllowed(kind, quote) || !sourceId) continue;
     const document2 = documents.find((d5) => d5.source_id === sourceId && ["read", "truncated"].includes(d5.status) && d5.text);
     if (!document2) continue;
     const block = citationBlock(document2, location), normalizedQuote = normalizeEvidenceText(quote);
@@ -45490,14 +45504,9 @@ function validateAiEvidenceList(items, kind, documents) {
 }
 function directDocumentHighlights(documents) {
   const groups = [
-    { category: "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", re: /бензин|дизел|євро\s*[-–]?\s*5|дсту|октан|цетан|сірк|густин|температур.{0,30}фільтр|сезонн/iu },
-    { category: "\u041F\u043E\u0441\u0442\u0430\u0432\u043A\u0430 \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", re: /поставк|доставк|відпуск|налив|бензовоз|резервуар|талон|скретч.?карт|паливн.{0,12}карт|\bазс\b|автозаправ|місц.{0,12}постав|адрес.{0,12}(?:постав|відпуск)|графік.{0,20}(?:постав|достав|відпуск)|строк.{0,25}(?:постав|достав|відпуск)/iu },
-    { category: "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0446\u0456\u043D\u0430", re: /оплат|розрахунк|післяоплат|аванс|платіж|рахунк|казнач|зміна.{0,20}цін|ціна.{0,25}(?:змін|кориг|зрост)|вартіст.{0,25}(?:змін|кориг)/iu },
-    { category: "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u0442\u0430 \u0433\u0430\u0440\u0430\u043D\u0442\u0456\u0457", re: /забезпечен|банківськ.{0,25}гаранті|гаранті.{0,35}(?:пропозиц|виконан|аванс)|розмір.{0,20}гаранті/iu },
-    { category: "\u041A\u0432\u0430\u043B\u0456\u0444\u0456\u043A\u0430\u0446\u0456\u0439\u043D\u0456 \u0443\u043C\u043E\u0432\u0438", re: /аналогічн.{0,25}досвід|досвід.{0,25}(?:виконан|постав)|фінансов.{0,35}(?:спромож|звіт|оборот)|кваліфікац|ліцензі|мінімальн.{0,20}оборот/iu },
-    { category: "\u041F\u0440\u0438\u0439\u043C\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u0456\u0441\u0442\u044C", re: /прийман|акт.{0,20}прийм|штраф|пеня|неустой|відповідальн|розірван|односторон|претензі|форс-мажор|затримк.{0,30}(?:фінанс|постав)/iu },
-    { category: "\u0421\u0442\u0440\u043E\u043A \u0434\u0456\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457 \u0430\u0431\u043E \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0456\u0432", re: /строк.{0,25}(?:дії|чинності)|термін.{0,25}(?:дії|чинності)|продовжен.{0,25}строк/iu },
-    { category: "\u0412\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457", re: /строк.{0,25}подан|спосіб.{0,25}подан|тендерн.{0,25}пропозиц.{0,25}(?:відхил|забезпеч|чинн)|критер.{0,25}оцін/iu }
+    { category: "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", re: /(?:бензин|дизел|палив)[\s\S]{0,100}(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)|(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)[\s\S]{0,100}(?:бензин|дизел|палив)/iu },
+    { category: "\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", re: /(?:поставк|постачан|доставк|відпуск|отриман)[\s\S]{0,120}(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш|АЗС|талон|скретч.?карт|паливн.{0,12}карт|за адресою)|(?:талон|скретч.?карт|паливн.{0,12}карт)[\s\S]{0,120}(?:повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш)|(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш)[\s\S]{0,120}(?:поставк|постачан|доставк|відпуск|отриман|АЗС|талон|скретч.?карт|паливн.{0,12}карт)/iu },
+    { category: "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438", re: /(?:оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк)[\s\S]{0,160}(?:провод|здійсню|строк|протягом|днів|день|після|аванс|передоплат|рахунк|накладн|шляхом|безготів|перерахуван)|(?:провод|здійсню)[\s\S]{0,120}(?:оплат|розрахунк|платіж)/iu }
   ];
   const paragraphs = [];
   for (const doc of documents) {
@@ -45526,12 +45535,7 @@ function directDocumentHighlights(documents) {
     if (!quote || !body.includes(quote)) continue;
     candidates.push({ index, score: categories.length * 10 + Math.min(5, Math.floor(body.length / 250)), item: { text: quote, category: categories.join(" \xB7 "), source: { title: p4.doc.title, location: p4.location, quote, url: p4.doc.source_url || null }, source_verified: true } });
   }
-  if (!candidates.length) {
-    return paragraphs.filter((p4) => p4.body.trim().length >= 60).slice(0, 20).map((p4) => {
-      const quote = p4.body.trim().slice(0, 700);
-      return { text: quote, category: "\u0414\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u0439 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 (\u0442\u0438\u043F \u0443\u043C\u043E\u0432\u0438 \u043D\u0435 \u0432\u0438\u0437\u043D\u0430\u0447\u0435\u043D\u043E)", source: { title: p4.doc.title, location: p4.location, quote, url: p4.doc.source_url || null }, source_verified: true };
-    });
-  }
+  if (!candidates.length) return [];
   return candidates.sort((a4, b6) => b6.score - a4.score || a4.index - b6.index).slice(0, 60).sort((a4, b6) => a4.index - b6.index).map((x2) => x2.item);
 }
 function directDocumentConditionEvidence(documents) {
@@ -45997,7 +46001,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-classified-citations-v17"
+        version: "2026.11.13-contract-scope-v18"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -46050,7 +46054,10 @@ var worker_default = {
       const eligible = Boolean(cutoff && validPublished && validModified && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff);
       const supported = supportedDocuments.includes(d5);
       let status = "pending", reason = null;
-      if (!validPublished || !validModified) {
+      if (isSignatureAttachment(d5)) {
+        status = "signature_file";
+        reason = "\u0424\u0430\u0439\u043B \u0435\u043B\u0435\u043A\u0442\u0440\u043E\u043D\u043D\u043E\u0433\u043E \u043F\u0456\u0434\u043F\u0438\u0441\u0443; \u0446\u0435 \u043D\u0435 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u0438\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442, \u0439\u043E\u0433\u043E \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u043B\u0438 \u043D\u0430 \u0447\u0438\u0442\u0430\u043D\u043D\u044F.";
+      } else if (!validPublished || !validModified) {
         status = "date_unverified";
         reason = "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438 \u0434\u0430\u0442\u0443 \u043F\u0443\u0431\u043B\u0456\u043A\u0430\u0446\u0456\u0457/\u0437\u043C\u0456\u043D\u0438; \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0432\u0441\u044F \u043D\u0430 \u0430\u043D\u0430\u043B\u0456\u0437.";
       } else if (cutoff && !eligible) {
@@ -46070,7 +46077,7 @@ var worker_default = {
     }
     const readItems = await readTenderDocuments(toRead.map((row) => row.document));
     const documentExtracts = documentInventory.map((row) => {
-      if (row.status !== "pending") return { title: row.document?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: row.status, reason: row.reason, source_id: row.source_id, source_url: /^[a-f0-9]{32}$/i.test(row.document?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}` : null };
+      if (row.status !== "pending") return { title: row.document?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: row.status, reason: row.reason, source_id: row.source_id, source_url: row.status !== "signature_file" && /^[a-f0-9]{32}$/i.test(row.document?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}` : null };
       const readIndex = toRead.indexOf(row);
       const item = readItems[readIndex] || { title: row.document?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "error", reason: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0447\u0438\u0442\u0430\u043D\u043D\u044F \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0439." };
       return {
@@ -46126,10 +46133,10 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
-    parsed.document_highlights = directHighlights.filter((item) => ![...parsed.conditions, ...parsed.fuel_requirements, ...parsed.actions].some((other) => other.text === item.text));
     for (const item of directConditions.evidence) {
-      if (!parsed.conditions.some((existing) => existing.source?.location === item.source.location && existing.text === item.text)) parsed.conditions.unshift(item);
+      if (evidenceTopicAllowed("conditions", item.source.quote) && !parsed.conditions.some((existing) => existing.source?.location === item.source.location && existing.text === item.text)) parsed.conditions.unshift(item);
     }
+    parsed.document_highlights = directHighlights.filter((item) => ![...parsed.conditions, ...parsed.fuel_requirements, ...parsed.actions].some((other) => other.source?.location === item.source.location && other.source?.title === item.source.title));
     parsed.document_condition_evidence = directConditions.evidence;
     parsed.document_condition_values = directConditions.values;
     for (const field of ["bid_security_pct", "performance_security_pct", "advance_payment_pct", "payment_days", "delivery_days"])
@@ -46141,6 +46148,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       excluded_after_cutoff: documentExtracts.filter((d5) => d5.status === "excluded_after_cutoff").length,
       date_unverified: documentExtracts.filter((d5) => d5.status === "date_unverified").length,
       unsupported: documentExtracts.filter((d5) => d5.status === "unsupported").length,
+      signature_file: documentExtracts.filter((d5) => d5.status === "signature_file").length,
       not_processed_limit: documentExtracts.filter((d5) => d5.status === "not_processed_limit").length,
       read: documentExtracts.filter((d5) => d5.status === "read" || d5.status === "truncated" && d5.text).length,
       highlights_found: directHighlights.length,
