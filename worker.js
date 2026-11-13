@@ -1513,25 +1513,25 @@ export function directDocumentHighlights(documents) {
 // Independent source-segment path for the highest-value tender clauses. It
 // does not depend on prompt output or the broader document classifier.
 export function coreDocumentClauses(documents) {
-  /** @type {Array<[string, RegExp]>} */
-  const rules=[
-    ['Оплата та розрахунки',/(?:спосіб розрахунків|оплата за товар).{0,260}(?:безготівк|перерахуван|відстроч|фактично отриман)/iu],
-    ['Постачання та відпуск',/(?:передача\s*\/\s*отримання товару здійснюється|термін дії талон|строк поставки товару|термін поставки товару|місце поставки товару|здійснювати постачання товару|товар передається за талонами|поставка товару здійснюється у робочі години|відпуск товару покупцю здійснюється цілодобово)/iu],
-    ['Технічні вимоги до пального',/(?:бензин\s+[АA]\s*[-–]?\s*95.{0,35}євро\s*5|дизельн.{0,12}палив.{0,35}євро\s*5|технічні та якісні вимоги.{0,300}дсту\s*768[78])/iu]
-  ];
+  const payment=['спосіб розрахунків за товар','оплата за товар здійснюється'];
+  const supply=['передача/отримання товару здійснюється','термін дії талон','строк поставки товару','термін поставки товару','місце поставки товару','здійснювати постачання товару','товар передається за талонами','поставка товару здійснюється у робочі години','відпуск товару покупцю здійснюється цілодобово'];
+  const technical=['бензин а-95','бензин а 95','дизельне паливо євро 5','дизельне пальне євро 5','технічні та якісні вимоги до товару'];
   const out=[];
   for(const doc of documents||[]){
-    if(!['read','truncated'].includes(doc.status)||!Array.isArray(doc.segments))continue;
+    if(doc.status!=='read'&&doc.status!=='truncated')continue;
+    if(!doc.segments||typeof doc.segments[Symbol.iterator]!=='function')continue;
     for(const segment of doc.segments){
       const body=String(segment.body||'').trim();
-      if(body.length<20||!segment.location||/санкц|країн.{0,20}походжен|бенефіціар/iu.test(body))continue;
-      if(/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Паливо\s*\(Товар\)).{0,120}\s[-–—]\s/iu.test(body))continue;
-      for(const [category,re] of rules){
-        if(!re.test(body))continue;
-        const quote=body.slice(0,700).trim();
-        out.push({text:quote,category,source:{title:doc.title,location:segment.location,quote,url:doc.source_url||null},source_verified:true});
-        break;
-      }
+      if(body.length<20||!segment.location)continue;
+      const normalized=body.toLowerCase().replaceAll('\u00a0',' ').replaceAll('\u202f',' ').replaceAll('’',"'");
+      if(normalized.includes('санкц')||normalized.includes('країною походження')||normalized.includes('бенефіціар'))continue;
+      let category='';
+      if(payment.some(term=>normalized.includes(term)))category='Оплата та розрахунки';
+      else if(supply.some(term=>normalized.includes(term)))category='Постачання та відпуск';
+      else if(technical.some(term=>normalized.includes(term)))category='Технічні вимоги до пального';
+      if(!category)continue;
+      const quote=body.slice(0,700).trim();
+      out.push({text:quote,category,source:{title:doc.title,location:segment.location,quote,url:doc.source_url||null},source_verified:true});
     }
   }
   return out.slice(0,30);
@@ -1861,8 +1861,8 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-contract-scope-v21",
-        extraction_policy: "source-segments-v21"
+        version: "2026.11.13-contract-scope-v22",
+        extraction_policy: "literal-segments-v22"
       }, 200, origin);
     }
 
@@ -2022,9 +2022,11 @@ response_format: { type: "json_object" }
       highlights_found: directHighlights.length,
       paragraphs_scanned: documentExtracts.reduce((sum,d)=>sum+(d.segments?.length||0),0),
       evidence_items_found: parsed.conditions.length+parsed.fuel_requirements.length+parsed.actions.length+parsed.document_highlights.length,
-      extraction_policy: 'source-segments-v21',
+      extraction_policy: 'literal-segments-v22',
       core_clause_count: coreHighlights.length,
       classified_clause_count: classifiedHighlights.length,
+      literal_payment_hits: documentExtracts.reduce((sum,d)=>sum+(d.segments?.filter(s=>String(s.body||'').toLowerCase().includes('спосіб розрахунків за товар')).length||0),0),
+      literal_delivery_hits: documentExtracts.reduce((sum,d)=>sum+(d.segments?.filter(s=>String(s.body||'').toLowerCase().includes('строк поставки товару')).length||0),0),
       evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,segments:d.segments?.length||0,body_chars:d.text?.length||0,keyword_hits:d.segments?.filter(s=>s.body?.toLowerCase().includes('талон')).length||0})),
       cutoff_date: cutoff
     };
