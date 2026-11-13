@@ -40,9 +40,10 @@ test('document-derived commercial terms keep exact source and conflicting values
 });
 
 test('explicit fuel wording in a read contract is classified with its exact citation',()=>{
+  const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=worker.slice(start,end).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const quote='1.2. Найменування Товару: бензин автомобільний А-95-Євро5 та дизельне паливо ДП-Євро5 (наливом).';
   const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 14] ${quote}`,segments:[{location:'абзац 14',body:quote}]}]);
@@ -53,9 +54,10 @@ test('explicit fuel wording in a read contract is classified with its exact cita
 });
 
 test('capitalized Ukrainian contract terms are classified and payment evidence is source-linked',()=>{
+  const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=worker.slice(start,end).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const body='4.1. Розрахунки проводяться шляхом оплати Замовником суми згідно рахунку та видаткової накладної в строк 10 (десять) календарних днів.';
   const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 33] ${body}`,segments:[{location:'абзац 33',body}]}]);
@@ -66,9 +68,10 @@ test('capitalized Ukrainian contract terms are classified and payment evidence i
 });
 
 test('contract extracts include only payment, operative supply and specific fuel specifications',()=>{
+  const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=worker.slice(start,end).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const bodies=[
     ['абзац 3','м. Київ “___” ________ 2026 року'],
@@ -95,10 +98,49 @@ test('contract extracts include only payment, operative supply and specific fuel
   assert.deepEqual(Array.from(result,item=>item.source.location),['абзац 14','абзац 26','абзац 27','абзац 28','абзац 29','абзац 30']);
 });
 
-test('irrelevant or boilerplate contract text produces no fallback excerpts',()=>{
+test('UA-2026-11-12-017662-a clauses are extracted from the same paragraphs read by the Worker',()=>{
+  const helperStart=worker.indexOf('function classifyContractParagraph(');
   const start=worker.indexOf('export function directDocumentHighlights(');
   const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
-  const code=worker.slice(start,end).replace('export function','function');
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
+  const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
+  const bodies=[
+    ['абзац 6','1.1. АЗС – автозаправні станції, на яких Покупець має право отримати паливо відповідно до умов даного Договору.'],
+    ['абзац 7','1.2. Талон/скретч-карта – документ, що має серію, номер, захисні водяні знаки та інші захисні ознаки встановленої Продавцем форми, який дозволяє його пред’явнику отримувати паливо на АЗС.'],
+    ['абзац 15','2.2. Передача/отримання Товару здійснюється, виключно, з використанням дійсних Талонів/скрейч-карт під час заправки автотранспорту Замовника.'],
+    ['абзац 16','2.3. Термін дії Талон/скрейч-карта не менш як 6 (шість) місяців з моменту їх отримання (передачі). Всього загальний період використання дійсних Талонів/скрейч-карт, з урахуванням їх пролонгації, становить 1 рік.'],
+    ['абзац 26','5.1. Спосіб розрахунків за Товар – у національній валюті України в безготівковій формі шляхом перерахування Покупцем відповідних грошових сум на поточний рахунок Продавця.'],
+    ['абзац 27','5.2. Оплата за Товар здійснюється – лише за фактично отриманий Товар на підставі належним чином оформлених документів Продавця при наявності бюджетних призначень на ці цілі, з можливістю відстрочки платежу на 30 календарних днів.'],
+    ['абзац 30','6.1. Продавець протягом строку дії цього Договору зобов’язується здійснювати постачання Товару Покупцю на умовах EXW за місцезнаходженням АЗС, а Покупець зобов’язується приймати такий Товар, оплачений на умовах цього Договору.'],
+    ['абзац 31','6.1. Строк поставки Товару – до 30 листопада 2026 року.'],
+    ['абзац 34',"6.3. Продавець зобов'язаний забезпечити зберігання придбаного Покупцем Товару до його повного використання. Видача Товару зі зберігання здійснюється на АЗС згідно переліку АЗС."],
+    ['абзац 35','6.4. Товар передається за Талонами/скрейч-картами, з використанням яких Покупець чи інша особа можуть замовляти та отримувати Товар на АЗС Продавця. Кожному Талону присвоюється термін його дії, номінал (від 2 до 300 літрів), вид нафтопродукту.'],
+    ['абзац 36','6.5. Товар вважається поставленим з моменту його фактичного отримання Покупцем. Перехід права власності на Товар відбувається в момент фактичного отримання Товару на АЗС.'],
+    ['абзац 37','6.6. Поставка Товару здійснюється у робочі години АЗС з дотриманням інших умов Договору. При цьому поставка здійснюється по дійсних Талонах/скрейч-картах.'],
+    ['абзац 38','6.7. У випадку закінчення строку дії Талону/скрейч-карти Продавцем здійснюється обмін протягом 10 робочих днів з дати закінчення строку дії.'],
+    ['абзац 39','6.8. Продавець не проводить відпуск Товару по погашеному чи простроченому Талону/скрейч-карті.'],
+    ['абзац 156','Бензин А-95 Євро 5 в талонах/скретч-картах.'],
+    ['абзац 160','Дизельне пальне Євро 5 в талонах/скретч-картах.'],
+    ['абзац 202','Технічні та якісні вимоги до Товару повинні відповідати Технічному регламенту щодо вимог до автомобільних бензинів, суднових та котельних палив та ДСТУ 7687:2015 «Бензини автомобільні Євро».'],
+    ['абзац 203','Відпуск Товару Покупцю здійснюється цілодобово по довірчим документам на АЗС Продавця. Продавець повинен мати діючу мережу АЗС по всій території України, з обов’язковою наявністю не менше 3 АЗС у кожній області, не менше 2 у кожному обласному центрі та 5 у місті Києві.'],
+    ['абзац 214','Номінал талонів 10, 20 літрів.'],
+    ['абзац 215','Термін дії не менш як 6 (шість) місяців.'],
+    ['абзац 216','Термін дії невикористаних талонів повинен продовжуватися не менше як на 1 рік.']
+  ];
+  const doc={status:'read',kind:'docx',title:'ПРОЕКТ ДОГОВОРУ.docx',source_id:'DOC-01',source_url:'/tender-document',text:bodies.map(([location,body])=>`[${location}] ${body}`).join('\n'),segments:bodies.map(([location,body])=>({location,body}))};
+  const result=ctx.h([doc]);
+  const locations=Array.from(result,item=>item.source.location);
+  for(const location of ['абзац 15','абзац 16','абзац 26','абзац 27','абзац 30','абзац 31','абзац 34','абзац 35','абзац 36','абзац 37','абзац 38','абзац 39','абзац 156','абзац 160','абзац 202','абзац 203','абзац 214','абзац 216'])assert.ok(locations.includes(location),`missing ${location}`);
+  assert.ok(!locations.includes('абзац 6'));
+  assert.ok(!locations.includes('абзац 7'));
+  assert.ok(result.every(item=>doc.text.includes(item.text)&&item.source_verified));
+});
+
+test('irrelevant or boilerplate contract text produces no fallback excerpts',()=>{
+  const helperStart=worker.indexOf('function classifyContractParagraph(');
+  const start=worker.indexOf('export function directDocumentHighlights(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const code=(worker.slice(helperStart,start)+worker.slice(start,end)).replace('export function','function');
   const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
   const result=ctx.h([{status:'read',kind:'docx',title:'Договір.docx',text:'[абзац 3] м. Київ “___” ________ 2026 року\n[абзац 4] Продавець гарантує, що Товар належить йому на праві власності.',segments:[
     {location:'абзац 3',body:'м. Київ “___” ________ 2026 року'},
