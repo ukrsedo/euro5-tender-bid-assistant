@@ -43,7 +43,7 @@ jobs:
           node --check app.js
           node --check buyer-card.js
           npx --yes --package typescript@5.9.3 tsc --allowJs --checkJs --noEmit --skipLibCheck --lib es2022,dom --target es2022 --module esnext --moduleResolution node worker.js access-worker.js
-          node --test tests/market-indicative.test.mjs tests/current-market.test.mjs tests/enkorr-archive.test.mjs tests/competition-panel.test.mjs tests/access-parity.test.mjs tests/prozorro-lookup-fallback.test.mjs tests/buyer-procedure-group.test.mjs tests/august-tender-regression.test.mjs tests/september-tender-regression.test.mjs tests/document-reader.test.mjs
+          node --test tests/market-indicative.test.mjs tests/current-market.test.mjs tests/enkorr-archive.test.mjs tests/competition-panel.test.mjs tests/access-parity.test.mjs tests/prozorro-lookup-fallback.test.mjs tests/buyer-procedure-group.test.mjs tests/august-tender-regression.test.mjs tests/september-tender-regression.test.mjs tests/document-reader.test.mjs tests/signoff-regressions.test.mjs
           node - <<'NODE'
           const fs=require('fs');
           const analysis=fs.readFileSync('dist/euro5-tender-analysis.js','utf8');

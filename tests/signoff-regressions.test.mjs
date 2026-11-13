@@ -52,6 +52,19 @@ test('explicit fuel wording in a read contract is classified with its exact cita
   assert.equal(result[0].source.quote,quote);
 });
 
+test('capitalized Ukrainian contract terms are classified and payment evidence is source-linked',()=>{
+  const start=worker.indexOf('export function directDocumentHighlights(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const code=worker.slice(start,end).replace('export function','function');
+  const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
+  const body='4.1. Розрахунки проводяться шляхом оплати Замовником суми згідно рахунку та видаткової накладної в строк 10 (десять) календарних днів.';
+  const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 33] ${body}`,segments:[{location:'абзац 33',body}]}]);
+  assert.equal(result.length,1);
+  assert.match(result[0].category,/Оплата та ціна/);
+  assert.equal(result[0].source.location,'абзац 33');
+  assert.equal(result[0].source.quote,body);
+});
+
 test('retail benchmark uses the last verified observation within five business days and keeps its date',async()=>{
   const start=worker.indexOf('async function fetchRetailPrice(');
   const end=worker.indexOf('\n}\n\n/**',start)+2;
