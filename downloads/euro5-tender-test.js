@@ -40577,7 +40577,7 @@ function fuelProductProfile(text, family) {
   const euro = [...s2.matchAll(/(?:євро|евро|euro)\s*[-–]?\s*([456])(?!\d)/g)].map((m2) => m2[1]);
   return { family, grade: gradeSet.length === 1 ? gradeSet[0] : null, grades: gradeSet, tier: premium && regular ? "ambiguous" : premium ? "premium" : regular ? "regular" : "unspecified", season: seasons.length === 1 ? seasons[0] : seasons.length ? "ambiguous" : "unspecified", euro_class: [...new Set(euro)], source_text: String(text || "") };
 }
-function tenderFuelProducts(data) {
+function tenderFuelProducts(data, documentExtracts = []) {
   const result = {};
   for (const family of ["gasoline", "diesel"]) {
     const items = (data?.items || []).filter((i2) => classifyFuelItem(i2) === family);
@@ -40598,7 +40598,19 @@ function tenderFuelProducts(data) {
     const titleGrades = family === "gasoline" && items.length === 1 ? [...new Set([...String(data?.title || "").matchAll(/(?:[аa](?:[іиi])?\s*[-–]?\s*|бензин\s*)9([2458])(?!\d)/gi)].map((x2) => "9" + x2[1]))] : [];
     const itemGrades = [...new Set(indicativeGrades.filter(Boolean))];
     const indicativeGrade = family === "gasoline" && items.length === 1 && (itemGrades.length === 1 || !itemGrades.length && titleGrades.length === 1) && (!titleGrades.length || titleGrades.length === 1 && (!itemGrades.length || itemGrades[0] === titleGrades[0])) ? itemGrades[0] || titleGrades[0] : null;
-    result[family] = { family, grade: grades.length === 1 ? grades[0] : null, grades, tier: tiers.length === 1 ? tiers[0] : "ambiguous", season: seasons.length === 1 ? seasons[0] : "ambiguous", items: profiles2, indicative_grade: indicativeGrade, requires_confirmation: true };
+    const technical = documentExtracts.filter((d2) => ["read", "truncated"].includes(d2.status) && String(d2.title || "").toLowerCase().includes("\u0442\u0435\u0445\u043D\u0456\u0447\u043D") && Array.isArray(d2.segments));
+    const gradeEvidence = family === "gasoline" ? technical.flatMap((d2) => d2.segments.filter((s2) => {
+      const body = String(s2.body || "").toLowerCase();
+      return body.includes("\u0431\u0435\u043D\u0437\u0438\u043D \u0430-95") && body.includes("\u0454\u0432\u0440\u043E5");
+    }).map((s2) => ({ doc: d2, segment: s2 }))) : [];
+    const indicativeSource = gradeEvidence.length === 1 ? {
+      title: gradeEvidence[0].doc.title,
+      location: gradeEvidence[0].segment.location,
+      quote: gradeEvidence[0].segment.body,
+      url: gradeEvidence[0].doc.source_url || null
+    } : null;
+    const documentGrade = indicativeSource && !technical.some((d2) => d2.segments.some((s2) => ["\u0430-92", "\u0430-98", "\u0430-100"].some((g2) => String(s2.body || "").toLowerCase().includes("\u0431\u0435\u043D\u0437\u0438\u043D " + g2)))) ? "95" : null;
+    result[family] = { family, grade: grades.length === 1 ? grades[0] : null, grades, tier: tiers.length === 1 ? tiers[0] : "ambiguous", season: seasons.length === 1 ? seasons[0] : "ambiguous", items: profiles2, indicative_grade: indicativeGrade || documentGrade, indicative_source: documentGrade ? indicativeSource : null, requires_confirmation: true };
   }
   return result;
 }
@@ -41004,7 +41016,7 @@ async function fetchRetailPrice(slug, targetDate, context) {
   }
   return { ...chosen || {}, priceWithVat: chosen?.priceWithVat ?? null, priceWithoutVat: chosen?.priceWithoutVat ?? null, check: { status: chosen ? "reference_only" : "unavailable", reason, difference_pct: difference, own_price_with_vat: own?.priceWithVat ?? null, minfin_price_with_vat: reference?.priceWithVat ?? null, euro_label_price_with_vat: Number(euroPrice) > 0 ? Number(euroPrice) : null, euro_label_tier: "unverified", limit_pct: 5 } };
 }
-async function buildMarketReference(data, parsed, scope, supplyInfo) {
+async function buildMarketReference(data, parsed, scope, supplyInfo, documentExtracts = []) {
   const tenderDate = tenderAnnouncementDate(data);
   if (!tenderDate) return {
     available: false,
@@ -41017,7 +41029,7 @@ async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const currentRetailBenchmark = euro5ObservationDate(benchmarkDate) === euro5ObservationDate(now);
   const trendDate = recentTender ? now : tenderDate;
   const pastDate = new Date(trendDate.getTime() - 30 * 864e5);
-  const products = tenderFuelProducts(data);
+  const products = tenderFuelProducts(data, documentExtracts);
   const fuelType = parsed?.fuel_type;
   const gasVol = Number(parsed?.gasoline_volume_l);
   const dieselVol = Number(parsed?.diesel_volume_l);
@@ -41413,6 +41425,8 @@ function validateAiEvidenceList(items, kind, documents) {
 }
 function directDocumentHighlights(documents) {
   const rules = [
+    (s2) => s2.includes("\u0431\u0435\u043D\u0437\u0438\u043D \u0430-95") && s2.includes("\u0454\u0432\u0440\u043E5"),
+    (s2) => s2.includes("\u0434\u0438\u0437\u0435\u043B\u044C\u043D\u0435 \u043F\u0430\u043B\u0438\u0432\u043E") && s2.includes("\u0454\u0432\u0440\u043E5"),
     (s2) => s2.includes("\u0430\u0437\u0441") && s2.includes("\u0440\u0430\u0439\u043E\u043D"),
     (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && (s2.includes("\u0441\u0442\u0440\u043E\u043A \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D\u043E\u043C \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D \u0434\u0456\u0457")),
     (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && s2.includes("\u043F\u043E\u0441\u0442\u0430\u0432") && s2.includes("2026"),
@@ -41461,7 +41475,7 @@ function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
 function buyerProcedureGroup(name) {
   const normalized = String(name || "").normalize("NFKC").replace(/[\u00a0\u202f\s]+/gu, " ").trim().toLowerCase();
   if (normalized.includes("\u0437\u0430\u043F\u0438\u0442 \u0446\u0456\u043D\u0438 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457") || normalized.includes("\u0437\u0430\u043F\u0438\u0442 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0439 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043B\u044C\u043D\u0438\u043A\u0456\u0432")) return "catalog";
-  if (normalized.includes("\u0441\u043F\u0440\u043E\u0449\u0435\u043D\u0430") && normalized.includes("\u0437\u0430\u043A\u0443\u043F\u0456\u0432\u043B") || /відкриті торги|допорогова закупівля/.test(normalized)) return "open";
+  if (normalized.includes("\u0441\u043F\u0440\u043E\u0449\u0435\u043D\u0430") && normalized.includes("\u0437\u0430\u043A\u0443\u043F\u0456\u0432\u043B") || normalized.includes("\u0432\u0456\u0434\u043A\u0440\u0438\u0442\u0456 \u0442\u043E\u0440\u0433\u0438") || normalized.includes("\u0434\u043E\u043F\u043E\u0440\u043E\u0433\u043E\u0432\u0430 \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u043B\u044F")) return "open";
   if (/без використання електронної системи|звіт про.*договір|переговорна процедура/.test(normalized)) return "direct";
   return "other";
 }
@@ -41782,12 +41796,22 @@ async function verifyBuyerRows(rows, code, period, excludedTenderId, options = {
   });
   const unresolved = unique.filter((r2) => !["verified", "after_cutoff", "identity_mismatch"].includes(states.get(buyerParentId(r2))));
   const reasons = unique.filter((r2) => states.get(buyerParentId(r2)) !== "verified").map((r2) => ({ lot_id: r2["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"], reason: states.get(buyerParentId(r2)) || "not_checked" }));
-  const history = summarizeBuyerHistory(eligible, code, period);
   const supplierEvidence = [...proofs.values()].flatMap((e2) => Array.isArray(e2.supplier_bids) ? e2.supplier_bids : []);
+  const participantsByLot = /* @__PURE__ */ new Map();
+  for (const bid of supplierEvidence) {
+    if (!bid.lot_id || !bid.supplier_code || ["draft", "pending", "deleted"].includes(bid.bid_status)) continue;
+    if (!participantsByLot.has(bid.lot_id)) participantsByLot.set(bid.lot_id, /* @__PURE__ */ new Set());
+    participantsByLot.get(bid.lot_id).add(bid.supplier_code);
+  }
+  const competitionRows = eligible.map((row) => {
+    const observed = participantsByLot.get(row["\u0406\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u043B\u043E\u0442\u0430"])?.size || 0;
+    return observed > 0 ? { ...row, "\u041A\u0456\u043B\u044C-\u0442\u044C \u0443\u043D\u0456\u043A\u0430\u043B\u044C\u043D\u0438\u0445 \u0443\u0447\u0430\u0441\u043D\u0438\u043A\u0456\u0432 \u043B\u043E\u0442\u0430": observed } : row;
+  });
+  const history = summarizeBuyerHistory(competitionRows, code, period);
   history.supplier_behavior = summarizeSupplierBehavior(supplierEvidence, period);
   return {
     ...history,
-    buyer_history_cache_schema: 6,
+    buyer_history_cache_schema: 7,
     history_version: 5,
     as_of: period.as_of,
     excluded_tender_id: excludedTenderId,
@@ -41810,12 +41834,12 @@ async function buyerHistoryRoute(request, origin, ctx) {
   if (!/^\d{8,10}$/.test(code) || !validBuyerAsOf(asOf)) return json({ ready: false, reason: "\u041F\u043E\u0442\u0440\u0456\u0431\u043D\u0456 \u043A\u043E\u0434 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0442\u0430 \u0434\u0430\u0442\u0430 \u0437\u0440\u0456\u0437\u0443 \u0456\u0441\u0442\u043E\u0440\u0456\u0457." }, 400, origin);
   const excluded = String(body.excludeTenderId || "");
   const period = { ...buyerHistoryPeriod(/* @__PURE__ */ new Date(asOf + "T12:00:00Z")), as_of: asOf }, cache = caches.default;
-  const key2 = new Request(new URL("/buyer-history-cache/v11/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
+  const key2 = new Request(new URL("/buyer-history-cache/v12/" + code + "/" + asOf + "/" + encodeURIComponent(excluded), request.url));
   try {
     const hit = await cache.match(key2);
     if (hit) {
       const h2 = await hit.json();
-      if (h2.buyer_history_cache_schema === 6 && h2.verification?.complete) return json({ ...h2, cached: true }, 200, origin);
+      if (h2.buyer_history_cache_schema === 7 && h2.verification?.complete) return json({ ...h2, cached: true }, 200, origin);
     }
   } catch {
   }
@@ -41833,6 +41857,22 @@ async function buyerHistoryRoute(request, origin, ctx) {
     return json({ ready: false, buyer_code: code, period, as_of: asOf, reason: e2.message }, 200, origin);
   }
 }
+async function tenderDocumentRoute(request, origin) {
+  const url = new URL(request.url), normalized = normalizeTenderId(url.searchParams.get("tid"));
+  const id = url.searchParams.get("doc") || "";
+  if (!normalized || normalized.lotSuffix || !/^[a-f0-9]{32}$/i.test(id)) return json({ error: "\u041D\u0435\u0432\u0456\u0440\u043D\u0438\u0439 \u0456\u0434\u0435\u043D\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u043E\u0440 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430." }, 400, origin);
+  try {
+    const source = await fetchTenderData(normalized.parent);
+    const doc = (source.data.documents || []).find((x2) => x2.id === id);
+    if (!doc) return json({ error: "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u043D\u0435 \u043D\u0430\u043B\u0435\u0436\u0438\u0442\u044C \u0446\u044C\u043E\u043C\u0443 \u0442\u0435\u043D\u0434\u0435\u0440\u0443." }, 404, origin);
+    const response = await fetchProzorroDocument(doc.url);
+    if (!response.ok) return json({ error: "Prozorro \u043D\u0435 \u0432\u0456\u0434\u043A\u0440\u0438\u0432 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 (HTTP " + response.status + ")." }, 502, origin);
+    const kind = String(doc.title || "").toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    return new Response(response.body, { status: 200, headers: { "Content-Type": kind, "Content-Disposition": `attachment; filename="tender-document-${id}.${kind === "application/pdf" ? "pdf" : "docx"}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...cors(origin) } });
+  } catch (e2) {
+    return json({ error: "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0438\u0442\u0438 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 Prozorro: " + String(e2?.message || "\u043F\u043E\u043C\u0438\u043B\u043A\u0430").slice(0, 200) }, 502, origin);
+  }
+}
 var worker_default = {
   async fetch(request, env, ctx) {
     if (env.MEMORY_AUTH_MODE === "session" && (!env.EURO5_SESSION_ACTOR || typeof env.EURO5_SESSION_ACTOR !== "object"))
@@ -41848,10 +41888,11 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.12-august-document-evidence-v8"
+        version: "2026.11.13-september-history-market-documents-v9"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
+    if (request.method === "GET" && url.pathname === "/tender-document") return tenderDocumentRoute(request, origin);
     if (request.method !== "POST" || url.pathname !== "/tender-check") {
       return json({ error: "\u041D\u0435 \u0437\u043D\u0430\u0439\u0434\u0435\u043D\u043E" }, 404, origin);
     }
@@ -41896,7 +41937,12 @@ var worker_default = {
       const published = new Date(d2?.datePublished), modified = new Date(d2?.dateModified || d2?.datePublished);
       return cutoff && Number.isFinite(published.getTime()) && Number.isFinite(modified.getTime()) && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff;
     });
-    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({ extracted_chars: 0, ...doc, source_id: `DOC-${String(index + 1).padStart(2, "0")}` }));
+    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({
+      extracted_chars: 0,
+      ...doc,
+      source_id: `DOC-${String(index + 1).padStart(2, "0")}`,
+      source_url: doc.text && /^[a-f0-9]{32}$/i.test(documentsForReading[index]?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${documentsForReading[index].id}` : null
+    }));
     const directHighlights = directDocumentHighlights(documentExtracts);
     const payload = {
       model: env.AI_MODEL,
@@ -41971,7 +42017,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       scope.normalizedWithoutVat
     );
     const [marketResult, fx] = await Promise.all([
-      buildMarketReference(source.data, parsed, scope, supplyInfo),
+      buildMarketReference(source.data, parsed, scope, supplyInfo, documentExtracts),
       buildFxTrend(source.data)
     ]);
     const fxData = "change30dPct" in fx ? fx : null;
