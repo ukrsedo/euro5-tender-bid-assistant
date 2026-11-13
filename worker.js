@@ -1749,7 +1749,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-enkorr-and-document-scan-v10"
+        version: "2026.11.13-enkorr-and-document-scan-v11"
       }, 200, origin);
     }
 
