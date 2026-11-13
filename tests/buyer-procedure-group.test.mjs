@@ -21,6 +21,6 @@ test('other procedure groups remain distinct',()=>{
 });
 
 test('history cache requires its current schema marker',()=>{
- assert.match(source,/buyer_history_cache_schema===6/);
- assert.match(source,/buyer-history-cache\/v11\//);
+ assert.match(source,/buyer_history_cache_schema===7/);
+ assert.match(source,/buyer-history-cache\/v12\//);
 });
