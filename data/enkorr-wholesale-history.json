@@ -3,6 +3,23 @@
   "source_url": "https://enkorr.ua/",
   "observations": [
     {
+      "date": "2026-10-19",
+      "observed_at": "2026-11-13T10:00:00.000Z",
+      "source_url": "https://enkorr.ua/",
+      "evidence_url": "https://enkorr.ua/uk/news/garyachiy_tizhden_cni_na_palne_na_azs_priskorili_zrostannya/269606",
+      "evidence_note": "Оптові ціни з публікації Enkorr від 19.10.2026: А-95 — 86,08 грн/л; дизель — 104,04 грн/л. Роздрібні ціни Enkorr за цю дату збігаються з Minfin.",
+      "prices_uah_l_with_vat": {
+        "a95": {
+          "wholesale": 86.08,
+          "retail": 89.79
+        },
+        "dt": {
+          "wholesale": 104.04,
+          "retail": 101.75
+        }
+      }
+    },
+    {
       "date": "2026-11-02",
       "observed_at": "2026-11-03T08:32:24.173Z",
       "source_url": "https://enkorr.ua/",
