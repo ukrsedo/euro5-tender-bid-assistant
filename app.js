@@ -419,7 +419,16 @@ function renderReviewMarket(){
   box.classList.remove('hidden');
   document.getElementById('marketComparisonReviewValue').textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
   document.getElementById('marketComparisonReviewText').textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext);
-  document.getElementById('marketBenchmarkSource').textContent=(cmp.indicative?'Марку не підтверджено автоматично. ':'')+(cmp.source || '');
+  const sourceBox=document.getElementById('marketBenchmarkSource');
+  sourceBox.replaceChildren(document.createTextNode((cmp.indicative?'Марку не підтверджено автоматично. ':'')+(cmp.source || '')));
+  const sourceUrl=lastExtraction?.market_wholesale_source_url;
+  try{
+    const verifiedUrl=new URL(sourceUrl);
+    if(cmp.format==='bulk'&&verifiedUrl.protocol==='https:'&&verifiedUrl.hostname==='enkorr.ua'){
+      const link=document.createElement('a');link.href=verifiedUrl.toString();link.target='_blank';link.rel='noopener noreferrer';
+      link.textContent='Джерело цін Enkorr';sourceBox.append(document.createTextNode(' '),link);
+    }
+  }catch(_){}
 }
 
 
@@ -565,7 +574,7 @@ function renderReview(data){
     ...(Array.isArray(data.fuel_requirements)?data.fuel_requirements.map(x=>({...x,type:'Технічний параметр пального'})):[]),
     ...(Array.isArray(data.conditions)?data.conditions.map(x=>({...x,type:'Умова тендера'})):[]),
     ...(Array.isArray(data.actions)?data.actions.map(x=>({...x,type:'Фрагмент для перевірки'})):[]),
-    ...(Array.isArray(data.document_highlights)?data.document_highlights.map(x=>({...x,type:'Дослівний витяг із документа'})):[])
+    ...(Array.isArray(data.document_highlights)?data.document_highlights.map(x=>({...x,type:x.category||'Дослівний витяг із документа'})):[])
   ];
   renderDocumentReadSummary(data);
   renderRequirements(reviewItems,data.document_read_summary?.read||0);
@@ -584,6 +593,11 @@ function renderDocumentReadSummary(data){
   const heading=document.createElement('strong');
   heading.textContent=`Документи Prozorro: ${summary.supported_before_cutoff} PDF/DOCX до ${summary.cutoff_date||'дати подання'}, прочитано ${summary.read}.`;
   box.appendChild(heading);
+  if(Number.isFinite(Number(summary.paragraphs_scanned))){
+    const detail=document.createElement('p');
+    detail.textContent=`Перевірено абзаців/сторінок: ${summary.paragraphs_scanned}. Підтверджених витягів: ${summary.evidence_items_found??summary.highlights_found??0}.`;
+    box.appendChild(detail);
+  }
   const statuses=Array.isArray(data.document_read_status)?data.document_read_status:[];
   if(!statuses.length){
     const p=document.createElement('p');p.textContent=summary.available?'Придатних PDF/DOCX за цю дату не відібрано.':'Prozorro не повернув вкладених документів.';box.appendChild(p);return;
