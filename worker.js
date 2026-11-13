@@ -510,7 +510,7 @@ function tenderFuelProducts(data,documentExtracts=[]){
     quote:gradeEvidence[0].segment.body,url:gradeEvidence[0].doc.source_url||null}:null;
   const documentGrade=indicativeSource&&!technical.some(d=>d.segments.some(s=>
     ['а-92','а-98','а-100'].some(g=>String(s.body||'').toLowerCase().includes('бензин '+g))))?'95':null;
-  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,indicative_grade:indicativeGrade||documentGrade,indicative_source:documentGrade?indicativeSource:null,requires_confirmation:true};
+  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:tiers.length?'ambiguous':'unspecified',season:seasons.length===1?seasons[0]:seasons.length?'ambiguous':'unspecified',items:profiles,indicative_grade:indicativeGrade||documentGrade,indicative_source:documentGrade?indicativeSource:null,requires_confirmation:true};
  }
  return result;
 }
@@ -934,22 +934,27 @@ function euro5RetailRecord(slug,targetDate,context){
  return {source:live!==null&&live!==undefined?'Євро5 — поточна стела':'Євро5 — архів стели',date:key.split('-').reverse().join('.'),priceWithVat:Number(price),priceWithoutVat:Number(price)/(1+UKRAINE_STANDARD_VAT)};
 }
 async function fetchRetailPrice(slug,targetDate,context){
- // A same-date independent check is required. EURO labels have no verified tier mapping.
+ // Use the latest independent daily retail observation at or before the
+ // tender date, but never older than five business days. Keep its actual date
+ // visible; do not label a prior observation as a same-day market price.
  const minfin=await fetchMinfinPrice(slug,targetDate),own=euro5RetailRecord(slug,targetDate,context);
  const exact=formatUaDate(targetDate);
- const reference=minfin?.date===exact?minfin:null;
+ const minfinDate=minfin?.date?parseUaDate(minfin.date):null;
+ const minfinAge=minfinDate?wholesaleBenchmarkAge(targetDate,minfinDate):null;
+ const reference=minfinAge!==null&&minfinAge<=5?minfin:null;
+ const ownForReference=reference?euro5RetailRecord(slug,minfinDate,context):own;
  const entry=context.archive.find(x=>x.date===euro5ObservationDate(targetDate));
  const raw=entry?.prices_uah_l_with_vat||{};
  const current=euro5ObservationDate(targetDate)===context.today?context.live:null;
  const euroPrice=slug==='a95'?(current?.a95Euro??raw.a95Euro??raw.a95premium):(current?.dtEuro??raw.dtEuro??raw.dtPremium);
- const difference=reference&&own?Math.abs(own.priceWithVat/reference.priceWithVat-1)*100:null;
+ const difference=reference&&ownForReference?Math.abs(ownForReference.priceWithVat/reference.priceWithVat-1)*100:null;
  const ambiguous=Number(euroPrice)>0;
  let chosen=null,reason='Немає незалежної ціни Minfin на ту саму дату. Орієнтир не підтверджено.';
  if(reference){
-  if(own&&!ambiguous&&difference<=5){chosen=own;reason='Ціну ЄВРО5 звірено з Minfin на ту саму дату; відхилення не перевищує 5%.';}
-  else {chosen=reference;reason=ambiguous?'У прайсі ЄВРО5 є окрема позиція EURO без підтвердженої відповідності продукту. Використано стандартний орієнтир Minfin.':own?'Ціна ЄВРО5 відрізняється від Minfin більш ніж на 5%. Використано Minfin.':'Архів ЄВРО5 відсутній; використано Minfin.';}
+  if(ownForReference&&!ambiguous&&difference<=5){chosen=ownForReference;reason=reference.date===exact?'Ціну ЄВРО5 звірено з Minfin на ту саму дату; відхилення не перевищує 5%.':`Використано останню спільну ціну ЄВРО5 і Minfin за ${reference.date}; вона передує оголошенню не більш ніж на п’ять робочих днів.`;}
+  else {chosen=reference;reason=ambiguous?'У прайсі ЄВРО5 є окрема позиція EURO без підтвердженої відповідності продукту. Використано стандартний орієнтир Minfin.':ownForReference?'Ціна ЄВРО5 відрізняється від Minfin більш ніж на 5%. Використано Minfin.':reference.date===exact?'Архів ЄВРО5 відсутній; використано Minfin.':`Використано останній доступний орієнтир Minfin за ${reference.date}; він передує оголошенню не більш ніж на п’ять робочих днів.`;}
  }
- return {...(chosen||{}),priceWithVat:chosen?.priceWithVat??null,priceWithoutVat:chosen?.priceWithoutVat??null,check:{status:chosen?'reference_only':'unavailable',reason,difference_pct:difference,own_price_with_vat:own?.priceWithVat??null,minfin_price_with_vat:reference?.priceWithVat??null,euro_label_price_with_vat:Number(euroPrice)>0?Number(euroPrice):null,euro_label_tier:'unverified',limit_pct:5}};
+ return {...(chosen||{}),priceWithVat:chosen?.priceWithVat??null,priceWithoutVat:chosen?.priceWithoutVat??null,check:{status:chosen?'reference_only':'unavailable',reason,difference_pct:difference,own_price_with_vat:ownForReference?.priceWithVat??null,minfin_price_with_vat:reference?.priceWithVat??null,euro_label_price_with_vat:Number(euroPrice)>0?Number(euroPrice):null,euro_label_tier:'unverified',limit_pct:5}};
 }
 
 /**
@@ -1102,7 +1107,7 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo, docu
     benchmarkLabel,
     benchmarkContext: globalFormat === "bulk" ? (recentTender ? "current" : "historical") : (currentRetailBenchmark ? "current" : "historical"),
     tenderDate: formatUaDate(tenderDate),
-    retailReferenceDate: retailGas?.date || retailDiesel?.date || null,
+    retailReferenceDate: [...new Set([retailGas?.date,retailDiesel?.date].filter(Boolean))].join(' / ') || null,
     retailSource: [retailGas?.source,retailDiesel?.source].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ') || null,
     retailGasolineSource: retailGas?.source || null,
     retailDieselSource: retailDiesel?.source || null,
@@ -1154,7 +1159,7 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo, docu
     note: globalFormat === "bulk"
       ? "Для наливу використано гуртовий орієнтир Enkorr на дату оголошення або не більш ніж за 5 робочих діб до неї (понеділок–п’ятниця). Пізніші ціни виключені. Роздрібну колонку Enkorr звірено з Minfin як контроль правильності даних."
       : globalFormat === "retail"
-        ? "Для талонів / паливних карток використано: "+common.retailSource+". Порівняння на дату оголошення: спочатку стела або архів Євро5 за потрібну дату; за відсутності ціни відповідної позиції — щоденні ціни Minfin."
+        ? "Для талонів / паливних карток використано: "+common.retailSource+". Для кожної позиції береться остання доступна ціна на дату оголошення або перед нею, не старша за п’ять робочих днів; фактичну дату показано в орієнтирі. Ціну стели ЄВРО5 використовуємо лише після незалежної перевірки Minfin."
         : "Для кожної позиції використано орієнтир відповідно до підтвердженого формату постачання."
   };
 }
@@ -1797,7 +1802,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-qa-signoff-v14"
+        version: "2026.11.13-qa-signoff-v15"
       }, 200, origin);
     }
 
