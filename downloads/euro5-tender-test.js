@@ -40123,7 +40123,8 @@ async function extractOne(document2, fetcher, remainingBytes) {
   }
 }
 async function readTenderDocuments(documents, fetcher = fetch) {
-  const candidates = (documents || []).filter((d2) => docKind(d2)).slice(0, MAX_DOCUMENTS);
+  const all = Array.isArray(documents) ? documents : [];
+  const candidates = all.filter((d2) => docKind(d2)).slice(0, MAX_DOCUMENTS);
   const out = [];
   let totalBytes = 0;
   for (const document2 of candidates) {
@@ -40135,6 +40136,17 @@ async function readTenderDocuments(documents, fetcher = fetch) {
     }
     out.push(item);
   }
+  for (const document2 of all.filter((d2) => !docKind(d2))) out.push({
+    title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438",
+    status: "unsupported",
+    reason: "\u041F\u0456\u0434\u0442\u0440\u0438\u043C\u0443\u044E\u0442\u044C\u0441\u044F \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F PDF \u0456 DOCX."
+  });
+  for (const document2 of all.filter((d2) => docKind(d2)).slice(MAX_DOCUMENTS)) out.push({
+    title: document2?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438",
+    kind: docKind(document2),
+    status: "not_processed_limit",
+    reason: `\u041F\u0435\u0440\u0435\u0432\u0438\u0449\u0435\u043D\u043E \u043B\u0456\u043C\u0456\u0442 \u043E\u0431\u0440\u043E\u0431\u043A\u0438 ${MAX_DOCUMENTS} \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0456\u0432 \u0437\u0430 \u043E\u0434\u0438\u043D \u0437\u0430\u043F\u0438\u0442.`
+  });
   const readable = out.filter((item) => item.text);
   if (readable.length) {
     const share = Math.floor(MAX_EXTRACTED_CHARS / readable.length);
@@ -40279,11 +40291,11 @@ function buildCompetitionForecast(data, fuelType, expectedValueWithoutVat) {
   else conclusion = "\u041F\u0440\u043E\u0433\u043D\u043E\u0437 \u043D\u0435\u0432\u0438\u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0439: \u043E\u0434\u0438\u043D \u0443\u0447\u0430\u0441\u043D\u0438\u043A \u0456 \u043A\u043E\u043D\u043A\u0443\u0440\u0435\u043D\u0446\u0456\u044F \u0434\u0432\u043E\u0445 \u0430\u0431\u043E \u0431\u0456\u043B\u044C\u0448\u0435 \u0443\u0447\u0430\u0441\u043D\u0438\u043A\u0456\u0432 \u043C\u0430\u044E\u0442\u044C \u0431\u043B\u0438\u0437\u044C\u043A\u0456 \u0448\u0430\u043D\u0441\u0438.";
   let historyNote;
   if (count >= 3) {
-    historyNote = `\u0412 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0432\u0440\u0430\u0445\u043E\u0432\u0430\u043D\u043E ${count} \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0445 \u043F\u0430\u043B\u0438\u0432\u043D\u0438\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u0456\u0432; \u0441\u0435\u0440\u0435\u0434\u043D\u044F \u043A\u0456\u043B\u044C\u043A\u0456\u0441\u0442\u044C \u0443\u0447\u0430\u0441\u043D\u0438\u043A\u0456\u0432 \u2014 ${meanParticipants.toFixed(1)}.`;
+    historyNote = `\u0423 \u043D\u0430\u0432\u0447\u0430\u043B\u044C\u043D\u043E\u043C\u0443 \u0437\u0440\u0456\u0437\u0456 \u043C\u043E\u0434\u0435\u043B\u0456 \u0434\u043B\u044F \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0454 ${count} \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0445 \u043F\u0430\u043B\u0438\u0432\u043D\u0438\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u0456\u0432; \u0441\u0435\u0440\u0435\u0434\u043D\u044F \u043A\u0456\u043B\u044C\u043A\u0456\u0441\u0442\u044C \u0443\u0447\u0430\u0441\u043D\u0438\u043A\u0456\u0432 \u0443 \u0446\u044C\u043E\u043C\u0443 \u0437\u0440\u0456\u0437\u0456 \u2014 ${meanParticipants.toFixed(1)}. \u0426\u0435 \u043E\u043A\u0440\u0435\u043C\u0430 \u0432\u0438\u0431\u0456\u0440\u043A\u0430 \u0432\u0456\u0434 \u043A\u0430\u0440\u0442\u043A\u0438 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0437\u0430 \u043E\u0441\u0442\u0430\u043D\u043D\u0456 12 \u043C\u0456\u0441\u044F\u0446\u0456\u0432.`;
   } else if (count > 0) {
-    historyNote = `\u0406\u0441\u0442\u043E\u0440\u0456\u044F \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u0430: \u0443 \u0432\u0438\u0431\u0456\u0440\u0446\u0456 \u043B\u0438\u0448\u0435 ${count} \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0445 \u043F\u0430\u043B\u0438\u0432\u043D\u0438\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u0456\u0432.`;
+    historyNote = `\u041D\u0430\u0432\u0447\u0430\u043B\u044C\u043D\u0438\u0439 \u0437\u0440\u0456\u0437 \u043C\u043E\u0434\u0435\u043B\u0456 \u043C\u0456\u0441\u0442\u0438\u0442\u044C \u043B\u0438\u0448\u0435 ${count} \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0445 \u043F\u0430\u043B\u0438\u0432\u043D\u0438\u0445 \u0442\u0435\u043D\u0434\u0435\u0440\u0456\u0432 \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430. \u0426\u0435 \u043E\u043A\u0440\u0435\u043C\u0430 \u0432\u0438\u0431\u0456\u0440\u043A\u0430 \u0432\u0456\u0434 \u043A\u0430\u0440\u0442\u043A\u0438 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0437\u0430 \u043E\u0441\u0442\u0430\u043D\u043D\u0456 12 \u043C\u0456\u0441\u044F\u0446\u0456\u0432.`;
   } else {
-    historyNote = "\u0423 \u043D\u0430\u0432\u0447\u0430\u043B\u044C\u043D\u0456\u0439 \u0432\u0438\u0431\u0456\u0440\u0446\u0456 \u043D\u0435\u043C\u0430\u0454 \u0434\u043E\u0441\u0442\u0430\u0442\u043D\u044C\u043E\u0457 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430; \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u0431\u0456\u043B\u044C\u0448\u0435 \u0441\u043F\u0438\u0440\u0430\u0454\u0442\u044C\u0441\u044F \u043D\u0430 \u0442\u0438\u043F \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0438, \u0432\u0430\u0440\u0442\u0456\u0441\u0442\u044C \u0456 \u0432\u0438\u0434 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E.";
+    historyNote = "\u041D\u0430\u0432\u0447\u0430\u043B\u044C\u043D\u0438\u0439 \u0437\u0440\u0456\u0437 \u043C\u043E\u0434\u0435\u043B\u0456 \u043D\u0435 \u043C\u0456\u0441\u0442\u0438\u0442\u044C \u0434\u043E\u0441\u0442\u0430\u0442\u043D\u044C\u043E\u0457 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0446\u044C\u043E\u0433\u043E \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430; \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u0441\u043F\u0438\u0440\u0430\u0454\u0442\u044C\u0441\u044F \u043D\u0430 \u0442\u0438\u043F \u043F\u0440\u043E\u0446\u0435\u0434\u0443\u0440\u0438, \u0432\u0430\u0440\u0442\u0456\u0441\u0442\u044C \u0456 \u0432\u0438\u0434 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E. \u0426\u044F \u0432\u0438\u0431\u0456\u0440\u043A\u0430 \u043E\u043A\u0440\u0435\u043C\u0430 \u0432\u0456\u0434 \u043A\u0430\u0440\u0442\u043A\u0438 \u0456\u0441\u0442\u043E\u0440\u0456\u0457 \u0437\u0430\u043C\u043E\u0432\u043D\u0438\u043A\u0430 \u0437\u0430 \u043E\u0441\u0442\u0430\u043D\u043D\u0456 12 \u043C\u0456\u0441\u044F\u0446\u0456\u0432.";
   }
   return {
     model_version: state.version,
@@ -40890,7 +40902,7 @@ async function fetchEnkorrCurrentPrices() {
     if (!res.ok) return null;
     const parsed = parseEnkorrCurrentPrices(await res.text());
     if (!parsed?.gasoline && !parsed?.diesel) return null;
-    return { source: "Enkorr", ...parsed };
+    return { source: "Enkorr", sourceUrl: null, evidenceNote: null, ...parsed };
   } catch (_2) {
     return null;
   }
@@ -40898,7 +40910,8 @@ async function fetchEnkorrCurrentPrices() {
 var ENKORR_ARCHIVE_URL = "https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/enkorr-wholesale-history.json";
 async function fetchArchivedEnkorrPrices(tenderDate) {
   try {
-    const response = await fetch(ENKORR_ARCHIVE_URL, { signal: AbortSignal.timeout(1e4) });
+    const cacheVersion = Math.floor(Date.now() / 3e5);
+    const response = await fetch(ENKORR_ARCHIVE_URL + "?v=" + cacheVersion, { headers: { "Cache-Control": "no-cache" }, signal: AbortSignal.timeout(1e4) });
     if (!response.ok) return null;
     const archive = await response.json();
     if (archive.schema_version !== 1 || archive.source_url !== "https://enkorr.ua/" || !Array.isArray(archive.observations)) return null;
@@ -40913,7 +40926,10 @@ async function fetchArchivedEnkorrPrices(tenderDate) {
         return pair && [pair.wholesale, pair.retail].every((x2) => typeof x2 === "number" && Number.isFinite(x2) && x2 > 0 && x2 < 1e3) ? pair : null;
       };
       const gasoline = valid("a95"), diesel = valid("dt");
-      if (gasoline && diesel) return { source: "Enkorr (\u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043D\u0438\u0439 \u0440\u044F\u0434)", date: /* @__PURE__ */ new Date(row.date + "T12:00:00Z"), gasoline, diesel };
+      if (gasoline && diesel) {
+        const evidenceUrl = typeof row.evidence_url === "string" && /^https:\/\/enkorr\.ua\//i.test(row.evidence_url) ? row.evidence_url : archive.source_url;
+        return { source: "Enkorr", sourceUrl: evidenceUrl, evidenceNote: typeof row.evidence_note === "string" ? row.evidence_note : null, date: /* @__PURE__ */ new Date(row.date + "T12:00:00Z"), gasoline, diesel };
+      }
     }
   } catch (_2) {
   }
@@ -41136,6 +41152,8 @@ async function buildMarketReference(data, parsed, scope, supplyInfo, documentExt
     fuelTrendNote: "\u0422\u0440\u0435\u043D\u0434 \u0440\u043E\u0437\u0440\u0430\u0445\u043E\u0432\u0430\u043D\u043E \u0437\u0430 \u0440\u043E\u0437\u0434\u0440\u0456\u0431\u043D\u0438\u043C\u0438 \u0446\u0456\u043D\u0430\u043C\u0438 Minfin / \u041A\u043E\u043D\u0441\u0430\u043B\u0442\u0438\u043D\u0433\u043E\u0432\u043E\u0457 \u0433\u0440\u0443\u043F\u0438 \u0410-95 \u043D\u0430 \u043E\u0431\u0438\u0434\u0432\u0456 \u0434\u0430\u0442\u0438.",
     trendEndDate: trendGas?.date || trendDiesel?.date || null,
     wholesaleReferenceDate: enkorr?.date ? formatUaDate(enkorr.date) : null,
+    wholesaleSourceUrl: enkorr?.sourceUrl || null,
+    wholesaleEvidenceNote: enkorr?.evidenceNote || null,
     retailGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline, "gasoline") ? retailGasNoVat : null,
     retailDieselPriceWithoutVat: qualityAllowsStandard(products.diesel, "diesel") ? retailDieselNoVat : null,
     wholesaleGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline, "gasoline") ? wholesaleGasNoVat : null,
@@ -41332,6 +41350,8 @@ CPV, \u043E\u0447\u0456\u043A\u0443\u0432\u0430\u043D\u0430 \u0432\u0430\u0440\u
 \u041D\u0415 \u0440\u043E\u0431\u0438 \u0432\u0438\u0441\u043D\u043E\u0432\u043A\u0456\u0432 \u0437\u0430 \u043D\u0430\u0437\u0432\u043E\u044E \u0444\u0430\u0439\u043B\u0443. \u0412\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0439 \u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u0438\u0445 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u044C \u043D\u0438\u0436\u0447\u0435. \u042F\u043A\u0449\u043E \u0442\u0435\u043A\u0441\u0442 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0439 \u0430\u0431\u043E \u043C\u0430\u0454 \u0441\u0442\u0430\u0442\u0443\u0441 \u043F\u043E\u043C\u0438\u043B\u043A\u0438, \u043F\u0440\u044F\u043C\u043E \u043D\u0435 \u0441\u0442\u0432\u0435\u0440\u0434\u0436\u0443\u0439, \u0449\u043E \u0444\u0430\u0439\u043B \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u043D\u043E.
 \u0423 fuel_requirements \u0432\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u0438 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E: \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442/\u043A\u043B\u0430\u0441, \u043C\u0430\u0440\u043A\u0443, \u0441\u0435\u0437\u043E\u043D\u043D\u0456\u0441\u0442\u044C, \u0435\u043A\u043E\u043B\u043E\u0433\u0456\u0447\u043D\u0438\u0439 \u043A\u043B\u0430\u0441, \u0432\u043C\u0456\u0441\u0442 \u0441\u0456\u0440\u043A\u0438, \u0433\u0443\u0441\u0442\u0438\u043D\u0443, \u0433\u0440\u0430\u043D\u0438\u0447\u043D\u0443 \u0442\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0443 \u0444\u0456\u043B\u044C\u0442\u0440\u043E\u0432\u0430\u043D\u043E\u0441\u0442\u0456 \u0442\u0430 \u0456\u043D\u0448\u0456 \u0437\u0430\u0434\u0430\u043D\u0456 \u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044F. \u0417\u0430 \u0441\u0443\u043F\u0435\u0440\u0435\u0447\u043D\u043E\u0441\u0442\u0435\u0439 \u043F\u043E\u0432\u0435\u0440\u043D\u0438 \u043E\u043A\u0440\u0435\u043C\u0456 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u043F\u0443\u043D\u043A\u0442\u0438 \u0437 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0438\u043C\u0438 \u0446\u0438\u0442\u0430\u0442\u0430\u043C\u0438 \u0442\u0430 \u0434\u0436\u0435\u0440\u0435\u043B\u0430\u043C\u0438.
 
+\u041F\u0435\u0440\u0435\u0433\u043B\u044F\u043D\u044C \u0443\u0441\u0456 \u043D\u0430\u0434\u0430\u043D\u0456 \u0441\u0442\u043E\u0440\u0456\u043D\u043A\u0438 \u0439 \u0430\u0431\u0437\u0430\u0446\u0438, \u0430 \u043D\u0435 \u043B\u0438\u0448\u0435 \u043F\u0435\u0440\u0448\u0438\u0439 \u0437\u0431\u0456\u0433. \u0412\u0438\u0442\u044F\u0433\u0430\u0439 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u0456 \u0443\u043C\u043E\u0432\u0438 \u043E\u043F\u043B\u0430\u0442\u0438, \u0441\u0442\u0440\u043E\u043A\u0456\u0432 \u0456 \u043C\u0456\u0441\u0446\u044F \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438, \u0432\u0456\u0434\u043F\u0443\u0441\u043A\u0443 \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u0437\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u044C, \u043A\u0432\u0430\u043B\u0456\u0444\u0456\u043A\u0430\u0446\u0456\u0457, \u043F\u0440\u0438\u0439\u043C\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u043E\u0441\u0442\u0456. \u041D\u0435 \u043E\u0431\u043C\u0435\u0436\u0443\u0439\u0441\u044F \u043D\u0430\u0437\u0432\u043E\u044E \u0442\u043E\u0432\u0430\u0440\u0443.
+
 \u041D\u0435 \u0432\u0438\u043D\u043E\u0441\u044C \u0443 \xAB\u0432\u0430\u0436\u043B\u0438\u0432\u0456 \u0443\u043C\u043E\u0432\u0438\xBB \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438, \u044F\u043A\u0456 \u0454 \u0437\u0432\u0438\u0447\u0430\u0439\u043D\u0438\u043C\u0438 \u0434\u043B\u044F \u043F\u0443\u0431\u043B\u0456\u0447\u043D\u0438\u0445 \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u0430\u0431\u043E \u0437\u0430\u043A\u0443\u043F\u0456\u0432\u0435\u043B\u044C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E, \u044F\u043A\u0449\u043E \u0432\u043E\u043D\u0438 \u043D\u0435 \u043C\u0430\u044E\u0442\u044C \u043D\u0435\u0442\u0438\u043F\u043E\u0432\u043E\u0433\u043E \u043E\u0431\u043C\u0435\u0436\u0435\u043D\u043D\u044F. \u0417\u043E\u043A\u0440\u0435\u043C\u0430, \u041D\u0415 \u0432\u043A\u043B\u044E\u0447\u0430\u0439 \u0431\u0435\u0437 \u043E\u043A\u0440\u0435\u043C\u043E\u0457 \u043F\u0440\u0438\u0447\u0438\u043D\u0438:
 - \u0437\u0430\u0433\u0430\u043B\u044C\u043D\u0443 \u0432\u0438\u043C\u043E\u0433\u0443 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u0442\u0438 \u0442\u0435\u0445\u043D\u0456\u0447\u043D\u0438\u043C \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043A\u0430\u043C \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E;
 - \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0456 \u0441\u0435\u0440\u0442\u0438\u0444\u0456\u043A\u0430\u0442\u0438/\u043F\u0430\u0441\u043F\u043E\u0440\u0442\u0438 \u044F\u043A\u043E\u0441\u0442\u0456;
@@ -41424,16 +41444,15 @@ function validateAiEvidenceList(items, kind, documents) {
   return out.slice(0, 30);
 }
 function directDocumentHighlights(documents) {
-  const rules = [
-    (s2) => s2.includes("\u0431\u0435\u043D\u0437\u0438\u043D \u0430-95") && s2.includes("\u0454\u0432\u0440\u043E5"),
-    (s2) => s2.includes("\u0434\u0438\u0437\u0435\u043B\u044C\u043D\u0435 \u043F\u0430\u043B\u0438\u0432\u043E") && s2.includes("\u0454\u0432\u0440\u043E5"),
-    (s2) => s2.includes("\u0430\u0437\u0441") && s2.includes("\u0440\u0430\u0439\u043E\u043D"),
-    (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && (s2.includes("\u0441\u0442\u0440\u043E\u043A \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D\u043E\u043C \u0434\u0456\u0457") || s2.includes("\u0442\u0435\u0440\u043C\u0456\u043D \u0434\u0456\u0457")),
-    (s2) => s2.includes("\u0442\u0430\u043B\u043E\u043D") && s2.includes("\u043F\u043E\u0441\u0442\u0430\u0432") && s2.includes("2026"),
-    (s2) => s2.includes("\u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A") && s2.includes("\u0440\u043E\u0431\u043E\u0447\u0438\u0445 \u0434\u043D\u0456\u0432"),
-    (s2) => s2.includes("\u0441\u0442\u0440\u043E\u043A\u0456\u0432 \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 \u0442\u0430\u043B\u043E\u043D\u0456\u0432") && s2.includes("\u0448\u0442\u0440\u0430\u0444"),
-    (s2) => s2.includes("\u0437\u0430\u043C\u0456\u043D\u0438 \u0442\u0430\u043B\u043E\u043D\u0456\u0432") && s2.includes("\u0448\u0442\u0440\u0430\u0444"),
-    (s2) => s2.includes("\u0437\u0430\u0442\u0440\u0438\u043C\u043A\u0430 \u0444\u0456\u043D\u0430\u043D\u0441\u0443\u0432\u0430\u043D\u043D\u044F") && s2.includes("\u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u043E\u0441\u0442\u0456")
+  const groups = [
+    { category: "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", re: /бензин|дизел|євро\s*[-–]?\s*5|дсту|октан|цетан|сірк|густин|температур.{0,30}фільтр|сезонн/i },
+    { category: "\u041F\u043E\u0441\u0442\u0430\u0432\u043A\u0430 \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", re: /поставк|доставк|відпуск|налив|бензовоз|резервуар|талон|скретч.?карт|паливн.{0,12}карт|\bазс\b|автозаправ|місц.{0,12}постав|адрес.{0,12}(?:постав|відпуск)|графік.{0,20}(?:постав|достав|відпуск)|строк.{0,25}(?:постав|достав|відпуск)/i },
+    { category: "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0446\u0456\u043D\u0430", re: /оплат|розрахунк|післяоплат|аванс|платіж|рахунк|казнач|зміна.{0,20}цін|ціна.{0,25}(?:змін|кориг|зрост)|вартіст.{0,25}(?:змін|кориг)/i },
+    { category: "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u0442\u0430 \u0433\u0430\u0440\u0430\u043D\u0442\u0456\u0457", re: /забезпечен|банківськ.{0,25}гаранті|гаранті.{0,35}(?:пропозиц|виконан|аванс)|розмір.{0,20}гаранті/i },
+    { category: "\u041A\u0432\u0430\u043B\u0456\u0444\u0456\u043A\u0430\u0446\u0456\u0439\u043D\u0456 \u0443\u043C\u043E\u0432\u0438", re: /аналогічн.{0,25}досвід|досвід.{0,25}(?:виконан|постав)|фінансов.{0,35}(?:спромож|звіт|оборот)|кваліфікац|ліцензі|мінімальн.{0,20}оборот/i },
+    { category: "\u041F\u0440\u0438\u0439\u043C\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u0430\u043B\u044C\u043D\u0456\u0441\u0442\u044C", re: /прийман|акт.{0,20}прийм|штраф|пеня|неустой|відповідальн|розірван|односторон|претензі|форс-мажор|затримк.{0,30}(?:фінанс|постав)/i },
+    { category: "\u0421\u0442\u0440\u043E\u043A \u0434\u0456\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457 \u0430\u0431\u043E \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0456\u0432", re: /строк.{0,25}(?:дії|чинності)|термін.{0,25}(?:дії|чинності)|продовжен.{0,25}строк/i },
+    { category: "\u0412\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457", re: /строк.{0,25}подан|спосіб.{0,25}подан|тендерн.{0,25}пропозиц.{0,25}(?:відхил|забезпеч|чинн)|критер.{0,25}оцін/i }
   ];
   const paragraphs = [];
   for (const doc of documents) {
@@ -41449,19 +41468,59 @@ function directDocumentHighlights(documents) {
     const matches = [...doc.text.matchAll(marker)];
     for (let i2 = 0; i2 < matches.length; i2++) {
       const m2 = matches[i2], body = doc.text.slice(m2.index + m2[0].length, matches[i2 + 1]?.index ?? doc.text.length).trim();
-      if (body.length >= 25) paragraphs.push({ doc, location: `${m2[1]} ${m2[2]}`, body });
+      if (body.length >= 25) paragraphs.push({ doc, location: m2[1] + " " + m2[2], body });
     }
   }
-  const result = [], used = /* @__PURE__ */ new Set();
-  for (const rule of rules) {
-    const found = paragraphs.find((p2) => !used.has(p2) && rule(p2.body.toLowerCase()));
-    if (!found) continue;
-    const quote = found.body.slice(0, 500).trim();
-    if (!quote || !found.body.includes(quote)) continue;
-    used.add(found);
-    result.push({ text: quote, source: { title: found.doc.title, location: found.location, quote, url: found.doc.source_url || null }, source_verified: true });
+  const candidates = [];
+  for (let index = 0; index < paragraphs.length; index++) {
+    const p2 = paragraphs[index], body = p2.body.trim();
+    if (body.length < 35) continue;
+    const categories = groups.filter((group) => group.re.test(body)).map((group) => group.category);
+    if (!categories.length) continue;
+    const quote = body.slice(0, 700).trim();
+    if (!quote || !body.includes(quote)) continue;
+    candidates.push({ index, score: categories.length * 10 + Math.min(5, Math.floor(body.length / 250)), item: { text: quote, category: categories.join(" \xB7 "), source: { title: p2.doc.title, location: p2.location, quote, url: p2.doc.source_url || null }, source_verified: true } });
   }
-  return result;
+  if (!candidates.length) {
+    return paragraphs.filter((p2) => p2.body.trim().length >= 60).slice(0, 20).map((p2) => {
+      const quote = p2.body.trim().slice(0, 700);
+      return { text: quote, category: "\u0414\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u0439 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 (\u0442\u0438\u043F \u0443\u043C\u043E\u0432\u0438 \u043D\u0435 \u0432\u0438\u0437\u043D\u0430\u0447\u0435\u043D\u043E)", source: { title: p2.doc.title, location: p2.location, quote, url: p2.doc.source_url || null }, source_verified: true };
+    });
+  }
+  return candidates.sort((a2, b3) => b3.score - a2.score || a2.index - b3.index).slice(0, 60).sort((a2, b3) => a2.index - b3.index).map((x2) => x2.item);
+}
+function directDocumentConditionEvidence(documents) {
+  const rules = [
+    ["payment_days", /(?:післяоплат|оплат|розрахунк)[\s\S]{0,80}?(\d{1,3})\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, "\u0421\u0442\u0440\u043E\u043A \u043E\u043F\u043B\u0430\u0442\u0438"],
+    ["bid_security_pct", /забезпеченн\w*.{0,40}тендерн\w*.{0,25}пропозиц\w*.{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457"],
+    ["performance_security_pct", /забезпеченн\w*.{0,40}(?:виконан\w*|договор\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0443"],
+    ["advance_payment_pct", /(?:передоплат\w*|аванс\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u041F\u0435\u0440\u0435\u0434\u043E\u043F\u043B\u0430\u0442\u0430"]
+  ];
+  const found = /* @__PURE__ */ new Map();
+  for (const doc of documents || []) {
+    if (!["read", "truncated"].includes(doc.status) || !Array.isArray(doc.segments)) continue;
+    for (const segment of doc.segments) {
+      const body = String(segment.body || "").trim();
+      for (const [field, re2, label] of rules) {
+        const match = body.match(re2);
+        if (!match) continue;
+        const value = Number(String(match[1]).replace(",", "."));
+        if (!Number.isFinite(value) || value < 0 || value > 1e3) continue;
+        const rows = found.get(field) || [];
+        rows.push({ field, value, text: `${label}: ${body}`, source: { title: doc.title, location: segment.location, quote: body, url: doc.source_url || null }, source_verified: true });
+        found.set(field, rows);
+      }
+    }
+  }
+  const evidence = [];
+  const values = {};
+  for (const [field, rows] of found) {
+    const unique = [...new Set(rows.map((row) => row.value))];
+    if (unique.length !== 1) continue;
+    values[field] = unique[0];
+    evidence.push(...rows.filter((row) => row.value === unique[0]));
+  }
+  return { values, evidence };
 }
 var BUYER_BI_APP = "fba3f2f2-cf55-40a0-a79f-b74f5ce947c2";
 function buyerHistoryPeriod(now = /* @__PURE__ */ new Date()) {
@@ -41888,7 +41947,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-september-history-market-documents-v9"
+        version: "2026.11.13-qa-signoff-v13"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -41933,17 +41992,46 @@ var worker_default = {
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
     const cutoff = buyerHistoryDecisionDay(source.data, normalized.parent);
-    const documentsForReading = (source.data?.documents || []).filter((d2) => {
+    const allTenderDocuments = Array.isArray(source.data?.documents) ? source.data.documents : [];
+    const supportedDocuments = allTenderDocuments.filter((d2) => /\.pdf(?:\b|\?)/i.test(String(d2?.title || d2?.url || "")) || /\.docx(?:\b|\?)/i.test(String(d2?.title || d2?.url || "")) || /application\/(?:pdf|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d2?.format || d2?.mimeType || "")));
+    const documentInventory = allTenderDocuments.map((d2, index) => {
       const published = new Date(d2?.datePublished), modified = new Date(d2?.dateModified || d2?.datePublished);
-      return cutoff && Number.isFinite(published.getTime()) && Number.isFinite(modified.getTime()) && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff;
+      const validPublished = Number.isFinite(published.getTime()), validModified = Number.isFinite(modified.getTime());
+      const eligible = Boolean(cutoff && validPublished && validModified && euro5ObservationDate(published) <= cutoff && euro5ObservationDate(modified) <= cutoff);
+      const supported = supportedDocuments.includes(d2);
+      let status = "pending", reason = null;
+      if (!validPublished || !validModified) {
+        status = "date_unverified";
+        reason = "\u041D\u0435 \u0432\u0434\u0430\u043B\u043E\u0441\u044F \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438 \u0434\u0430\u0442\u0443 \u043F\u0443\u0431\u043B\u0456\u043A\u0430\u0446\u0456\u0457/\u0437\u043C\u0456\u043D\u0438; \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0432\u0441\u044F \u043D\u0430 \u0430\u043D\u0430\u043B\u0456\u0437.";
+      } else if (cutoff && !eligible) {
+        status = "excluded_after_cutoff";
+        reason = "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u043E\u043F\u0443\u0431\u043B\u0456\u043A\u043E\u0432\u0430\u043D\u043E \u0430\u0431\u043E \u0437\u043C\u0456\u043D\u0435\u043D\u043E \u043F\u0456\u0441\u043B\u044F \u0434\u0430\u0442\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u043D\u044F \u043F\u043E\u0434\u0430\u043D\u043D\u044F; \u043D\u0435 \u0432\u0438\u043A\u043E\u0440\u0438\u0441\u0442\u043E\u0432\u0443\u0432\u0430\u0432\u0441\u044F.";
+      } else if (!supported) {
+        status = "unsupported";
+        reason = "\u0424\u043E\u0440\u043C\u0430\u0442 \u0432\u043A\u043B\u0430\u0434\u0435\u043D\u043D\u044F \u043D\u0435 \u043F\u0456\u0434\u0442\u0440\u0438\u043C\u0443\u0454\u0442\u044C\u0441\u044F \u0434\u043B\u044F \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0433\u043E \u0447\u0438\u0442\u0430\u043D\u043D\u044F (PDF/DOCX).";
+      }
+      return { document: d2, index, eligible, supported, status, reason, source_id: `DOC-${String(index + 1).padStart(2, "0")}` };
     });
-    const documentExtracts = (await readTenderDocuments(documentsForReading)).map((doc, index) => ({
-      extracted_chars: 0,
-      ...doc,
-      source_id: `DOC-${String(index + 1).padStart(2, "0")}`,
-      source_url: doc.text && /^[a-f0-9]{32}$/i.test(documentsForReading[index]?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${documentsForReading[index].id}` : null
-    }));
+    const eligibleRecords = documentInventory.filter((row) => row.eligible && row.supported);
+    const toRead = eligibleRecords.slice(0, 8);
+    for (const row of eligibleRecords.slice(8)) {
+      row.status = "not_processed_limit";
+      row.reason = "\u041F\u0435\u0440\u0435\u0432\u0438\u0449\u0435\u043D\u043E \u043B\u0456\u043C\u0456\u0442 \u043E\u0431\u0440\u043E\u0431\u043A\u0438 8 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0456\u0432 \u0437\u0430 \u043E\u0434\u0438\u043D \u0437\u0430\u043F\u0438\u0442.";
+    }
+    const readItems = await readTenderDocuments(toRead.map((row) => row.document));
+    const documentExtracts = documentInventory.map((row) => {
+      if (row.status !== "pending") return { title: row.document?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: row.status, reason: row.reason, source_id: row.source_id, source_url: /^[a-f0-9]{32}$/i.test(row.document?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}` : null };
+      const readIndex = toRead.indexOf(row);
+      const item = readItems[readIndex] || { title: row.document?.title || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0438", status: "error", reason: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0447\u0438\u0442\u0430\u043D\u043D\u044F \u0432\u0456\u0434\u0441\u0443\u0442\u043D\u0456\u0439." };
+      return {
+        extracted_chars: 0,
+        ...item,
+        source_id: row.source_id,
+        source_url: /^[a-f0-9]{32}$/i.test(row.document?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}` : null
+      };
+    });
     const directHighlights = directDocumentHighlights(documentExtracts);
+    const directConditions = directDocumentConditionEvidence(documentExtracts);
     const payload = {
       model: env.AI_MODEL,
       messages: [
@@ -41989,12 +42077,25 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
     parsed.document_highlights = directHighlights.filter((item) => ![...parsed.conditions, ...parsed.fuel_requirements, ...parsed.actions].some((other) => other.text === item.text));
+    for (const item of directConditions.evidence) {
+      if (!parsed.conditions.some((existing) => existing.source?.location === item.source.location && existing.text === item.text)) parsed.conditions.unshift(item);
+    }
+    parsed.document_condition_evidence = directConditions.evidence;
+    parsed.document_condition_values = directConditions.values;
+    for (const field of ["bid_security_pct", "performance_security_pct", "advance_payment_pct", "payment_days"])
+      parsed[field] = Object.prototype.hasOwnProperty.call(directConditions.values, field) ? directConditions.values[field] : null;
     parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, paragraphs, extracted_chars, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, paragraphs: paragraphs ?? null, extracted_chars: extracted_chars ?? 0, source_url: source_url || null }));
     parsed.document_read_summary = {
-      available: Array.isArray(source.data?.documents) ? source.data.documents.length : 0,
-      supported_before_cutoff: documentExtracts.length,
+      available: allTenderDocuments.length,
+      supported_before_cutoff: eligibleRecords.length,
+      excluded_after_cutoff: documentExtracts.filter((d2) => d2.status === "excluded_after_cutoff").length,
+      date_unverified: documentExtracts.filter((d2) => d2.status === "date_unverified").length,
+      unsupported: documentExtracts.filter((d2) => d2.status === "unsupported").length,
+      not_processed_limit: documentExtracts.filter((d2) => d2.status === "not_processed_limit").length,
       read: documentExtracts.filter((d2) => d2.status === "read" || d2.status === "truncated" && d2.text).length,
       highlights_found: directHighlights.length,
+      paragraphs_scanned: documentExtracts.reduce((sum, d2) => sum + (d2.segments?.length || 0), 0),
+      evidence_items_found: parsed.conditions.length + parsed.fuel_requirements.length + parsed.actions.length + parsed.document_highlights.length,
       evidence_scan: documentExtracts.map((d2) => ({ kind: d2.kind || null, segments: d2.segments?.length || 0, body_chars: d2.text?.length || 0, keyword_hits: d2.segments?.filter((s2) => s2.body?.toLowerCase().includes("\u0442\u0430\u043B\u043E\u043D")).length || 0 })),
       cutoff_date: cutoff
     };
@@ -42038,6 +42139,8 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       retailDieselSource: null,
       fuelTrendNote: null,
       wholesaleReferenceDate: null,
+      wholesaleSourceUrl: null,
+      wholesaleEvidenceNote: null,
       retailGasolinePriceWithoutVat: null,
       retailDieselPriceWithoutVat: null,
       wholesaleGasolinePriceWithoutVat: null,
@@ -42090,6 +42193,8 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       market_retail_diesel_source: market.retailDieselSource ?? null,
       fuel_market_trend_note: market.fuelTrendNote ?? null,
       market_wholesale_reference_date: market.wholesaleReferenceDate ?? null,
+      market_wholesale_source_url: market.wholesaleSourceUrl ?? null,
+      market_wholesale_evidence_note: market.wholesaleEvidenceNote ?? null,
       market_retail_gasoline_price_uah_l_without_vat: market.retailGasolinePriceWithoutVat ?? null,
       market_retail_diesel_price_uah_l_without_vat: market.retailDieselPriceWithoutVat ?? null,
       market_wholesale_gasoline_price_uah_l_without_vat: market.wholesaleGasolinePriceWithoutVat ?? null,
