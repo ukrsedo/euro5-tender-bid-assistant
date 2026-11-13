@@ -1328,7 +1328,7 @@ CPV, очікувана вартість і ПДВ уже перевірені �
 
 ЗАХИСТ ВІД ВИГАДАНИХ ВИМОГ І ПОСИЛАНЬ:
 - У масивах conditions, fuel_requirements та actions повертай лише пункти, прямо підтверджені прочитаним документом.
-- Кожен пункт має бути об'єктом з полями text, source_id, source_location та evidence_quote. text і evidence_quote мають бути тим самим дослівним уривком із документа; не переказуй і не узагальнюй його. source_id має точно відповідати ID документа, наданому перед текстом. source_location — тільки «сторінка N» для PDF або «абзац N» для DOCX.
+- Кожен пункт має бути об'єктом з полями text, source_id, source_location та evidence_quote. text і evidence_quote мають бути тим самим дослівним уривком із документа; не переказуй і не узагальнюй його. source_id має точно відповідати ID документа, наданому перед текстом. source_location — «сторінка N» для PDF, «абзац N» для DOCX або «фрагмент N» для старого формату DOC.
 - Якщо текст, сторінка/абзац або дослівний уривок не підтверджуються наданим текстом, не повертай пункт.
 - Не створюй URL, посилань, назв документів, номерів сторінок чи абзаців. URL не потрібні у відповіді. Посилання на документ сформує програма лише з перевіреного URL Prozorro.
 - Не використовуй структуру Prozorro або власні припущення як підставу для пунктів цих трьох масивів. Дані Prozorro використовуються окремо для структурованих полів.
@@ -1387,19 +1387,21 @@ function normalizeEvidenceText(value) {
   return String(value || '').normalize('NFKC').replace(/[\u00a0\u202f\s]+/gu,' ').trim();
 }
 function citationBlock(document, location) {
-  const match=String(location||'').match(/^(сторінка|абзац)\s+(\d+)$/i);
+  const match=String(location||'').match(/^(сторінка|абзац|фрагмент)\s+(\d+)$/i);
   if(!match||!document?.text)return null;
   const kind=match[1].toLowerCase(),number=Number(match[2]);
   if(!Number.isSafeInteger(number)||number<1)return null;
   if(kind==='сторінка'&&document.kind!=='pdf')return null;
   if(kind==='абзац'&&document.kind!=='docx')return null;
-  const marker=kind==='сторінка'?`[сторінка ${number}]`:`[абзац ${number}]`;
+  if(kind==='фрагмент'&&document.kind!=='doc')return null;
+  const marker=kind==='сторінка'?`[сторінка ${number}]`:kind==='абзац'?`[абзац ${number}]`:`[фрагмент ${number}]`;
   const start=document.text.indexOf(marker);
   if(start<0)return null;
   const contentStart=start+marker.length;
   const nextPage=document.text.indexOf('[сторінка ',contentStart);
-  const nextParagraph=document.text.indexOf('[абзац ',contentStart);
-  const ends=[nextPage,nextParagraph].filter(n=>n>=0);
+    const nextParagraph=document.text.indexOf('[абзац ',contentStart);
+    const nextFragment=document.text.indexOf('[фрагмент ',contentStart);
+    const ends=[nextPage,nextParagraph,nextFragment].filter(n=>n>=0);
   const end=ends.length?Math.min(...ends):document.text.length;
   return normalizeEvidenceText(document.text.slice(contentStart,end));
 }
@@ -1779,8 +1781,12 @@ async function tenderDocumentRoute(request,origin){
   if(!doc)return json({error:'Документ не належить цьому тендеру.'},404,origin);
   const response=await fetchProzorroDocument(doc.url);
   if(!response.ok)return json({error:'Prozorro не відкрив документ (HTTP '+response.status+').'},502,origin);
-  const kind=String(doc.title||'').toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  return new Response(response.body,{status:200,headers:{'Content-Type':kind,'Content-Disposition':`attachment; filename="tender-document-${id}.${kind==='application/pdf'?'pdf':'docx'}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...cors(origin)}});
+  const descriptor=[doc.title,doc.format,doc.mimeType,doc.mediaType].filter(Boolean).join(' ').toLowerCase();
+  const extension=/\.([a-z0-9]+)(?:\b|\?)/i.exec(String(doc.title||''))?.[1]?.toLowerCase();
+  const allowedExtensions=new Set(['pdf','doc','docx','docm','p7s']);
+  const ext=allowedExtensions.has(extension)?extension:/application\/pdf/.test(descriptor)?'pdf':/wordprocessingml\.document/.test(descriptor)?'docx':/application\/(?:msword|vnd\.ms-word)/.test(descriptor)?'doc':/pkcs7|pkcs-7/.test(descriptor)?'p7s':'bin';
+  const contentType={pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',docm:'application/vnd.ms-word.document.macroEnabled.12',p7s:'application/pkcs7-signature',bin:'application/octet-stream'}[ext];
+  return new Response(response.body,{status:200,headers:{'Content-Type':contentType,'Content-Disposition':`attachment; filename="tender-document-${id}.${ext}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...cors(origin)}});
  }catch(e){return json({error:'Не вдалося завантажити документ Prozorro: '+String(e?.message||'помилка').slice(0,200)},502,origin)}
 }
 
@@ -1802,7 +1808,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-qa-signoff-v15"
+        version: "2026.11.13-legacy-doc-v16"
       }, 200, origin);
     }
 
@@ -1855,7 +1861,7 @@ export default {
     const structuredPayment = extractPaymentTerms(source.data);
     const cutoff=buyerHistoryDecisionDay(source.data,normalized.parent);
     const allTenderDocuments=Array.isArray(source.data?.documents)?source.data.documents:[];
-    const supportedDocuments=allTenderDocuments.filter(d=>/\.pdf(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.docx(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/application\/(?:pdf|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d?.format||d?.mimeType||'')));
+    const supportedDocuments=allTenderDocuments.filter(d=>/\.pdf(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.docx(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.doc(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/application\/(?:pdf|msword|vnd\.ms-word|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d?.format||d?.mimeType||'')));
     const documentInventory=allTenderDocuments.map((d,index)=>{
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
       const validPublished=Number.isFinite(published.getTime()),validModified=Number.isFinite(modified.getTime());
@@ -1864,7 +1870,7 @@ export default {
       let status='pending',reason=null;
       if(!validPublished||!validModified){status='date_unverified';reason='Не вдалося підтвердити дату публікації/зміни; документ не передавався на аналіз.';}
       else if(cutoff&&!eligible){status='excluded_after_cutoff';reason='Документ опубліковано або змінено після дати завершення подання; не використовувався.';}
-      else if(!supported){status='unsupported';reason='Формат вкладення не підтримується для текстового читання (PDF/DOCX).';}
+      else if(!supported){status='unsupported';reason='Формат вкладення не підтримується для текстового читання (PDF/DOC/DOCX).';}
       return {document:d,index,eligible,supported,status,reason,source_id:`DOC-${String(index+1).padStart(2,'0')}`};
     });
     const eligibleRecords=documentInventory.filter(row=>row.eligible&&row.supported);
@@ -1943,7 +1949,7 @@ response_format: { type: "json_object" }
     // are not carried into the calculator.
     for(const field of ['bid_security_pct','performance_security_pct','advance_payment_pct','payment_days','delivery_days'])
       parsed[field]=Object.prototype.hasOwnProperty.call(directConditions.values,field)?directConditions.values[field]:null;
-    parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
+    parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,kind,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,kind:kind||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
     parsed.document_read_summary = {
       available: allTenderDocuments.length,
       supported_before_cutoff: eligibleRecords.length,
@@ -2089,7 +2095,7 @@ response_format: { type: "json_object" }
       payment_days: parsed.payment_days ?? null,
       payment_note: parsed.payment_note ?? null,
       scope_note: "Відповідність сфери застосування перевірено за структурованими даними публічного API Prozorro.",
-      source_scope: "Основні дані тендера завантажено з Prozorro. Статус читання PDF/DOCX і підтверджені цитати наведено вище."
+      source_scope: "Основні дані тендера завантажено з Prozorro. Статус читання PDF, DOC і DOCX та підтверджені цитати наведено вище."
     }, 200, origin);
   }
 };
