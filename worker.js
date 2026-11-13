@@ -676,7 +676,9 @@ function tenderAnnouncementDate(data) {
   const match = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
   if (!match) return null;
   const date = new Date(match[1] + "T12:00:00Z");
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==match[1] || date.getTime()>Date.now()) return null;
+  // Compare calendar dates in Kyiv, not the noon-UTC timestamp. A tender
+  // announced today must not look like a future tender before 12:00 UTC.
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==match[1] || euro5ObservationDate(date)>euro5ObservationDate()) return null;
   return date;
 }
 // History is sampled before the proposal deadline, or through the current day
@@ -1479,9 +1481,10 @@ export function directDocumentHighlights(documents) {
 // paragraph is retained as the citation; conflicting values are not promoted.
 export function directDocumentConditionEvidence(documents) {
   const rules = [
-    ['payment_days', /(?:післяоплат|оплат|розрахунк)[\s\S]{0,80}?(\d{1,3})\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, 'Строк оплати'],
-    ['bid_security_pct', /забезпеченн\w*.{0,40}тендерн\w*.{0,25}пропозиц\w*.{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення пропозиції'],
-    ['performance_security_pct', /забезпеченн\w*.{0,40}(?:виконан\w*|договор\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення договору'],
+    ['payment_days', /(?:оплат|розрахунк)[а-яіїєґ]*[\s\S]{0,120}?(?:проводиться|проводяться|здійснюється|здійснюються)[\s\S]{0,300}?(?:протягом|в строк|у строк)\s+(\d{1,3})\s*(?:\([^)]{1,50}\))?\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*|банківськ[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, 'Строк оплати'],
+    ['delivery_days', /(?:строк|термін)[а-яіїєґ\s]{0,25}(?:поставки|постачання|передачі)[\s\S]{0,140}?(?:протягом|в строк|у строк)\s+(\d{1,3})\s*(?:\([^)]{1,50}\))?\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*|банківськ[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, 'Строк постачання'],
+    ['bid_security_pct', /забезпеченн[а-яіїєґ\s]{0,40}тендерн[а-яіїєґ\s]{0,30}пропозиц[а-яіїєґ\s\S]{0,150}?(?:розмірі|становить)\s*([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення пропозиції'],
+    ['performance_security_pct', /забезпеченн[а-яіїєґ\s]{0,30}виконан[а-яіїєґ\s\S]{0,150}?(?:розмірі|становить)\s*([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Забезпечення договору'],
     ['advance_payment_pct', /(?:передоплат\w*|аванс\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, 'Передоплата']
   ];
   const found = new Map();
@@ -1794,7 +1797,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-qa-signoff-v13"
+        version: "2026.11.13-qa-signoff-v14"
       }, 200, origin);
     }
 
@@ -1933,7 +1936,7 @@ response_format: { type: "json_object" }
     // Numeric commercial terms must be grounded in a verified document or in
     // the structured Prozorro milestones applied below. Uncited model values
     // are not carried into the calculator.
-    for(const field of ['bid_security_pct','performance_security_pct','advance_payment_pct','payment_days'])
+    for(const field of ['bid_security_pct','performance_security_pct','advance_payment_pct','payment_days','delivery_days'])
       parsed[field]=Object.prototype.hasOwnProperty.call(directConditions.values,field)?directConditions.values[field]:null;
     parsed.document_read_status = documentExtracts.map(({source_id,title,status,reason,pages,paragraphs,extracted_chars,source_url}) => ({source_id,title,status,reason:reason||null,pages:pages??null,paragraphs:paragraphs??null,extracted_chars:extracted_chars??0,source_url:source_url||null}));
     parsed.document_read_summary = {
