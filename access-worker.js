@@ -157,7 +157,7 @@ export async function handle(request,env,ctx,application=app){
       return json(data,upstream.status);
     }catch{return json({error:'Сервіс аналізу тимчасово недоступний. Спробуйте ще раз.'},502);}
   }
-  if(['/buyer-history','/health'].includes(path)||path.startsWith('/memory/')){
+  if(['/buyer-history','/health','/tender-document'].includes(path)||path.startsWith('/memory/')){
     // Identity is a trusted internal object, never a client header or selected profile ID.
     const headers=new Headers(request.headers);headers.delete('Origin');headers.delete('Authorization');
     return application.fetch(new Request(request,{headers}),{...env,MEMORY_AUTH_MODE:'session',EURO5_SESSION_ACTOR:user},ctx);
