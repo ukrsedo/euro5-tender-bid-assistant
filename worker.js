@@ -850,7 +850,8 @@ async function fetchEnkorrCurrentPrices() {
 const ENKORR_ARCHIVE_URL = 'https://raw.githubusercontent.com/ukrsedo/euro5-tender-bid-assistant/main/data/enkorr-wholesale-history.json';
 async function fetchArchivedEnkorrPrices(tenderDate) {
   try {
-    const response = await fetch(ENKORR_ARCHIVE_URL, {signal:AbortSignal.timeout(10000)});
+    const cacheVersion=Math.floor(Date.now()/300000);
+    const response = await fetch(ENKORR_ARCHIVE_URL+'?v='+cacheVersion,{headers:{'Cache-Control':'no-cache'},signal:AbortSignal.timeout(10000)});
     if (!response.ok) return null;
     const archive = await response.json();
     if (archive.schema_version !== 1 || archive.source_url !== 'https://enkorr.ua/' || !Array.isArray(archive.observations)) return null;
@@ -1463,6 +1464,14 @@ export function directDocumentHighlights(documents) {
     if(!quote||!body.includes(quote))continue;
     candidates.push({index,score:categories.length*10+Math.min(5,Math.floor(body.length/250)),item:{text:quote,category:categories.join(' · '),source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true}});
   }
+  if(!candidates.length){
+    // Never leave a readable document looking empty: provide verbatim, located
+    // excerpts without labeling them as requirements when no rule matched.
+    return paragraphs.filter(p=>p.body.trim().length>=60).slice(0,20).map(p=>{
+      const quote=p.body.trim().slice(0,700);
+      return {text:quote,category:'Дослівний фрагмент (тип умови не визначено)',source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true};
+    });
+  }
   return candidates.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,60).sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
@@ -1749,7 +1758,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-enkorr-and-document-scan-v11"
+        version: "2026.11.13-enkorr-and-document-scan-v12"
       }, 200, origin);
     }
 
