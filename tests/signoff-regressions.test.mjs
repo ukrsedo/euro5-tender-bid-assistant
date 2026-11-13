@@ -39,6 +39,38 @@ test('document-derived commercial terms keep exact source and conflicting values
   assert.equal(Object.hasOwn(conflict.values,'payment_days'),false);
 });
 
+test('explicit fuel wording in a read contract is classified with its exact citation',()=>{
+  const start=worker.indexOf('export function directDocumentHighlights(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const code=worker.slice(start,end).replace('export function','function');
+  const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
+  const quote='1.2. Найменування Товару: бензин автомобільний А-95-Євро5 та дизельне паливо ДП-Євро5 (наливом).';
+  const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 14] ${quote}`,segments:[{location:'абзац 14',body:quote}]}]);
+  assert.equal(result.length,1);
+  assert.match(result[0].category,/Технічні вимоги до пального/);
+  assert.equal(result[0].source.location,'абзац 14');
+  assert.equal(result[0].source.quote,quote);
+});
+
+test('retail benchmark uses the last verified observation within five business days and keeps its date',async()=>{
+  const start=worker.indexOf('async function fetchRetailPrice(');
+  const end=worker.indexOf('\n}\n\n/**',start)+2;
+  const code=worker.slice(start,end);
+  const target=new Date('2026-11-13T12:00:00Z');
+  const context={archive:[{date:'2026-11-09',prices_uah_l_with_vat:{a95:75.6}}],today:'2026-11-13'};
+  const ctx={Date,Number,String,Math,UKRAINE_STANDARD_VAT:0.2,euro5ObservationDate:d=>d.toISOString().slice(0,10),formatUaDate:d=>`${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}.${d.getUTCFullYear()}`,
+    parseUaDate:s=>{const [d,m,y]=s.split('.').map(Number);return new Date(Date.UTC(y,m-1,d,12));},
+    wholesaleBenchmarkAge:(t,p)=>{let age=0;for(let d=Date.parse(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv'}).format(p)+'T00:00:00Z')+86400000;d<=Date.parse(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv'}).format(t)+'T00:00:00Z');d+=86400000){const w=new Date(d).getUTCDay();if(w!==0&&w!==6)age++;}return age;},
+    fetchMinfinPrice:async()=>({source:'Minfin archive',date:'09.11.2026',priceWithVat:75,priceWithoutVat:62.5}),
+    euro5RetailRecord:(slug,date,c)=>{const e=c.archive.find(x=>x.date===date.toISOString().slice(0,10));const price=e?.prices_uah_l_with_vat?.[slug];return price?{source:'EURO5 archive',date:'09.11.2026',priceWithVat:price,priceWithoutVat:price/1.2}:null;}};
+  vm.createContext(ctx);vm.runInContext(code+';this.f=fetchRetailPrice',ctx);
+  const result=await ctx.f('a95',target,context);
+  assert.equal(result.date,'09.11.2026');
+  assert.equal(result.check.status,'reference_only');
+  assert.match(result.check.reason,/п’ять робочих днів/);
+  assert.equal(result.priceWithVat,75.6);
+});
+
 test('market comparison exposes calculated market value and breakdown in review',()=>{
   const app=fs.readFileSync('app.js','utf8');
   assert.match(app,/Розрахункова ринкова вартість без ПДВ/);

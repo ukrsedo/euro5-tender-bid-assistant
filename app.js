@@ -343,7 +343,9 @@ function marketComparison(expectedValue, gasolineVolume, dieselVolume, fuelType,
   } else return null;
   if(!(expectedValue>0) || !(marketValue>0)) return null;
   const gap=(expectedValue/marketValue-1)*100;
-  return {gap,marketValue,format,gasFormat,dieselFormat,gasPrice,dieselPrice,indicative,source:benchmarkDescription(format,gasFormat,dieselFormat)};
+  const referenceDate=format==='split'?null:(format==='retail'?lastExtraction?.market_retail_reference_date:lastExtraction?.market_wholesale_reference_date);
+  const referenceContext=referenceDate&&referenceDate!==lastExtraction?.tender_announcement_date?'prior':'announcement';
+  return {gap,marketValue,format,gasFormat,dieselFormat,gasPrice,dieselPrice,indicative,referenceDate,referenceContext,source:benchmarkDescription(format,gasFormat,dieselFormat)};
 }
 
 function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
@@ -359,7 +361,9 @@ function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelT
   const format=lastExtraction.market_benchmark_type||'unknown';
   const source=lastExtraction.market_benchmark_label
     ?`${lastExtraction.market_benchmark_label}${lastExtraction.market_reference_date?` (${lastExtraction.market_reference_date})`:''}.`:'';
-  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,gasPrice:Number(lastExtraction?.market_wholesale_gasoline_price_uah_l_without_vat)||null,dieselPrice:Number(lastExtraction?.market_wholesale_diesel_price_uah_l_without_vat)||null,indicative:false,referenceContext:'announcement',source};
+  const referenceDate=lastExtraction?.market_reference_date;
+  const referenceContext=referenceDate&&referenceDate!==lastExtraction?.tender_announcement_date?'prior':'announcement';
+  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,gasPrice:Number(lastExtraction?.market_wholesale_gasoline_price_uah_l_without_vat)||null,dieselPrice:Number(lastExtraction?.market_wholesale_diesel_price_uah_l_without_vat)||null,indicative:false,referenceDate,referenceContext,source};
 }
 
 function currentMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelType,supplyData){
@@ -396,6 +400,10 @@ function marketCalculationText(cmp,fuelType,gasolineVolume,dieselVolume){
 
 function marketGapText(gap,referenceContext='announcement'){
   const a=Math.abs(gap);
+  if(referenceContext==='prior'){
+    if(a<0.05)return 'Очікувана вартість практично відповідає останньому підтвердженому ринковому орієнтиру перед оголошенням.';
+    return `Очікувана вартість на ${num.format(a)}% ${gap>0?'вища':'нижча'} за останній підтверджений ринковий орієнтир перед оголошенням.`;
+  }
   const when=referenceContext==='current'?'за поточним гуртовим орієнтиром (після оголошення)':'на дату оголошення';
   if(a<0.05) return `Очікувана вартість практично відповідає ринковій вартості такого обсягу ${when}.`;
   return `Очікувана вартість на ${num.format(a)}% ${gap>0?'вища':'нижча'} за ринкову вартість такого обсягу ${when}.`;
