@@ -130,7 +130,8 @@ test('UA-2026-11-12-017662-a clauses are extracted from the same paragraphs read
   const doc={status:'read',kind:'docx',title:'ПРОЕКТ ДОГОВОРУ.docx',source_id:'DOC-01',source_url:'/tender-document',text:bodies.map(([location,body])=>`[${location}] ${body}`).join('\n'),segments:bodies.map(([location,body])=>({location,body}))};
   const result=ctx.h([doc]);
   const locations=Array.from(result,item=>item.source.location);
-  for(const location of ['абзац 15','абзац 16','абзац 26','абзац 27','абзац 30','абзац 31','абзац 34','абзац 35','абзац 36','абзац 37','абзац 38','абзац 39','абзац 156','абзац 160','абзац 202','абзац 203','абзац 214','абзац 216'])assert.ok(locations.includes(location),`missing ${location}`);
+  for(const location of ['абзац 15','абзац 16','абзац 26','абзац 27','абзац 30','абзац 31','абзац 34','абзац 35','абзац 36','абзац 37','абзац 38','абзац 39','абзац 156','абзац 160','абзац 202','абзац 203','абзац 214'])assert.ok(locations.includes(location),`missing ${location}`);
+  assert.equal(locations.filter(location=>['абзац 16','абзац 216'].includes(location)).length,1,'repeated coupon-validity clauses should be consolidated');
   assert.ok(!locations.includes('абзац 6'));
   assert.ok(!locations.includes('абзац 7'));
   assert.ok(result.every(item=>doc.text.includes(item.text)&&item.source_verified));
