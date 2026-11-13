@@ -40055,7 +40055,7 @@ var MAX_DOCUMENT_REDIRECTS = 5;
 function isTrustedProzorroDocumentUrl(url) {
   return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && TRUSTED_DOCUMENT_DOMAINS.some((domain) => url.hostname === domain || url.hostname.endsWith("." + domain));
 }
-async function fetchProzorroDocument(initialUrl, fetcher) {
+async function fetchProzorroDocument(initialUrl, fetcher = fetch) {
   let url = new URL(initialUrl);
   for (let redirects = 0; ; redirects++) {
     if (!isTrustedProzorroDocumentUrl(url)) throw new Error("\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u0430\u043F\u0440\u0430\u0432\u043B\u044F\u0454 \u043D\u0430 \u043D\u0435\u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u0438\u0439 \u0434\u043E\u043C\u0435\u043D.");
