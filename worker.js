@@ -1406,15 +1406,10 @@ function cleanAiText(value, kind) {
   return text;
 }
 function evidenceTopicAllowed(kind, quote) {
-  const text=String(quote||'');
-  const payment=/оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк|ціна.{0,35}(?:зменш|кориг|змін)|зміна.{0,25}цін/iu.test(text);
-  const supplyOperative=/(?:зобов.?язується|повинен|повинна|повинні|повинно|має право|здійснюється|здійснюються|поставля(?:є|ється|ти)|переда(?:є|ється|ти)|відпуска(?:є|ється|ти)|виключно|повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш.{0,30}|протягом|за адресою|місце поставки)/iu.test(text);
-  const supplySubject=/(?:поставк|постачан|доставк|відпуск|отриман.{0,20}пальн|талон|скретч.?карт|паливн.{0,12}карт|АЗС|автозаправ|обсяг.{0,20}закуп)/iu.test(text);
-  const fuel=/бензин|дизел|палив/iu.test(text);
-  const explicitGrade=/(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)/iu.test(text);
-  if(kind==='conditions')return payment||(supplyOperative&&supplySubject);
-  if(kind==='fuel_requirements')return fuel&&explicitGrade;
-  if(kind==='actions')return payment||(supplyOperative&&supplySubject)||(fuel&&explicitGrade);
+  const categories=classifyContractParagraph(quote);
+  if(kind==='conditions')return categories.includes('Оплата та розрахунки')||categories.includes('Постачання та відпуск');
+  if(kind==='fuel_requirements')return categories.includes('Технічні вимоги до пального');
+  if(kind==='actions')return categories.length>0;
   return false;
 }
 function validateAiEvidenceList(items, kind, documents) {
@@ -1436,15 +1431,30 @@ function validateAiEvidenceList(items, kind, documents) {
   return out.slice(0,30);
 }
 
-// A read attachment is useful even when the language model returns an empty
-// evidence array. These excerpts are copied verbatim from numbered paragraphs
-// or pages; no condition or citation is generated from the file name.
+function classifyContractParagraph(value) {
+  const text=String(value||'').replace(/[\u00a0\u202f]/gu,' ').replace(/\s+/gu,' ').trim();
+  if(!text||/санкц|країн.{0,20}походжен|бенефіціар/iu.test(text))return [];
+  // Definition clauses describe vocabulary; they do not set operating terms.
+  if(/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Погашен.{0,30}Талон|Дійсн.{0,30}Талон|Паливо\s*\(Товар\))[^\n]{0,120}\s[-–—]\s/iu.test(text))return [];
+  const categories=[];
+  const payment=/(?:оплата|розрахунк|платіж)[\s\S]{0,220}(?:безготівк|перерахуван|рахунок|(?:протягом|в строк|у строк)\s+\d|відстроч|лише за фактично|після фактично|авансу?\s+\d)|(?:безготівк|перерахуван|відстроч)[\s\S]{0,160}(?:оплата|розрахунк|платіж)/iu.test(text);
+  const fuel=/(?:бензин|дизел|паливн.{0,12}пальн)/iu.test(text);
+  const gradeOrSpec=/(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*5|ДСТУ\s*768[78](?:\s*:\s*2015)?|768[78]\s*:\s*2015|октанов.{0,20}\d|цетанов.{0,20}\d|вміст.{0,20}сірк|густин.{0,20}\d|температур.{0,35}(?:фільтр|застиган)|сезонн.{0,20}(?:літн|зимов|арктич)|біокомпонент.{0,20}\d)/iu.test(text);
+  if(fuel&&gradeOrSpec)categories.push('Технічні вимоги до пального');
+  if(payment)categories.push('Оплата та розрахунки');
+  const directSupply=/(?:передача\s*\/\s*отримання\s+товар[ау]\s+здійснюється|зобов.?язується.{0,50}(?:передати|поставити|здійснювати постачання)|строк поставки товару|термін поставки товару|місце поставки товару|відпуск товару покупцю здійснюється|відпуск товару покупцю|постачання (?:пального|товару) здійснюється|товар передається за талонами|товар вважається поставленим|поставка товару здійснюється|не проводить відпуск товару|обмін.{0,80}талон|талон.{0,150}обмін|зберігання придбаного покупцем товару|термін дії невикористаних талонів|строк дії невикористаних талонів|товар передається продавцем однією партією|передача товару однією партією|товар передається з моменту його фактичного отримання|товар вважається поставленим з моменту|поставка товару здійснюється у робочі години)/iu.test(text);
+  const measurableNetwork=/АЗС/iu.test(text)&&/(?:не менш\s*(?:як\s*)?\d|щонайменше\s*\d|по всій території|в кожній області|в кожному обласному центрі)/iu.test(text);
+  const couponValidity=/(?:талон|скретч.?карт|паливн.{0,12}карт)/iu.test(text)&&/(?:строк|термін) дії/iu.test(text)&&/(?:не менш|продовж|пролонг|\d+\s*(?:місяц|рік|рок))/iu.test(text);
+  const placeOrDeadline=/(?:місце|строк|термін) поставки/iu.test(text)&&/(?:міст|област|адрес|до\s+\d|протягом\s+\d|\d{1,2}[.\-/]\d{1,2})/iu.test(text);
+  const couponFormat=/(?:номінал|вид нафтопродукту|талон.{0,40}(?:літр|мікрочіп|цифрового захисту))/iu.test(text)&&/(?:талон|скретч.?карт)/iu.test(text)&&/\d/iu.test(text);
+  const prohibitedGeneric=/відповідно до інструкц|затверджен.{0,30}наказом|сертифікат.{0,20}відповідност|паспорт.{0,20}виробника/iu.test(text)&&!/(?:дсту\s*768[78]|технічн.{0,30}регламент.{0,30}пальн|відповідати вимогам.*дсту)/iu.test(text);
+  if((directSupply||measurableNetwork||couponValidity||placeOrDeadline||couponFormat)&&!prohibitedGeneric)categories.push('Постачання та відпуск');
+  return categories;
+}
+
+// Only operative, decision-relevant contract terms are surfaced. All quotes
+// are copied verbatim from numbered source segments and retain their citation.
 export function directDocumentHighlights(documents) {
-  const groups=[
-    {category:'Технічні вимоги до пального',re:/(?:бензин|дизел|палив)[\s\S]{0,100}(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)|(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)[\s\S]{0,100}(?:бензин|дизел|палив)/iu},
-    {category:'Постачання та відпуск',re:/(?:поставк|постачан|доставк|відпуск|отриман)[\s\S]{0,120}(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш|АЗС|талон|скретч.?карт|паливн.{0,12}карт|за адресою)|(?:талон|скретч.?карт|паливн.{0,12}карт)[\s\S]{0,120}(?:повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш)|(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш)[\s\S]{0,120}(?:поставк|постачан|доставк|відпуск|отриман|АЗС|талон|скретч.?карт|паливн.{0,12}карт)/iu},
-    {category:'Оплата та розрахунки',re:/(?:оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк)[\s\S]{0,160}(?:провод|здійсню|строк|протягом|днів|день|після|аванс|передоплат|рахунк|накладн|шляхом|безготів|перерахуван)|(?:провод|здійсню)[\s\S]{0,120}(?:оплат|розрахунк|платіж)/iu}
-  ];
   const paragraphs=[];
   for(const doc of documents){
     if(!['read','truncated'].includes(doc.status)||!doc.text)continue;
@@ -1465,8 +1475,11 @@ export function directDocumentHighlights(documents) {
   const candidates=[];
   for(let index=0;index<paragraphs.length;index++){
     const p=paragraphs[index],body=p.body.trim();
-    if(body.length<35)continue;
-    const categories=groups.filter(group=>group.re.test(body)).map(group=>group.category);
+    // Table cells often contain a complete, actionable requirement in one
+    // short paragraph (e.g. coupon denomination or validity). The classifier
+    // is restrictive, so do not discard these source-backed rows by length.
+    if(body.length<20)continue;
+    const categories=classifyContractParagraph(body);
     if(!categories.length)continue;
     const quote=body.slice(0,700).trim();
     if(!quote||!body.includes(quote))continue;
@@ -1800,7 +1813,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-contract-scope-v18"
+        version: "2026.11.13-contract-scope-v19"
       }, 200, origin);
     }
 
