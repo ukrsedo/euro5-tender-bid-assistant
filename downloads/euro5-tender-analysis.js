@@ -45566,6 +45566,29 @@ function directDocumentHighlights(documents) {
   }
   return [...deduplicated.values()].sort((a4, b6) => a4.index - b6.index).map((x2) => x2.item);
 }
+function coreDocumentClauses(documents) {
+  const rules = [
+    ["\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438", /(?:спосіб розрахунків|оплата за товар).{0,260}(?:безготівк|перерахуван|відстроч|фактично отриман)/iu],
+    ["\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A", /(?:передача\s*\/\s*отримання товару здійснюється|термін дії талон|строк поставки товару|термін поставки товару|місце поставки товару|здійснювати постачання товару|товар передається за талонами|поставка товару здійснюється у робочі години|відпуск товару покупцю здійснюється цілодобово)/iu],
+    ["\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E", /(?:бензин\s+[АA]\s*[-–]?\s*95.{0,35}євро\s*5|дизельн.{0,12}палив.{0,35}євро\s*5|технічні та якісні вимоги.{0,300}дсту\s*768[78])/iu]
+  ];
+  const out = [];
+  for (const doc of documents || []) {
+    if (!["read", "truncated"].includes(doc.status) || !Array.isArray(doc.segments)) continue;
+    for (const segment of doc.segments) {
+      const body = String(segment.body || "").trim();
+      if (body.length < 20 || !segment.location || /санкц|країн.{0,20}походжен|бенефіціар/iu.test(body)) continue;
+      if (/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Паливо\s*\(Товар\)).{0,120}\s[-–—]\s/iu.test(body)) continue;
+      for (const [category, re2] of rules) {
+        if (!re2.test(body)) continue;
+        const quote = body.slice(0, 700).trim();
+        out.push({ text: quote, category, source: { title: doc.title, location: segment.location, quote, url: doc.source_url || null }, source_verified: true });
+        break;
+      }
+    }
+  }
+  return out.slice(0, 30);
+}
 function directDocumentConditionEvidence(documents) {
   const rules = [
     ["payment_days", /(?:оплат|розрахунк)[а-яіїєґ]*[\s\S]{0,120}?(?:проводиться|проводяться|здійснюється|здійснюються)[\s\S]{0,300}?(?:протягом|в строк|у строк)\s+(\d{1,3})\s*(?:\([^)]{1,50}\))?\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*|банківськ[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, "\u0421\u0442\u0440\u043E\u043A \u043E\u043F\u043B\u0430\u0442\u0438"],
@@ -46029,7 +46052,8 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-contract-scope-v20"
+        version: "2026.11.13-contract-scope-v21",
+        extraction_policy: "source-segments-v21"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -46115,7 +46139,12 @@ var worker_default = {
         source_url: /^[a-f0-9]{32}$/i.test(row.document?.id || "") ? `/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}` : null
       };
     });
-    const directHighlights = directDocumentHighlights(documentExtracts);
+    const classifiedHighlights = directDocumentHighlights(documentExtracts);
+    const coreHighlights = coreDocumentClauses(documentExtracts);
+    const directHighlights = [...classifiedHighlights];
+    for (const item of coreHighlights) {
+      if (!directHighlights.some((existing) => existing.source.location === item.source.location && existing.source.title === item.source.title)) directHighlights.push(item);
+    }
     const directConditions = directDocumentConditionEvidence(documentExtracts);
     const payload = {
       model: env.AI_MODEL,
@@ -46182,6 +46211,9 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       highlights_found: directHighlights.length,
       paragraphs_scanned: documentExtracts.reduce((sum, d5) => sum + (d5.segments?.length || 0), 0),
       evidence_items_found: parsed.conditions.length + parsed.fuel_requirements.length + parsed.actions.length + parsed.document_highlights.length,
+      extraction_policy: "source-segments-v21",
+      core_clause_count: coreHighlights.length,
+      classified_clause_count: classifiedHighlights.length,
       evidence_scan: documentExtracts.map((d5) => ({ kind: d5.kind || null, segments: d5.segments?.length || 0, body_chars: d5.text?.length || 0, keyword_hits: d5.segments?.filter((s3) => s3.body?.toLowerCase().includes("\u0442\u0430\u043B\u043E\u043D")).length || 0 })),
       cutoff_date: cutoff
     };
@@ -46734,6 +46766,7 @@ export {
   actualTenderParticipants,
   buildCompetitionForecast,
   buildMarketReference,
+  coreDocumentClauses,
   worker_default as default,
   directDocumentConditionEvidence,
   directDocumentHighlights,
