@@ -40753,7 +40753,7 @@ function tenderAnnouncementDate(data) {
   const match = String(data?.tenderID || "").match(/^UA-(\d{4}-\d{2}-\d{2})-\d+-[a-z]$/i);
   if (!match) return null;
   const date = /* @__PURE__ */ new Date(match[1] + "T12:00:00Z");
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== match[1] || date.getTime() > Date.now()) return null;
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== match[1] || euro5ObservationDate(date) > euro5ObservationDate()) return null;
   return date;
 }
 function buyerHistoryDecisionDay(data, tenderId) {
@@ -41491,9 +41491,10 @@ function directDocumentHighlights(documents) {
 }
 function directDocumentConditionEvidence(documents) {
   const rules = [
-    ["payment_days", /(?:післяоплат|оплат|розрахунк)[\s\S]{0,80}?(\d{1,3})\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, "\u0421\u0442\u0440\u043E\u043A \u043E\u043F\u043B\u0430\u0442\u0438"],
-    ["bid_security_pct", /забезпеченн\w*.{0,40}тендерн\w*.{0,25}пропозиц\w*.{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457"],
-    ["performance_security_pct", /забезпеченн\w*.{0,40}(?:виконан\w*|договор\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0443"],
+    ["payment_days", /(?:оплат|розрахунк)[а-яіїєґ]*[\s\S]{0,120}?(?:проводиться|проводяться|здійснюється|здійснюються)[\s\S]{0,300}?(?:протягом|в строк|у строк)\s+(\d{1,3})\s*(?:\([^)]{1,50}\))?\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*|банківськ[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, "\u0421\u0442\u0440\u043E\u043A \u043E\u043F\u043B\u0430\u0442\u0438"],
+    ["delivery_days", /(?:строк|термін)[а-яіїєґ\s]{0,25}(?:поставки|постачання|передачі)[\s\S]{0,140}?(?:протягом|в строк|у строк)\s+(\d{1,3})\s*(?:\([^)]{1,50}\))?\s*(?:календарн[а-яіїєґ]*|робоч[а-яіїєґ]*|банківськ[а-яіїєґ]*)?\s*дн[а-яіїєґ]*/iu, "\u0421\u0442\u0440\u043E\u043A \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F"],
+    ["bid_security_pct", /забезпеченн[а-яіїєґ\s]{0,40}тендерн[а-яіїєґ\s]{0,30}пропозиц[а-яіїєґ\s\S]{0,150}?(?:розмірі|становить)\s*([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457"],
+    ["performance_security_pct", /забезпеченн[а-яіїєґ\s]{0,30}виконан[а-яіїєґ\s\S]{0,150}?(?:розмірі|становить)\s*([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u0417\u0430\u0431\u0435\u0437\u043F\u0435\u0447\u0435\u043D\u043D\u044F \u0434\u043E\u0433\u043E\u0432\u043E\u0440\u0443"],
     ["advance_payment_pct", /(?:передоплат\w*|аванс\w*).{0,50}?([\d]+(?:[,.][\d]+)?)\s*%/iu, "\u041F\u0435\u0440\u0435\u0434\u043E\u043F\u043B\u0430\u0442\u0430"]
   ];
   const found = /* @__PURE__ */ new Map();
@@ -41947,7 +41948,7 @@ var worker_default = {
       return json({
         ok: true,
         service: "\u0404\u0412\u0420\u041E5 \xB7 \u0410\u0441\u0438\u0441\u0442\u0435\u043D\u0442 \u0442\u0435\u043D\u0434\u0435\u0440\u043D\u043E\u0457 \u043F\u0440\u043E\u043F\u043E\u0437\u0438\u0446\u0456\u0457",
-        version: "2026.11.13-qa-signoff-v13"
+        version: "2026.11.13-qa-signoff-v14"
       }, 200, origin);
     }
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request, origin, ctx);
@@ -42082,7 +42083,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     }
     parsed.document_condition_evidence = directConditions.evidence;
     parsed.document_condition_values = directConditions.values;
-    for (const field of ["bid_security_pct", "performance_security_pct", "advance_payment_pct", "payment_days"])
+    for (const field of ["bid_security_pct", "performance_security_pct", "advance_payment_pct", "payment_days", "delivery_days"])
       parsed[field] = Object.prototype.hasOwnProperty.call(directConditions.values, field) ? directConditions.values[field] : null;
     parsed.document_read_status = documentExtracts.map(({ source_id, title, status, reason, pages, paragraphs, extracted_chars, source_url }) => ({ source_id, title, status, reason: reason || null, pages: pages ?? null, paragraphs: paragraphs ?? null, extracted_chars: extracted_chars ?? 0, source_url: source_url || null }));
     parsed.document_read_summary = {
