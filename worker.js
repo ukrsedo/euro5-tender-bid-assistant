@@ -1510,6 +1510,33 @@ export function directDocumentHighlights(documents) {
   return [...deduplicated.values()].sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
+// Independent source-segment path for the highest-value tender clauses. It
+// does not depend on prompt output or the broader document classifier.
+export function coreDocumentClauses(documents) {
+  /** @type {Array<[string, RegExp]>} */
+  const rules=[
+    ['Оплата та розрахунки',/(?:спосіб розрахунків|оплата за товар).{0,260}(?:безготівк|перерахуван|відстроч|фактично отриман)/iu],
+    ['Постачання та відпуск',/(?:передача\s*\/\s*отримання товару здійснюється|термін дії талон|строк поставки товару|термін поставки товару|місце поставки товару|здійснювати постачання товару|товар передається за талонами|поставка товару здійснюється у робочі години|відпуск товару покупцю здійснюється цілодобово)/iu],
+    ['Технічні вимоги до пального',/(?:бензин\s+[АA]\s*[-–]?\s*95.{0,35}євро\s*5|дизельн.{0,12}палив.{0,35}євро\s*5|технічні та якісні вимоги.{0,300}дсту\s*768[78])/iu]
+  ];
+  const out=[];
+  for(const doc of documents||[]){
+    if(!['read','truncated'].includes(doc.status)||!Array.isArray(doc.segments))continue;
+    for(const segment of doc.segments){
+      const body=String(segment.body||'').trim();
+      if(body.length<20||!segment.location||/санкц|країн.{0,20}походжен|бенефіціар/iu.test(body))continue;
+      if(/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Паливо\s*\(Товар\)).{0,120}\s[-–—]\s/iu.test(body))continue;
+      for(const [category,re] of rules){
+        if(!re.test(body))continue;
+        const quote=body.slice(0,700).trim();
+        out.push({text:quote,category,source:{title:doc.title,location:segment.location,quote,url:doc.source_url||null},source_verified:true});
+        break;
+      }
+    }
+  }
+  return out.slice(0,30);
+}
+
 // Extract only simple, explicit numeric terms from the source text. The full
 // paragraph is retained as the citation; conflicting values are not promoted.
 export function directDocumentConditionEvidence(documents) {
@@ -1834,7 +1861,8 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-contract-scope-v20"
+        version: "2026.11.13-contract-scope-v21",
+        extraction_policy: "source-segments-v21"
       }, 200, origin);
     }
 
@@ -1911,7 +1939,12 @@ export default {
       return {extracted_chars:0,...item,source_id:row.source_id,
         source_url:/^[a-f0-9]{32}$/i.test(row.document?.id||'')?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}`:null};
     });
-    const directHighlights=directDocumentHighlights(documentExtracts);
+    const classifiedHighlights=directDocumentHighlights(documentExtracts);
+    const coreHighlights=coreDocumentClauses(documentExtracts);
+    const directHighlights=[...classifiedHighlights];
+    for(const item of coreHighlights){
+      if(!directHighlights.some(existing=>existing.source.location===item.source.location&&existing.source.title===item.source.title))directHighlights.push(item);
+    }
     const directConditions=directDocumentConditionEvidence(documentExtracts);
 
     const payload = {
@@ -1989,6 +2022,9 @@ response_format: { type: "json_object" }
       highlights_found: directHighlights.length,
       paragraphs_scanned: documentExtracts.reduce((sum,d)=>sum+(d.segments?.length||0),0),
       evidence_items_found: parsed.conditions.length+parsed.fuel_requirements.length+parsed.actions.length+parsed.document_highlights.length,
+      extraction_policy: 'source-segments-v21',
+      core_clause_count: coreHighlights.length,
+      classified_clause_count: classifiedHighlights.length,
       evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,segments:d.segments?.length||0,body_chars:d.text?.length||0,keyword_hits:d.segments?.filter(s=>s.body?.toLowerCase().includes('талон')).length||0})),
       cutoff_date: cutoff
     };
