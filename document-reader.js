@@ -21,7 +21,7 @@ function isTrustedProzorroDocumentUrl(url) {
   return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') &&
     TRUSTED_DOCUMENT_DOMAINS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain));
 }
-async function fetchProzorroDocument(initialUrl, fetcher) {
+export async function fetchProzorroDocument(initialUrl, fetcher = fetch) {
   let url = new URL(initialUrl);
   for (let redirects = 0; ; redirects++) {
     if (!isTrustedProzorroDocumentUrl(url)) throw new Error('Посилання перенаправляє на неперевірений домен.');
