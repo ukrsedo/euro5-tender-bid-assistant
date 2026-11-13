@@ -865,7 +865,7 @@ async function fetchArchivedEnkorrPrices(tenderDate) {
         return pair && [pair.wholesale,pair.retail].every(x => typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1000) ? pair : null;
       };
       const gasoline = valid('a95'), diesel = valid('dt');
-      if (gasoline && diesel) return {source:'Enkorr (збережений ряд)',date:new Date(row.date+'T12:00:00Z'),gasoline,diesel};
+      if (gasoline && diesel) { const evidenceUrl=typeof row.evidence_url==='string'&&/^https:\/\/enkorr\.ua\//i.test(row.evidence_url)?row.evidence_url:archive.source_url; return {source:'Enkorr',sourceUrl:evidenceUrl,evidenceNote:typeof row.evidence_note==='string'?row.evidence_note:null,date:new Date(row.date+'T12:00:00Z'),gasoline,diesel}; }
     }
   } catch (_) {}
   return null;
@@ -1106,7 +1106,7 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo, docu
     fuelTrendNote: 'Тренд розраховано за роздрібними цінами Minfin / Консалтингової групи А-95 на обидві дати.',
     trendEndDate: trendGas?.date || trendDiesel?.date || null,
 
-    wholesaleReferenceDate: enkorr?.date ? formatUaDate(enkorr.date) : null,
+    wholesaleReferenceDate: enkorr?.date ? formatUaDate(enkorr.date) : null,\n    wholesaleSourceUrl: enkorr?.sourceUrl || null,\n    wholesaleEvidenceNote: enkorr?.evidenceNote || null,
     retailGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline,"gasoline")?retailGasNoVat:null,
     retailDieselPriceWithoutVat: qualityAllowsStandard(products.diesel,"diesel")?retailDieselNoVat:null,
     wholesaleGasolinePriceWithoutVat: qualityAllowsStandard(products.gasoline,"gasoline")?wholesaleGasNoVat:null,
@@ -1327,7 +1327,7 @@ CPV, очікувана вартість і ПДВ уже перевірені �
 НЕ роби висновків за назвою файлу. Використовуй текст прочитаних вкладень нижче. Якщо текст вкладення відсутній або має статус помилки, прямо не стверджуй, що файл прочитано.
 У fuel_requirements витягай конкретні технічні параметри пального: стандарт/клас, марку, сезонність, екологічний клас, вміст сірки, густину, граничну температуру фільтрованості та інші задані значення. За суперечностей поверни окремі підтверджені пункти з відповідними цитатами та джерелами.
 
-Не винось у «важливі умови» стандартні вимоги, які є звичайними для публічних закупівель або закупівель пального, якщо вони не мають нетипового обмеження. Зокрема, НЕ включай без окремої причини:
+Переглянь усі надані сторінки й абзаци, а не лише перший збіг. Витягай конкретні умови оплати, строків і місця поставки, відпуску пального, забезпечень, кваліфікації, приймання та відповідальності. Не обмежуйся назвою товару.\n\nНе винось у «важливі умови» стандартні вимоги, які є звичайними для публічних закупівель або закупівель пального, якщо вони не мають нетипового обмеження. Зокрема, НЕ включай без окремої причини:
 - загальну вимогу відповідати технічним характеристикам пального;
 - стандартні сертифікати/паспорти якості;
 - загальні вимоги щодо санкцій, бенефіціарів, походження товару або підстав для відмови;
@@ -1424,16 +1424,15 @@ function validateAiEvidenceList(items, kind, documents) {
 // evidence array. These excerpts are copied verbatim from numbered paragraphs
 // or pages; no condition or citation is generated from the file name.
 export function directDocumentHighlights(documents) {
-  const rules=[
-    s=>s.includes('бензин а-95')&&s.includes('євро5'),
-    s=>s.includes('дизельне паливо')&&s.includes('євро5'),
-    s=>s.includes('азс')&&s.includes('район'),
-    s=>s.includes('талон')&&(s.includes('строк дії')||s.includes('терміном дії')||s.includes('термін дії')),
-    s=>s.includes('талон')&&s.includes('постав')&&s.includes('2026'),
-    s=>s.includes('розрахунк')&&s.includes('робочих днів'),
-    s=>s.includes('строків поставки талонів')&&s.includes('штраф'),
-    s=>s.includes('заміни талонів')&&s.includes('штраф'),
-    s=>s.includes('затримка фінансування')&&s.includes('відповідальності')
+  const groups=[
+    {category:'Технічні вимоги до пального',re:/бензин|дизел|євро\s*[-–]?\s*5|дсту|октан|цетан|сірк|густин|температур.{0,30}фільтр|сезонн/i},
+    {category:'Поставка та відпуск',re:/поставк|доставк|відпуск|налив|бензовоз|резервуар|талон|скретч.?карт|паливн.{0,12}карт|\bазс\b|автозаправ|місц.{0,12}постав|адрес.{0,12}(?:постав|відпуск)|графік.{0,20}(?:постав|достав|відпуск)|строк.{0,25}(?:постав|достав|відпуск)/i},
+    {category:'Оплата та ціна',re:/оплат|розрахунк|післяоплат|аванс|платіж|рахунк|казнач|зміна.{0,20}цін|ціна.{0,25}(?:змін|кориг|зрост)|вартіст.{0,25}(?:змін|кориг)/i},
+    {category:'Забезпечення та гарантії',re:/забезпечен|банківськ.{0,25}гаранті|гаранті.{0,35}(?:пропозиц|виконан|аванс)|розмір.{0,20}гаранті/i},
+    {category:'Кваліфікаційні умови',re:/аналогічн.{0,25}досвід|досвід.{0,25}(?:виконан|постав)|фінансов.{0,35}(?:спромож|звіт|оборот)|кваліфікац|ліцензі|мінімальн.{0,20}оборот/i},
+    {category:'Приймання та відповідальність',re:/прийман|акт.{0,20}прийм|штраф|пеня|неустой|відповідальн|розірван|односторон|претензі|форс-мажор|затримк.{0,30}(?:фінанс|постав)/i},
+    {category:'Строк дії пропозиції або документів',re:/строк.{0,25}(?:дії|чинності)|термін.{0,25}(?:дії|чинності)|продовжен.{0,25}строк/i},
+    {category:'Вимоги до пропозиції',re:/строк.{0,25}подан|спосіб.{0,25}подан|тендерн.{0,25}пропозиц.{0,25}(?:відхил|забезпеч|чинн)|критер.{0,25}оцін/i}
   ];
   const paragraphs=[];
   for(const doc of documents){
@@ -1449,19 +1448,20 @@ export function directDocumentHighlights(documents) {
     const matches=[...doc.text.matchAll(marker)];
     for(let i=0;i<matches.length;i++){
       const m=matches[i],body=doc.text.slice(m.index+m[0].length,matches[i+1]?.index??doc.text.length).trim();
-      if(body.length>=25)paragraphs.push({doc,location:`${m[1]} ${m[2]}`,body});
+      if(body.length>=25)paragraphs.push({doc,location:m[1]+' '+m[2],body});
     }
   }
-  const result=[],used=new Set();
-  for(const rule of rules){
-    const found=paragraphs.find(p=>!used.has(p)&&rule(p.body.toLowerCase()));
-    if(!found)continue;
-    const quote=found.body.slice(0,500).trim();
-    if(!quote||!found.body.includes(quote))continue;
-    used.add(found);
-    result.push({text:quote,source:{title:found.doc.title,location:found.location,quote,url:found.doc.source_url||null},source_verified:true});
+  const candidates=[];
+  for(let index=0;index<paragraphs.length;index++){
+    const p=paragraphs[index],body=p.body.trim();
+    if(body.length<35)continue;
+    const categories=groups.filter(group=>group.re.test(body)).map(group=>group.category);
+    if(!categories.length)continue;
+    const quote=body.slice(0,700).trim();
+    if(!quote||!body.includes(quote))continue;
+    candidates.push({index,score:categories.length*10+Math.min(5,Math.floor(body.length/250)),item:{text:quote,category:categories.join(' · '),source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true}});
   }
-  return result;
+  return candidates.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,60).sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
 // Buyer evidence: only snapshots confirmed before the proposal cutoff.
@@ -1747,7 +1747,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-september-history-market-documents-v9"
+        version: "2026.11.13-enkorr-and-document-scan-v10"
       }, 200, origin);
     }
 
@@ -1865,7 +1865,7 @@ response_format: { type: "json_object" }
       available: Array.isArray(source.data?.documents)?source.data.documents.length:0,
       supported_before_cutoff: documentExtracts.length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
-      highlights_found: directHighlights.length,
+      highlights_found: directHighlights.length,\n      paragraphs_scanned: documentExtracts.reduce((sum,d)=>sum+(d.segments?.length||0),0),\n      evidence_items_found: parsed.conditions.length+parsed.fuel_requirements.length+parsed.actions.length+parsed.document_highlights.length,
       evidence_scan: documentExtracts.map(d=>({kind:d.kind||null,segments:d.segments?.length||0,body_chars:d.text?.length||0,keyword_hits:d.segments?.filter(s=>s.body?.toLowerCase().includes('талон')).length||0})),
       cutoff_date: cutoff
     };
@@ -1916,7 +1916,7 @@ response_format: { type: "json_object" }
       retailGasolineSource: null,
       retailDieselSource: null,
       fuelTrendNote: null,
-      wholesaleReferenceDate: null,
+      wholesaleReferenceDate: null,\n      wholesaleSourceUrl: null,\n      wholesaleEvidenceNote: null,
       retailGasolinePriceWithoutVat: null,
       retailDieselPriceWithoutVat: null,
       wholesaleGasolinePriceWithoutVat: null,
@@ -1969,7 +1969,7 @@ response_format: { type: "json_object" }
       market_retail_gasoline_source: market.retailGasolineSource ?? null,
       market_retail_diesel_source: market.retailDieselSource ?? null,
       fuel_market_trend_note: market.fuelTrendNote ?? null,
-      market_wholesale_reference_date: market.wholesaleReferenceDate ?? null,
+      market_wholesale_reference_date: market.wholesaleReferenceDate ?? null,\n      market_wholesale_source_url: market.wholesaleSourceUrl ?? null,\n      market_wholesale_evidence_note: market.wholesaleEvidenceNote ?? null,
       market_retail_gasoline_price_uah_l_without_vat: market.retailGasolinePriceWithoutVat ?? null,
       market_retail_diesel_price_uah_l_without_vat: market.retailDieselPriceWithoutVat ?? null,
       market_wholesale_gasoline_price_uah_l_without_vat: market.wholesaleGasolinePriceWithoutVat ?? null,
