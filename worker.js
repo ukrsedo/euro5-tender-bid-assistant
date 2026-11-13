@@ -1316,7 +1316,7 @@ function aiTenderPayload(data) {
   return s;
 }
 
-import { readTenderDocuments, formatTenderDocumentsForAI, fetchProzorroDocument } from './document-reader.js';
+import { readTenderDocuments, formatTenderDocumentsForAI, fetchProzorroDocument, isSignatureAttachment } from './document-reader.js';
 
 const SYSTEM_PROMPT = `Ти допомагаєш ЄВРО5 швидко зрозуміти умови конкретного тендера на пальне.
 Ти отримуєш структуровані дані Prozorro та, якщо вкладення вдалося завантажити й прочитати, текст тендерної документації.
@@ -1335,19 +1335,11 @@ CPV, очікувана вартість і ПДВ уже перевірені �
 
 НЕ рекомендуй ціну. НЕ оцінюй імовірність перемоги. НЕ змінюй розрахунок ціни.
 НЕ роби висновків за назвою файлу. Використовуй текст прочитаних вкладень нижче. Якщо текст вкладення відсутній або має статус помилки, прямо не стверджуй, що файл прочитано.
-У fuel_requirements витягай конкретні технічні параметри пального: стандарт/клас, марку, сезонність, екологічний клас, вміст сірки, густину, граничну температуру фільтрованості та інші задані значення. За суперечностей поверни окремі підтверджені пункти з відповідними цитатами та джерелами.
-
-Переглянь усі надані сторінки й абзаци, а не лише перший збіг. Витягай конкретні умови оплати, строків і місця поставки, відпуску пального, забезпечень, кваліфікації, приймання та відповідальності. Не обмежуйся назвою товару.\n\nНе винось у «важливі умови» стандартні вимоги, які є звичайними для публічних закупівель або закупівель пального, якщо вони не мають нетипового обмеження. Зокрема, НЕ включай без окремої причини:
-- загальну вимогу відповідати технічним характеристикам пального;
-- стандартні сертифікати/паспорти якості;
-- загальні вимоги щодо санкцій, бенефіціарів, походження товару або підстав для відмови;
-- формальне підтвердження повноважень, підпису чи реєстраційних даних;
-- загальну фразу «перевірити тендерну документацію»;
-- загальну пораду «підготувати підтвердження технічних характеристик».
-
-У «важливі умови» включай лише конкретні речі на кшталт: значне забезпечення пропозиції/виконання договору, незвична банківська гарантія, дуже короткий строк поставки, жорсткі вимоги до мережі АЗС/радіуса, конкретна територія покриття, нетипові умови оплати, вимога спеціального досвіду або фінансової спроможності, обмеження способу відпуску, які реально звужують коло постачальників.
-
-У «що потрібно перевірити» додавай тільки конкретну дію, яка прямо випливає з виявленої нетипової умови. Якщо такої дії немає — поверни порожній масив.
+У відповідях проаналізуй лише три теми: (1) оплата та розрахунки; (2) фактичний порядок, місце й строки постачання/відпуску пального; (3) конкретні технічні параметри пального.
+До технічних вимог включай марку/клас пального або числові параметри лише там, де текст прямо задає характеристику пального. Загальні фрази про сертифікат, паспорт якості чи відповідність законодавству не є технічними параметрами.
+До постачання включай лише дієві умови договору. Не включай словникові визначення («АЗС — ...», «талон — ...»), реквізити сторін, дату/місце підписання, шаблонні поля, загальні гарантії власності, походження, санкції, підстави відмови, забезпечення, кваліфікацію, приймання, відповідальність чи інші теми поза трьома визначеними.
+Якщо абзац лише називає вид пального без марки/класу/характеристики або не встановлює умову постачання чи оплати, не повертай його. Не додавай довільні абзаци як запасний варіант.
+Переглянь усі надані сторінки й абзаци, але повертай лише конкретні пункти з цих трьох тем.
 
 Окремо визнач формат постачання пального. Використовуй: bulk = налив/бензовоз/резервуар; retail = талони, паливні картки або відпуск через АЗС; split = у різних позицій різний формат; unknown = даних недостатньо. Не вгадуй. Для змішаного тендера, якщо можливо, окремо визнач формат для бензину та дизеля.
 
@@ -1413,6 +1405,18 @@ function cleanAiText(value, kind) {
   if((kind!=='fuel_requirements'&&generic.some(re=>re.test(text)))||(kind==='actions'&&genericActions.some(re=>re.test(text))))return '';
   return text;
 }
+function evidenceTopicAllowed(kind, quote) {
+  const text=String(quote||'');
+  const payment=/оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк|ціна.{0,35}(?:зменш|кориг|змін)|зміна.{0,25}цін/iu.test(text);
+  const supplyOperative=/(?:зобов.?язується|повинен|повинна|повинні|повинно|має право|здійснюється|здійснюються|поставля(?:є|ється|ти)|переда(?:є|ється|ти)|відпуска(?:є|ється|ти)|виключно|повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш.{0,30}|протягом|за адресою|місце поставки)/iu.test(text);
+  const supplySubject=/(?:поставк|постачан|доставк|відпуск|отриман.{0,20}пальн|талон|скретч.?карт|паливн.{0,12}карт|АЗС|автозаправ|обсяг.{0,20}закуп)/iu.test(text);
+  const fuel=/бензин|дизел|палив/iu.test(text);
+  const explicitGrade=/(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)/iu.test(text);
+  if(kind==='conditions')return payment||(supplyOperative&&supplySubject);
+  if(kind==='fuel_requirements')return fuel&&explicitGrade;
+  if(kind==='actions')return payment||(supplyOperative&&supplySubject)||(fuel&&explicitGrade);
+  return false;
+}
 function validateAiEvidenceList(items, kind, documents) {
   if(!Array.isArray(items))return [];
   const out=[];
@@ -1421,7 +1425,7 @@ function validateAiEvidenceList(items, kind, documents) {
     const sourceId=String(item.source_id||'').trim();
     const location=String(item.source_location||'').trim();
     const quote=String(item.evidence_quote||'').trim().slice(0,500);
-    if(!cleanAiText(quote,kind)||!sourceId)continue;
+    if(!cleanAiText(quote,kind)||!evidenceTopicAllowed(kind,quote)||!sourceId)continue;
     const document=documents.find(d=>d.source_id===sourceId&&['read','truncated'].includes(d.status)&&d.text);
     if(!document)continue;
     const block=citationBlock(document,location),normalizedQuote=normalizeEvidenceText(quote);
@@ -1437,14 +1441,9 @@ function validateAiEvidenceList(items, kind, documents) {
 // or pages; no condition or citation is generated from the file name.
 export function directDocumentHighlights(documents) {
   const groups=[
-    {category:'Технічні вимоги до пального',re:/бензин|дизел|євро\s*[-–]?\s*5|дсту|октан|цетан|сірк|густин|температур.{0,30}фільтр|сезонн/iu},
-    {category:'Поставка та відпуск',re:/поставк|доставк|відпуск|налив|бензовоз|резервуар|талон|скретч.?карт|паливн.{0,12}карт|\bазс\b|автозаправ|місц.{0,12}постав|адрес.{0,12}(?:постав|відпуск)|графік.{0,20}(?:постав|достав|відпуск)|строк.{0,25}(?:постав|достав|відпуск)/iu},
-    {category:'Оплата та ціна',re:/оплат|розрахунк|післяоплат|аванс|платіж|рахунк|казнач|зміна.{0,20}цін|ціна.{0,25}(?:змін|кориг|зрост)|вартіст.{0,25}(?:змін|кориг)/iu},
-    {category:'Забезпечення та гарантії',re:/забезпечен|банківськ.{0,25}гаранті|гаранті.{0,35}(?:пропозиц|виконан|аванс)|розмір.{0,20}гаранті/iu},
-    {category:'Кваліфікаційні умови',re:/аналогічн.{0,25}досвід|досвід.{0,25}(?:виконан|постав)|фінансов.{0,35}(?:спромож|звіт|оборот)|кваліфікац|ліцензі|мінімальн.{0,20}оборот/iu},
-    {category:'Приймання та відповідальність',re:/прийман|акт.{0,20}прийм|штраф|пеня|неустой|відповідальн|розірван|односторон|претензі|форс-мажор|затримк.{0,30}(?:фінанс|постав)/iu},
-    {category:'Строк дії пропозиції або документів',re:/строк.{0,25}(?:дії|чинності)|термін.{0,25}(?:дії|чинності)|продовжен.{0,25}строк/iu},
-    {category:'Вимоги до пропозиції',re:/строк.{0,25}подан|спосіб.{0,25}подан|тендерн.{0,25}пропозиц.{0,25}(?:відхил|забезпеч|чинн)|критер.{0,25}оцін/iu}
+    {category:'Технічні вимоги до пального',re:/(?:бензин|дизел|палив)[\s\S]{0,100}(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)|(?:[АA]\s*[-–]?\s*\d{2,3}|ДП\s*[-–]?\s*(?:Євро\s*[-–]?\s*\d|зимов|літн|арктич)|Євро\s*[-–]?\s*\d|ДСТУ\s*\d|октанов|цетанов|сірк|густин|температур.{0,30}(?:фільтр|застиган)|сезонн|біокомпонент)[\s\S]{0,100}(?:бензин|дизел|палив)/iu},
+    {category:'Постачання та відпуск',re:/(?:поставк|постачан|доставк|відпуск|отриман)[\s\S]{0,120}(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш|АЗС|талон|скретч.?карт|паливн.{0,12}карт|за адресою)|(?:талон|скретч.?карт|паливн.{0,12}карт)[\s\S]{0,120}(?:повинні мати|строк дії|строк.{0,30}|термін.{0,30}|не менш)|(?:зобов.?язується|повинен|повинна|повинні|повинно|здійснюється|здійснюються|поставля|переда|відпуска|виключно|строк|термін|протягом|не менш)[\s\S]{0,120}(?:поставк|постачан|доставк|відпуск|отриман|АЗС|талон|скретч.?карт|паливн.{0,12}карт)/iu},
+    {category:'Оплата та розрахунки',re:/(?:оплат|розрахунк|післяоплат|передоплат|аванс|платіж|рахунк)[\s\S]{0,160}(?:провод|здійсню|строк|протягом|днів|день|після|аванс|передоплат|рахунк|накладн|шляхом|безготів|перерахуван)|(?:провод|здійсню)[\s\S]{0,120}(?:оплат|розрахунк|платіж)/iu}
   ];
   const paragraphs=[];
   for(const doc of documents){
@@ -1473,14 +1472,7 @@ export function directDocumentHighlights(documents) {
     if(!quote||!body.includes(quote))continue;
     candidates.push({index,score:categories.length*10+Math.min(5,Math.floor(body.length/250)),item:{text:quote,category:categories.join(' · '),source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true}});
   }
-  if(!candidates.length){
-    // Never leave a readable document looking empty: provide verbatim, located
-    // excerpts without labeling them as requirements when no rule matched.
-    return paragraphs.filter(p=>p.body.trim().length>=60).slice(0,20).map(p=>{
-      const quote=p.body.trim().slice(0,700);
-      return {text:quote,category:'Дослівний фрагмент (тип умови не визначено)',source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true};
-    });
-  }
+  if(!candidates.length)return [];
   return candidates.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,60).sort((a,b)=>a.index-b.index).map(x=>x.item);
 }
 
@@ -1808,7 +1800,7 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.13-classified-citations-v17"
+        version: "2026.11.13-contract-scope-v18"
       }, 200, origin);
     }
 
@@ -1868,7 +1860,8 @@ export default {
       const eligible=Boolean(cutoff&&validPublished&&validModified&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff);
       const supported=supportedDocuments.includes(d);
       let status='pending',reason=null;
-      if(!validPublished||!validModified){status='date_unverified';reason='Не вдалося підтвердити дату публікації/зміни; документ не передавався на аналіз.';}
+      if(isSignatureAttachment(d)){status='signature_file';reason='Файл електронного підпису; це не текстовий документ, його не передавали на читання.';}
+      else if(!validPublished||!validModified){status='date_unverified';reason='Не вдалося підтвердити дату публікації/зміни; документ не передавався на аналіз.';}
       else if(cutoff&&!eligible){status='excluded_after_cutoff';reason='Документ опубліковано або змінено після дати завершення подання; не використовувався.';}
       else if(!supported){status='unsupported';reason='Формат вкладення не підтримується для текстового читання (PDF/DOC/DOCX).';}
       return {document:d,index,eligible,supported,status,reason,source_id:`DOC-${String(index+1).padStart(2,'0')}`};
@@ -1878,7 +1871,7 @@ export default {
     for(const row of eligibleRecords.slice(8)){row.status='not_processed_limit';row.reason='Перевищено ліміт обробки 8 документів за один запит.';}
     const readItems=await readTenderDocuments(toRead.map(row=>row.document));
     const documentExtracts=documentInventory.map(row=>{
-      if(row.status!=='pending')return {title:row.document?.title||'Без назви',status:row.status,reason:row.reason,source_id:row.source_id,source_url:/^[a-f0-9]{32}$/i.test(row.document?.id||'')?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}`:null};
+      if(row.status!=='pending')return {title:row.document?.title||'Без назви',status:row.status,reason:row.reason,source_id:row.source_id,source_url:row.status!=='signature_file'&&/^[a-f0-9]{32}$/i.test(row.document?.id||'')?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${row.document.id}`:null};
       const readIndex=toRead.indexOf(row);
       const item=readItems[readIndex]||{title:row.document?.title||'Без назви',status:'error',reason:'Результат читання відсутній.'};
       return {extracted_chars:0,...item,source_id:row.source_id,
@@ -1937,11 +1930,11 @@ response_format: { type: "json_object" }
     parsed.conditions = validateAiEvidenceList(parsed.conditions, "conditions", documentExtracts);
     parsed.fuel_requirements = validateAiEvidenceList(parsed.fuel_requirements, "fuel_requirements", documentExtracts);
     parsed.actions = validateAiEvidenceList(parsed.actions, "actions", documentExtracts);
-    parsed.document_highlights = directHighlights.filter(item=>
-      ![...parsed.conditions,...parsed.fuel_requirements,...parsed.actions].some(other=>other.text===item.text));
     for(const item of directConditions.evidence){
-      if(!parsed.conditions.some(existing=>existing.source?.location===item.source.location&&existing.text===item.text))parsed.conditions.unshift(item);
+      if(evidenceTopicAllowed('conditions',item.source.quote)&&!parsed.conditions.some(existing=>existing.source?.location===item.source.location&&existing.text===item.text))parsed.conditions.unshift(item);
     }
+    parsed.document_highlights = directHighlights.filter(item=>
+      ![...parsed.conditions,...parsed.fuel_requirements,...parsed.actions].some(other=>other.source?.location===item.source.location&&other.source?.title===item.source.title));
     parsed.document_condition_evidence=directConditions.evidence;
     parsed.document_condition_values=directConditions.values;
     // Numeric commercial terms must be grounded in a verified document or in
@@ -1956,6 +1949,7 @@ response_format: { type: "json_object" }
       excluded_after_cutoff: documentExtracts.filter(d=>d.status==='excluded_after_cutoff').length,
       date_unverified: documentExtracts.filter(d=>d.status==='date_unverified').length,
       unsupported: documentExtracts.filter(d=>d.status==='unsupported').length,
+      signature_file: documentExtracts.filter(d=>d.status==='signature_file').length,
       not_processed_limit: documentExtracts.filter(d=>d.status==='not_processed_limit').length,
       read: documentExtracts.filter(d=>d.status==='read'||(d.status==='truncated'&&d.text)).length,
       highlights_found: directHighlights.length,

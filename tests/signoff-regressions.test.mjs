@@ -60,9 +60,51 @@ test('capitalized Ukrainian contract terms are classified and payment evidence i
   const body='4.1. Розрахунки проводяться шляхом оплати Замовником суми згідно рахунку та видаткової накладної в строк 10 (десять) календарних днів.';
   const result=ctx.h([{status:'read',kind:'docx',title:'Проєкт договору.docx',source_url:'/document',text:`[абзац 33] ${body}`,segments:[{location:'абзац 33',body}]}]);
   assert.equal(result.length,1);
-  assert.match(result[0].category,/Оплата та ціна/);
+  assert.match(result[0].category,/Оплата та розрахунки/);
   assert.equal(result[0].source.location,'абзац 33');
   assert.equal(result[0].source.quote,body);
+});
+
+test('contract extracts include only payment, operative supply and specific fuel specifications',()=>{
+  const start=worker.indexOf('export function directDocumentHighlights(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const code=worker.slice(start,end).replace('export function','function');
+  const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
+  const bodies=[
+    ['абзац 3','м. Київ “___” ________ 2026 року'],
+    ['абзац 4','Національна академія Служби безпеки України, в особі проректора ______, що діє на підставі Довіреності, та ______, в особі директора ______ уклали цей Договір.'],
+    ['абзац 5','1. ВИЗНАЧЕННЯ ТЕРМІНІВ, ЩО ВИКОРИСТОВУЮТЬСЯ В ЦЬОМУ ДОГОВОРІ'],
+    ['абзац 6','АЗС – автозаправні станції, на яких Покупець має право отримати паливо відповідно до умов даного Договору.'],
+    ['абзац 7','Талон/скретч-карта – документ, що має серію, номер і дозволяє пред’явнику отримувати паливо на АЗС.'],
+    ['абзац 18','Продавець гарантує, що Товар належить йому на праві власності та не перебуває під обтяженням.'],
+    ['абзац 20','Продавець повинен передати товар, якість якого відповідає сертифікату відповідності та підтверджується паспортом виробника.'],
+    ['абзац 21','Країною походження Товару не є Російська Федерація чи Республіка Білорусь.'],
+    ['абзац 14','Найменування Товару: бензин автомобільний А-95-Євро5 та дизельне паливо ДП-Євро5 (наливом).'],
+    ['абзац 24','При коливанні цін на ринку в сторону зменшення, Продавець поставляє Товар по ціні меншій, ніж вказана в Специфікації.'],
+    ['абзац 26','Розрахунки проводяться шляхом оплати Покупцем відповідних грошових сум на поточний рахунок Продавця протягом 10 календарних днів.'],
+    ['абзац 27','Постачання пального здійснюється виключно за талонами на АЗС у місті Києві протягом 5 робочих днів після заявки.'],
+    ['абзац 28','Спосіб розрахунків за Товар – у національній валюті України в безготівковій формі шляхом перерахування Покупцем грошових сум на поточний рахунок Продавця.'],
+    ['абзац 29','Передача/отримання Товару здійснюється виключно з використанням дійсних талонів/скретч-карт під час заправки автотранспорту Замовника.'],
+    ['абзац 30','Термін дії Талонів/скретч-карт не менш як 6 місяців з моменту їх отримання.']
+  ];
+  const result=ctx.h([{status:'read',kind:'docx',title:'ПРОЕКТ ДОГОВОРУ.docx',source_url:'/document',text:bodies.map(([location,body])=>`[${location}] ${body}`).join('\n'),segments:bodies.map(([location,body])=>({location,body}))}]);
+  assert.deepEqual(Array.from(result, item=>item.category),[
+    'Технічні вимоги до пального','Оплата та розрахунки','Постачання та відпуск',
+    'Оплата та розрахунки','Постачання та відпуск','Постачання та відпуск'
+  ]);
+  assert.deepEqual(Array.from(result,item=>item.source.location),['абзац 14','абзац 26','абзац 27','абзац 28','абзац 29','абзац 30']);
+});
+
+test('irrelevant or boilerplate contract text produces no fallback excerpts',()=>{
+  const start=worker.indexOf('export function directDocumentHighlights(');
+  const end=worker.indexOf('\n// Extract only simple, explicit numeric terms',start);
+  const code=worker.slice(start,end).replace('export function','function');
+  const ctx={Array,RegExp,String,Math};vm.createContext(ctx);vm.runInContext(code+';this.h=directDocumentHighlights',ctx);
+  const result=ctx.h([{status:'read',kind:'docx',title:'Договір.docx',text:'[абзац 3] м. Київ “___” ________ 2026 року\n[абзац 4] Продавець гарантує, що Товар належить йому на праві власності.',segments:[
+    {location:'абзац 3',body:'м. Київ “___” ________ 2026 року'},
+    {location:'абзац 4',body:'Продавець гарантує, що Товар належить йому на праві власності.'}
+  ]}]);
+  assert.equal(result.length,0);
 });
 
 test('retail benchmark uses the last verified observation within five business days and keeps its date',async()=>{
@@ -93,7 +135,7 @@ test('market comparison exposes calculated market value and breakdown in review'
 
 test('every tender attachment status is represented in the review UI',()=>{
   const app=fs.readFileSync('app.js','utf8');
-  for(const status of ['excluded_after_cutoff','date_unverified','unsupported','not_processed_limit']) assert.ok(app.includes(status));
+  for(const status of ['excluded_after_cutoff','date_unverified','unsupported','signature_file','not_processed_limit']) assert.ok(app.includes(status));
   assert.match(app,/Вкладення Prozorro: \$\{summary\.available\} загалом/);
 });
 

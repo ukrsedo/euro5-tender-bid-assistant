@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {readTenderDocuments, formatTenderDocumentsForAI} from '../document-reader.js';
+import {readTenderDocuments, formatTenderDocumentsForAI, isSignatureAttachment} from '../document-reader.js';
 
 const fixture = new URL('./fixtures/legacy-word-sample.doc', import.meta.url);
 const sourceUrl = 'https://public-docs.prozorro.gov.ua/documents/legacy-word-sample.doc';
@@ -36,4 +36,15 @@ test('legacy DOC is identified from MIME type when filename has no extension', a
   }], fetcher);
   assert.equal(document.status, 'read');
   assert.equal(document.kind, 'doc');
+});
+
+test('P7S signature attachments are reported but never fetched or sent to the AI prompt', async () => {
+  let fetches=0;
+  const signature={title:'sign.p7s',url:'https://public-docs.prozorro.gov.ua/documents/sign.p7s',format:'application/pkcs7-signature'};
+  assert.equal(isSignatureAttachment(signature),true);
+  const [item]=await readTenderDocuments([signature],async()=>{fetches++;throw new Error('must not fetch signature');});
+  assert.equal(fetches,0);
+  assert.equal(item.status,'signature_file');
+  assert.match(item.reason,/не передавали на читання/);
+  assert.doesNotMatch(formatTenderDocumentsForAI([item]),/sign\.p7s/);
 });

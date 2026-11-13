@@ -609,7 +609,7 @@ function renderDocumentReadSummary(data){
   const summary=data.document_read_summary;
   if(!summary){box.textContent='Worker не повернув статус читання документів. Оновіть обидва Worker-и.';return;}
   const heading=document.createElement('strong');
-  heading.textContent=`Вкладення Prozorro: ${summary.available} загалом; ${summary.supported_before_cutoff} PDF/DOC/DOCX допущено до аналізу станом на ${summary.cutoff_date||'дату подання'}, прочитано ${summary.read}.`;
+  heading.textContent=`Вкладення Prozorro: ${summary.available} загалом; ${summary.supported_before_cutoff} PDF/DOC/DOCX допущено до аналізу станом на ${summary.cutoff_date||'дату подання'}, прочитано ${summary.read}${summary.signature_file?`; файлів електронного підпису пропущено ${summary.signature_file}`:''}.`;
   box.appendChild(heading);
   if(Number.isFinite(Number(summary.paragraphs_scanned))){
     const detail=document.createElement('p');
@@ -624,7 +624,7 @@ function renderDocumentReadSummary(data){
   statuses.forEach(item=>{
     const li=document.createElement('li');
     const readable=item.status==='read'||(item.status==='truncated'&&item.extracted_chars>0);
-    const labels={excluded_after_cutoff:'Виключено за датою',date_unverified:'Дату не підтверджено',unsupported:'Формат не підтримується',not_processed_limit:'Не оброблено: ліміт',blocked:'Заблоковано',unavailable:'Недоступний',error:'Помилка читання',no_text:'Текст не знайдено'};
+    const labels={excluded_after_cutoff:'Виключено за датою',date_unverified:'Дату не підтверджено',unsupported:'Формат не підтримується',signature_file:'Електронний підпис пропущено',not_processed_limit:'Не оброблено: ліміт',blocked:'Заблоковано',unavailable:'Недоступний',error:'Помилка читання',no_text:'Текст не знайдено'};
     const volume=item.kind==='doc'&&item.paragraphs?`${item.paragraphs} фрагментів`:item.paragraphs?`${item.paragraphs} абзаців`:item.pages?`${item.pages} сторінок`:'';
     li.appendChild(document.createTextNode(`${readable?(item.status==='truncated'?'Частково прочитано':'Прочитано'):(labels[item.status]||'Не прочитано')}: ${item.title}${volume?' · '+volume:''}${item.reason?' · '+item.reason:''}`));
     const url=safeDocumentCitationUrl(item.source_url);

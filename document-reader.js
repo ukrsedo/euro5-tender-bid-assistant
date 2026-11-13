@@ -10,7 +10,12 @@ const MAX_PDF_PAGES = 60;
 // not binary file bytes; the two quantities are unrelated.
 const MAX_EXTRACTED_CHARS = 120_000;
 
+export function isSignatureAttachment(document) {
+  const descriptor = [document?.title, document?.format, document?.mimeType, document?.mediaType, document?.url].filter(Boolean).join(' ').toLowerCase();
+  return /\.p7s(?:\b|\?)/i.test(descriptor) || /application\/(?:x-)?pkcs7-signature/i.test(descriptor);
+}
 function docKind(document) {
+  if (isSignatureAttachment(document)) return null;
   const descriptor = [document?.title, document?.format, document?.mimeType, document?.mediaType, document?.url].filter(Boolean).join(' ').toLowerCase();
   if (/\.pdf(?:\b|\?)/i.test(descriptor) || /application\/pdf/.test(descriptor)) return 'pdf';
   if (/\.docx(?:\b|\?)/i.test(descriptor) || /wordprocessingml\.document/.test(descriptor)) return 'docx';
@@ -96,6 +101,12 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   const all = Array.isArray(documents) ? documents : [];
   const candidates = all.filter(d => docKind(d)).slice(0, MAX_DOCUMENTS);
   const out = [];
+  // Signature containers are metadata for document signing, not tender text.
+  // Keep them visible in the inventory, but never send their URLs to a fetcher.
+  for (const document of all.filter(isSignatureAttachment)) out.push({
+    title: document?.title || 'Без назви', status: 'signature_file',
+    reason: 'Файл електронного підпису; його не передавали на читання.'
+  });
   let totalBytes = 0;
   for (const document of candidates) {
     const item = await extractOne(document, fetcher, MAX_TOTAL_BYTES - totalBytes);
@@ -108,7 +119,7 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
   }
   // Report unsupported and over-limit attachments explicitly. Never silently
   // imply that every Prozorro attachment was reviewed.
-  for (const document of all.filter(d => !docKind(d))) out.push({
+  for (const document of all.filter(d => !docKind(d) && !isSignatureAttachment(d))) out.push({
     title: document?.title || 'Без назви', status: 'unsupported',
     reason: 'Підтримуються вкладення PDF, DOC і DOCX.'
   });
@@ -142,7 +153,9 @@ export async function readTenderDocuments(documents, fetcher = fetch) {
 }
 export function formatTenderDocumentsForAI(items) {
   if (!items?.length) return 'Вкладень PDF, DOC або DOCX, опублікованих до завершення подання пропозицій, не знайдено.';
-  return items.map(item => {
+  const promptItems=items.filter(item=>item.status!=='signature_file');
+  if(!promptItems.length)return 'Текстових вкладень PDF, DOC або DOCX для аналізу не залишилося.';
+  return promptItems.map(item => {
     const sourceId = item.source_id ? 'ID джерела: ' + item.source_id + ' | ' : '';
     if (!item.text) return sourceId + 'Документ: ' + item.title + ' | статус: ' + item.status + (item.reason ? ' | причина: ' + item.reason : '');
     const locationHint = item.kind === 'pdf' ? 'цитуй сторінку' : item.kind === 'doc' ? 'цитуй номер фрагмента' : 'цитуй номер абзацу';
