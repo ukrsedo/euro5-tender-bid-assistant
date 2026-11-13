@@ -471,7 +471,7 @@ function fuelProductProfile(text,family){
  const euro=[...s.matchAll(/(?:євро|евро|euro)\s*[-–]?\s*([456])(?!\d)/g)].map(m=>m[1]);
  return {family,grade:gradeSet.length===1?gradeSet[0]:null,grades:gradeSet,tier:premium&&regular?'ambiguous':premium?'premium':regular?'regular':'unspecified',season:seasons.length===1?seasons[0]:seasons.length?'ambiguous':'unspecified',euro_class:[...new Set(euro)],source_text:String(text||'')};
 }
-function tenderFuelProducts(data){
+function tenderFuelProducts(data,documentExtracts=[]){
  const result={};
  for(const family of ['gasoline','diesel']){
   const items=(data?.items||[]).filter(i=>classifyFuelItem(i)===family);
@@ -498,7 +498,19 @@ function tenderFuelProducts(data){
     (itemGrades.length===1||(!itemGrades.length&&titleGrades.length===1))&&
     (!titleGrades.length||titleGrades.length===1&&(!itemGrades.length||itemGrades[0]===titleGrades[0]))
       ?(itemGrades[0]||titleGrades[0]):null;
-  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,indicative_grade:indicativeGrade,requires_confirmation:true};
+  // Only a verbatim technical specification can supply an indicative grade.
+  // This does not confirm the operator's product choice or affect the score.
+  const technical=documentExtracts.filter(d=>['read','truncated'].includes(d.status)&&
+    String(d.title||'').toLowerCase().includes('технічн')&&Array.isArray(d.segments));
+  const gradeEvidence=family==='gasoline'?technical.flatMap(d=>d.segments.filter(s=>{
+    const body=String(s.body||'').toLowerCase();return body.includes('бензин а-95')&&body.includes('євро5');
+  }).map(s=>({doc:d,segment:s}))):[];
+  const indicativeSource=gradeEvidence.length===1?{
+    title:gradeEvidence[0].doc.title,location:gradeEvidence[0].segment.location,
+    quote:gradeEvidence[0].segment.body,url:gradeEvidence[0].doc.source_url||null}:null;
+  const documentGrade=indicativeSource&&!technical.some(d=>d.segments.some(s=>
+    ['а-92','а-98','а-100'].some(g=>String(s.body||'').toLowerCase().includes('бензин '+g))))?'95':null;
+  result[family]={family,grade:grades.length===1?grades[0]:null,grades,tier:tiers.length===1?tiers[0]:'ambiguous',season:seasons.length===1?seasons[0]:'ambiguous',items:profiles,indicative_grade:indicativeGrade||documentGrade,indicative_source:documentGrade?indicativeSource:null,requires_confirmation:true};
  }
  return result;
 }
@@ -941,7 +953,7 @@ async function fetchRetailPrice(slug,targetDate,context){
  * Optional market fields are absent when reference data is unavailable.
  * @returns {Promise<Record<string, unknown> & {available: boolean}>}
  */
-export async function buildMarketReference(data, parsed, scope, supplyInfo) {
+export async function buildMarketReference(data, parsed, scope, supplyInfo, documentExtracts=[]) {
   const tenderDate = tenderAnnouncementDate(data);
   if (!tenderDate) return {
     available: false,
@@ -956,7 +968,7 @@ export async function buildMarketReference(data, parsed, scope, supplyInfo) {
   const trendDate = recentTender ? now : tenderDate;
   const pastDate = new Date(trendDate.getTime() - 30 * 86400000);
 
-  const products=tenderFuelProducts(data);
+  const products=tenderFuelProducts(data,documentExtracts);
   const fuelType = parsed?.fuel_type;
   const gasVol = Number(parsed?.gasoline_volume_l);
   const dieselVol = Number(parsed?.diesel_volume_l);
@@ -1294,7 +1306,7 @@ function aiTenderPayload(data) {
   return s;
 }
 
-import { readTenderDocuments, formatTenderDocumentsForAI } from './document-reader.js';
+import { readTenderDocuments, formatTenderDocumentsForAI, fetchProzorroDocument } from './document-reader.js';
 
 const SYSTEM_PROMPT = `Ти допомагаєш ЄВРО5 швидко зрозуміти умови конкретного тендера на пальне.
 Ти отримуєш структуровані дані Prozorro та, якщо вкладення вдалося завантажити й прочитати, текст тендерної документації.
@@ -1413,6 +1425,8 @@ function validateAiEvidenceList(items, kind, documents) {
 // or pages; no condition or citation is generated from the file name.
 export function directDocumentHighlights(documents) {
   const rules=[
+    s=>s.includes('бензин а-95')&&s.includes('євро5'),
+    s=>s.includes('дизельне паливо')&&s.includes('євро5'),
     s=>s.includes('азс')&&s.includes('район'),
     s=>s.includes('талон')&&(s.includes('строк дії')||s.includes('терміном дії')||s.includes('термін дії')),
     s=>s.includes('талон')&&s.includes('постав')&&s.includes('2026'),
@@ -1461,7 +1475,7 @@ function buyerHistoryPeriod(now=new Date()){
 function buyerProcedureGroup(name){
  const normalized=String(name||'').normalize('NFKC').replace(/[\u00a0\u202f\s]+/gu,' ').trim().toLowerCase();
  if(normalized.includes('запит ціни пропозиції')||normalized.includes('запит пропозицій постачальників'))return 'catalog';
- if((normalized.includes('спрощена')&&normalized.includes('закупівл'))||/відкриті торги|допорогова закупівля/.test(normalized))return 'open';
+ if((normalized.includes('спрощена')&&normalized.includes('закупівл'))||normalized.includes('відкриті торги')||normalized.includes('допорогова закупівля'))return 'open';
  if(/без використання електронної системи|звіт про.*договір|переговорна процедура/.test(normalized))return 'direct';
  return 'other';
 }
@@ -1662,10 +1676,20 @@ async function verifyBuyerRows(rows,code,period,excludedTenderId,options={}){
  const eligible=unique.flatMap(r=>{const e=proofs.get(buyerParentId(r));return e?[e.rows.find(x=>x['Ідентифікатор лота']===r['Ідентифікатор лота'])]:[]});
  const unresolved=unique.filter(r=>!['verified','after_cutoff','identity_mismatch'].includes(states.get(buyerParentId(r))));
  const reasons=unique.filter(r=>states.get(buyerParentId(r))!=='verified').map(r=>({lot_id:r['Ідентифікатор лота'],reason:states.get(buyerParentId(r))||'not_checked'}));
- const history=summarizeBuyerHistory(eligible,code,period);
  const supplierEvidence=[...proofs.values()].flatMap(e=>Array.isArray(e.supplier_bids)?e.supplier_bids:[]);
+ const participantsByLot=new Map();
+ for(const bid of supplierEvidence){
+  if(!bid.lot_id||!bid.supplier_code||['draft','pending','deleted'].includes(bid.bid_status))continue;
+  if(!participantsByLot.has(bid.lot_id))participantsByLot.set(bid.lot_id,new Set());
+  participantsByLot.get(bid.lot_id).add(bid.supplier_code);
+ }
+ const competitionRows=eligible.map(row=>{
+  const observed=participantsByLot.get(row['Ідентифікатор лота'])?.size||0;
+  return observed>0?{...row,'Кіль-ть унікальних учасників лота':observed}:row;
+ });
+ const history=summarizeBuyerHistory(competitionRows,code,period);
  history.supplier_behavior=summarizeSupplierBehavior(supplierEvidence,period);
- return {...history,buyer_history_cache_schema:6,history_version:5,as_of:period.as_of,excluded_tender_id:excludedTenderId,
+ return {...history,buyer_history_cache_schema:7,history_version:5,as_of:period.as_of,excluded_tender_id:excludedTenderId,
   verification:{candidate_lots:unique.length,verified_lots:eligible.length,unresolved_lots:unresolved.length,excluded_lots:unique.length-eligible.length-unresolved.length,complete:unresolved.length===0,excluded_or_unverified_lots:unique.length-eligible.length,details:reasons,
    method:'Preserved verified rows or public Prozorro snapshot last modified before proposal cutoff'},
   evidence_note:unresolved.length?'Перевірка неповна через недоступні відповіді. Знайдені лоти не зникли; показники нижче стосуються лише підтвердженої частини.':'Використано підтверджені дані до кінцевої дати подання пропозицій; поточний тендер виключено.'};
@@ -1677,8 +1701,8 @@ async function buyerHistoryRoute(request,origin,ctx){
  const excluded=String(body.excludeTenderId||'');
  // @ts-ignore Cloudflare Workers CacheStorage.default extension
  const period={...buyerHistoryPeriod(new Date(asOf+'T12:00:00Z')),as_of:asOf},cache=caches.default;
- const key=new Request(new URL('/buyer-history-cache/v11/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
- try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.buyer_history_cache_schema===6&&h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
+ const key=new Request(new URL('/buyer-history-cache/v12/'+code+'/'+asOf+'/'+encodeURIComponent(excluded),request.url));
+ try{const hit=await cache.match(key);if(hit){const h=await hit.json();if(h.buyer_history_cache_schema===7&&h.verification?.complete)return json({...h,cached:true},200,origin)}}catch{}
  try{
   const raw=await loadBuyerHistory(code,period),history=await verifyBuyerRows(raw.rows,code,period,excluded,{cache,baseUrl:request.url});
   // Do not preserve a failed verification as the buyer's history for another day.
@@ -1688,6 +1712,21 @@ async function buyerHistoryRoute(request,origin,ctx){
   }
   return json(history,200,origin);
  }catch(e){return json({ready:false,buyer_code:code,period,as_of:asOf,reason:e.message},200,origin)}
+}
+
+async function tenderDocumentRoute(request,origin){
+ const url=new URL(request.url),normalized=normalizeTenderId(url.searchParams.get('tid'));
+ const id=url.searchParams.get('doc')||'';
+ if(!normalized||normalized.lotSuffix||!/^[a-f0-9]{32}$/i.test(id))return json({error:'Невірний ідентифікатор документа.'},400,origin);
+ try{
+  const source=await fetchTenderData(normalized.parent);
+  const doc=(source.data.documents||[]).find(x=>x.id===id);
+  if(!doc)return json({error:'Документ не належить цьому тендеру.'},404,origin);
+  const response=await fetchProzorroDocument(doc.url);
+  if(!response.ok)return json({error:'Prozorro не відкрив документ (HTTP '+response.status+').'},502,origin);
+  const kind=String(doc.title||'').toLowerCase().endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  return new Response(response.body,{status:200,headers:{'Content-Type':kind,'Content-Disposition':`attachment; filename="tender-document-${id}.${kind==='application/pdf'?'pdf':'docx'}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...cors(origin)}});
+ }catch(e){return json({error:'Не вдалося завантажити документ Prozorro: '+String(e?.message||'помилка').slice(0,200)},502,origin)}
 }
 
 export default {
@@ -1708,11 +1747,12 @@ export default {
       return json({
         ok: true,
         service: "ЄВРО5 · Асистент тендерної пропозиції",
-        version: "2026.11.12-august-document-evidence-v8"
+        version: "2026.11.13-september-history-market-documents-v9"
       }, 200, origin);
     }
 
     if (request.method === "POST" && url.pathname === "/buyer-history") return buyerHistoryRoute(request,origin,ctx);
+    if (request.method === "GET" && url.pathname === "/tender-document") return tenderDocumentRoute(request,origin);
 
     if (request.method !== "POST" || url.pathname !== "/tender-check") {
       return json({ error: "Не знайдено" }, 404, origin);
@@ -1763,7 +1803,9 @@ export default {
       const published=new Date(d?.datePublished),modified=new Date(d?.dateModified||d?.datePublished);
       return cutoff&&Number.isFinite(published.getTime())&&Number.isFinite(modified.getTime())&&euro5ObservationDate(published)<=cutoff&&euro5ObservationDate(modified)<=cutoff;
     });
-    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({extracted_chars:0,...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`}));
+    const documentExtracts=(await readTenderDocuments(documentsForReading)).map((doc,index)=>({extracted_chars:0,...doc,source_id:`DOC-${String(index+1).padStart(2,'0')}`,
+      source_url:doc.text&&/^[a-f0-9]{32}$/i.test(documentsForReading[index]?.id||'')
+        ?`/tender-document?tid=${encodeURIComponent(normalized.parent)}&doc=${documentsForReading[index].id}`:null}));
     const directHighlights=directDocumentHighlights(documentExtracts);
 
     const payload = {
@@ -1851,7 +1893,7 @@ response_format: { type: "json_object" }
     );
 
     const [marketResult, fx] = await Promise.all([
-      buildMarketReference(source.data, parsed, scope, supplyInfo),
+      buildMarketReference(source.data, parsed, scope, supplyInfo, documentExtracts),
       buildFxTrend(source.data)
     ]);
     const fxData = "change30dPct" in fx ? fx : null;
