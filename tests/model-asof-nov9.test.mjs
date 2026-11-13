@@ -46,5 +46,5 @@ test('October 22 and earlier keep their original model',()=>{
 test('frontend matches new backend model and keeps historical prices',()=>{
   assert.ok(ui.includes("if(version==='2026-11-09-items-v2') return MODEL_REFRESH_NOV9;"));
   assert.ok(ui.includes("if(version==='2026-10-22-items-v2') return MODEL_REFRESH;"));
-  assert.ok(html.includes('app.js?v=20261113-legacy-doc-v16'));
+  assert.ok(html.includes('app.js?v=20261113-contract-scope-v18'));
 });
