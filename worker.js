@@ -589,6 +589,25 @@ function extractPaymentTerms(data) {
   };
 }
 
+function extractDeliveryTerms(data) {
+  const milestones = Array.isArray(data?.milestones) ? data.milestones : [];
+  const delivery = milestones.filter(m => m?.type === 'delivery');
+  const days = delivery.map(m => Number(m?.duration?.days)).filter(n => Number.isInteger(n) && n >= 0);
+  return days.length ? Math.max(...days) : null;
+}
+
+function structuredTenderEvidence(data) {
+  const evidence=[];
+  for(const [index,milestone] of (Array.isArray(data?.milestones)?data.milestones:[]).entries()) {
+    if(!['financing','delivery'].includes(milestone?.type))continue;
+    const quote=String(milestone?.description||'').trim();
+    if(quote.length<20||quote.length>700)continue;
+    evidence.push({text:quote,category:milestone.type==='financing'?'Оплата та розрахунки':'Постачання та відпуск',
+      source:{title:'Структуровані дані Prozorro',location:`milestones[${index}].description`,quote},source_verified:true});
+  }
+  return evidence.slice(0,6);
+}
+
 
 
 function supplyFormatFromText(value) {
@@ -1913,6 +1932,7 @@ export default {
 
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
+    const structuredEvidence = structuredTenderEvidence(source.data);
     const cutoff=buyerHistoryDecisionDay(source.data,normalized.parent);
     const allTenderDocuments=Array.isArray(source.data?.documents)?source.data.documents:[];
     const supportedDocuments=allTenderDocuments.filter(d=>/\.pdf(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.docx(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/\.doc(?:\b|\?)/i.test(String(d?.title||d?.url||''))||/application\/(?:pdf|msword|vnd\.ms-word|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d?.format||d?.mimeType||'')));
@@ -2040,6 +2060,8 @@ response_format: { type: "json_object" }
     if (structuredPayment.advancePaymentPct !== null) parsed.advance_payment_pct = structuredPayment.advancePaymentPct;
     if (structuredPayment.paymentDays !== null) parsed.payment_days = structuredPayment.paymentDays;
     parsed.payment_note = structuredPayment.paymentNote || null;
+    const structuredDeliveryDays = extractDeliveryTerms(source.data);
+    if (structuredDeliveryDays !== null) parsed.delivery_days = structuredDeliveryDays;
 
     const supplyInfo = detectSupplyFormat(source.data, parsed, parsed.fuel_type || structuredFuel.fuelType);
     parsed.supply_format = supplyInfo.supplyFormat;
@@ -2100,6 +2122,7 @@ response_format: { type: "json_object" }
 
     return json({
       ...parsed,
+      structured_evidence: structuredEvidence,
       buyer_code: buyerCode(source.data),
       buyer_history_as_of: buyerHistoryDecisionDay(source.data, normalized.parent),
       buyer_name: source.data?.procuringEntity?.name || null,
@@ -2127,6 +2150,7 @@ response_format: { type: "json_object" }
       market_benchmark_label: market.benchmarkLabel ?? null,
       market_benchmark_context: market.benchmarkContext ?? null,
       tender_announcement_date: market.tenderDate ?? null,
+      proposal_deadline: source.data?.tenderPeriod?.endDate ?? null,
       market_retail_reference_date: market.retailReferenceDate ?? null,
       market_retail_source: market.retailSource ?? null,
       market_retail_gasoline_source: market.retailGasolineSource ?? null,
@@ -2160,6 +2184,10 @@ response_format: { type: "json_object" }
       advance_payment_pct: parsed.advance_payment_pct ?? 0,
       payment_days: parsed.payment_days ?? null,
       payment_note: parsed.payment_note ?? null,
+      payment_source: structuredPayment.paymentDays !== null ? 'Структуровані умови оплати Prozorro' :
+        directConditions.values.payment_days !== undefined ? 'Дослівний витяг із документа' : null,
+      delivery_source: structuredDeliveryDays !== null ? 'Структуровані умови поставки Prozorro' :
+        directConditions.values.delivery_days !== undefined ? 'Дослівний витяг із документа' : null,
       scope_note: "Відповідність сфери застосування перевірено за структурованими даними публічного API Prozorro.",
       source_scope: "Основні дані тендера завантажено з Prozorro. Статус читання PDF, DOC і DOCX та підтверджені цитати наведено вище."
     }, 200, origin);
