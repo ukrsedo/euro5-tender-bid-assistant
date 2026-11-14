@@ -44,6 +44,20 @@ test('unconfirmed dropdowns still display an indicative price for evidenced A-95
   assert.equal(c.indicative,true);
   assert.equal(c.marketValue,950);
 });
+test('10 November voucher tender shows a conditional comparison when the API omits item profiles',()=>{
+  const old=ctx.lastExtraction;
+  try{
+    ctx.lastExtraction={tender_announcement_date:'10.11.2026',tender_title:'Бензин та дизельне паливо',
+      fuel_products:{gasoline:{tier:'unspecified',items:[]},diesel:{tier:'unspecified',items:[]}},
+      market_retail_reference_date:'10.11.2026',market_retail_source:'Minfin',
+      market_reference_candidates:{policy:'fuel-quality-v1',gasoline:{retail:89.02/1.2},diesel:{retail:104.42/1.2}}};
+    const cmp=displayMarketComparison(3127500,20000,20000,'mixed',{
+      supply_format:'retail',gasoline_product:'unknown',diesel_product:'unknown'});
+    assert.equal(cmp.conditional,true);
+    assert.equal(cmp.marketValue,3224000);
+    assert.ok(Math.abs(cmp.gap+2.993176178660051)<1e-9);
+  }finally{ctx.lastExtraction=old;}
+});
 test('regression: title-only A-95 and generic diesel evidence displays market comparison when item profiles are empty',()=>{
   const oldProducts=ctx.lastExtraction.fuel_products,oldTitle=ctx.lastExtraction.tender_title;
   ctx.lastExtraction.tender_title='Бензин А-95-Євро5 по талонах та дизельне паливо-Євро5 по талонах';
