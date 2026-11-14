@@ -71,6 +71,7 @@
         CPV: <strong id="reviewCpv">—</strong>.
         <span id="reviewNormalization">—</span>
       </div>
+      <div id="proposalDeadlineNotice" class="notice hidden" role="status"></div>
 
       <article id="buyerHistoryCard" class="buyer-history-card hidden" aria-live="polite"></article>
       <div class="review-grid">
@@ -195,6 +196,7 @@
           <div class="field">
             <label for="reviewPaymentDays">Післяплата, днів</label>
             <input id="reviewPaymentDays" type="number" min="0" step="1" placeholder="10" />
+            <div id="reviewPaymentSource" class="field-source"></div>
           </div>
           <div class="field">
             <label for="reviewBidSecurityPct">Забезпечення пропозиції, %</label>
@@ -207,6 +209,7 @@
           <div class="field">
             <label for="reviewDeliveryDays">Строк поставки, днів</label>
             <input id="reviewDeliveryDays" type="number" min="0" step="1" placeholder="Не визначено" />
+            <div id="reviewDeliverySource" class="field-source"></div>
           </div>
           <div class="field">
             <label for="reviewMinStations">Мінімальна кількість АЗС</label>
