@@ -15,9 +15,12 @@ test('same-day tender ID remains valid before noon UTC; future Kyiv date is reje
   const start=worker.indexOf('function tenderAnnouncementDate(');
   const end=worker.indexOf('\n// History is sampled',start);
   const code=worker.slice(start,end);
-  class FixedDate extends Date { static now(){return Date.parse('2026-11-13T09:00:00Z')} }
+  class FixedDate extends Date {
+    constructor(value){super(value===undefined?'2026-11-13T09:00:00Z':value)}
+    static now(){return Date.parse('2026-11-13T09:00:00Z')}
+  }
   const dateContext={Date:FixedDate,Intl,String,Number};
-  dateContext.euro5ObservationDate=d=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+  dateContext.euro5ObservationDate=d=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(d??new FixedDate());
   vm.createContext(dateContext);vm.runInContext(code+';this.pick=tenderAnnouncementDate',dateContext);
   assert.equal(dateContext.pick({tenderID:'UA-2026-11-13-002719-a'}).toISOString(),'2026-11-13T12:00:00.000Z');
   assert.equal(dateContext.pick({tenderID:'UA-2026-11-14-002719-a'}),null);
