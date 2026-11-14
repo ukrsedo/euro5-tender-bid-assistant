@@ -44737,6 +44737,27 @@ function extractPaymentTerms(data) {
     paymentNote: parts.length ? parts.join(", ") : null
   };
 }
+function extractDeliveryTerms(data) {
+  const milestones = Array.isArray(data?.milestones) ? data.milestones : [];
+  const delivery = milestones.filter((m3) => m3?.type === "delivery");
+  const days = delivery.map((m3) => Number(m3?.duration?.days)).filter((n4) => Number.isInteger(n4) && n4 >= 0);
+  return days.length ? Math.max(...days) : null;
+}
+function structuredTenderEvidence(data) {
+  const evidence = [];
+  for (const [index, milestone] of (Array.isArray(data?.milestones) ? data.milestones : []).entries()) {
+    if (!["financing", "delivery"].includes(milestone?.type)) continue;
+    const quote = String(milestone?.description || "").trim();
+    if (quote.length < 20 || quote.length > 700) continue;
+    evidence.push({
+      text: quote,
+      category: milestone.type === "financing" ? "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438" : "\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A",
+      source: { title: "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0456 \u0434\u0430\u043D\u0456 Prozorro", location: `milestones[${index}].description`, quote },
+      source_verified: true
+    });
+  }
+  return evidence.slice(0, 6);
+}
 function supplyFormatFromText(value) {
   const text = String(value || "").toLowerCase();
   const retail = /(талон|паливн\w*\s+карт|смарт[-\s]?карт|скретч[-\s]?карт|відпуск.{0,40}азс|заправк.{0,40}азс|мереж.{0,20}азс)/i.test(text);
@@ -46098,6 +46119,7 @@ var worker_default = {
     }
     const structuredFuel = extractStructuredFuel(source.data);
     const structuredPayment = extractPaymentTerms(source.data);
+    const structuredEvidence = structuredTenderEvidence(source.data);
     const cutoff = buyerHistoryDecisionDay(source.data, normalized.parent);
     const allTenderDocuments = Array.isArray(source.data?.documents) ? source.data.documents : [];
     const supportedDocuments = allTenderDocuments.filter((d5) => /\.pdf(?:\b|\?)/i.test(String(d5?.title || d5?.url || "")) || /\.docx(?:\b|\?)/i.test(String(d5?.title || d5?.url || "")) || /\.doc(?:\b|\?)/i.test(String(d5?.title || d5?.url || "")) || /application\/(?:pdf|msword|vnd\.ms-word|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/i.test(String(d5?.format || d5?.mimeType || "")));
@@ -46228,6 +46250,8 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     if (structuredPayment.advancePaymentPct !== null) parsed.advance_payment_pct = structuredPayment.advancePaymentPct;
     if (structuredPayment.paymentDays !== null) parsed.payment_days = structuredPayment.paymentDays;
     parsed.payment_note = structuredPayment.paymentNote || null;
+    const structuredDeliveryDays = extractDeliveryTerms(source.data);
+    if (structuredDeliveryDays !== null) parsed.delivery_days = structuredDeliveryDays;
     const supplyInfo = detectSupplyFormat(source.data, parsed, parsed.fuel_type || structuredFuel.fuelType);
     parsed.supply_format = supplyInfo.supplyFormat;
     parsed.gasoline_supply_format = supplyInfo.gasolineSupplyFormat;
@@ -46281,6 +46305,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
     }, marketResult);
     return json({
       ...parsed,
+      structured_evidence: structuredEvidence,
       buyer_code: buyerCode(source.data),
       buyer_history_as_of: buyerHistoryDecisionDay(source.data, normalized.parent),
       buyer_name: source.data?.procuringEntity?.name || null,
@@ -46308,6 +46333,7 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       market_benchmark_label: market.benchmarkLabel ?? null,
       market_benchmark_context: market.benchmarkContext ?? null,
       tender_announcement_date: market.tenderDate ?? null,
+      proposal_deadline: source.data?.tenderPeriod?.endDate ?? null,
       market_retail_reference_date: market.retailReferenceDate ?? null,
       market_retail_source: market.retailSource ?? null,
       market_retail_gasoline_source: market.retailGasolineSource ?? null,
@@ -46341,6 +46367,8 @@ ${formatTenderDocumentsForAI(documentExtracts)}`
       advance_payment_pct: parsed.advance_payment_pct ?? 0,
       payment_days: parsed.payment_days ?? null,
       payment_note: parsed.payment_note ?? null,
+      payment_source: structuredPayment.paymentDays !== null ? "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0456 \u0443\u043C\u043E\u0432\u0438 \u043E\u043F\u043B\u0430\u0442\u0438 Prozorro" : directConditions.values.payment_days !== void 0 ? "\u0414\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u0439 \u0432\u0438\u0442\u044F\u0433 \u0456\u0437 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430" : null,
+      delivery_source: structuredDeliveryDays !== null ? "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0456 \u0443\u043C\u043E\u0432\u0438 \u043F\u043E\u0441\u0442\u0430\u0432\u043A\u0438 Prozorro" : directConditions.values.delivery_days !== void 0 ? "\u0414\u043E\u0441\u043B\u0456\u0432\u043D\u0438\u0439 \u0432\u0438\u0442\u044F\u0433 \u0456\u0437 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430" : null,
       scope_note: "\u0412\u0456\u0434\u043F\u043E\u0432\u0456\u0434\u043D\u0456\u0441\u0442\u044C \u0441\u0444\u0435\u0440\u0438 \u0437\u0430\u0441\u0442\u043E\u0441\u0443\u0432\u0430\u043D\u043D\u044F \u043F\u0435\u0440\u0435\u0432\u0456\u0440\u0435\u043D\u043E \u0437\u0430 \u0441\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0438\u043C\u0438 \u0434\u0430\u043D\u0438\u043C\u0438 \u043F\u0443\u0431\u043B\u0456\u0447\u043D\u043E\u0433\u043E API Prozorro.",
       source_scope: "\u041E\u0441\u043D\u043E\u0432\u043D\u0456 \u0434\u0430\u043D\u0456 \u0442\u0435\u043D\u0434\u0435\u0440\u0430 \u0437\u0430\u0432\u0430\u043D\u0442\u0430\u0436\u0435\u043D\u043E \u0437 Prozorro. \u0421\u0442\u0430\u0442\u0443\u0441 \u0447\u0438\u0442\u0430\u043D\u043D\u044F PDF, DOC \u0456 DOCX \u0442\u0430 \u043F\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043D\u0456 \u0446\u0438\u0442\u0430\u0442\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u043E \u0432\u0438\u0449\u0435."
     }, 200, origin);
