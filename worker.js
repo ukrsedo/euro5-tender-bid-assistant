@@ -1464,14 +1464,18 @@ function validateAiEvidenceList(items, kind, documents) {
     if(!item||typeof item!=='object'||Array.isArray(item))continue;
     const sourceId=String(item.source_id||'').trim();
     const location=String(item.source_location||'').trim();
-    const quote=String(item.evidence_quote||'').trim().slice(0,500);
+    const quote=String(item.evidence_quote||'').trim();
+    if(quote.length>3000)continue;
     if(!cleanAiText(quote,kind)||!evidenceTopicAllowed(kind,quote)||!sourceId)continue;
     const document=documents.find(d=>d.source_id===sourceId&&['read','truncated'].includes(d.status)&&d.text);
     if(!document)continue;
     const block=citationBlock(document,location),normalizedQuote=normalizeEvidenceText(quote);
     if(!block||normalizedQuote.length<2||!block.includes(normalizedQuote))continue;
-    const source={title:document.title,location,quote,url:document.source_url||null};
-    out.push({text:quote,source,source_verified:true});
+    const fullSegment=document.segments?.find(segment=>segment.location===location)?.body?.trim();
+    if(fullSegment&&fullSegment.length>3000)continue;
+    const text=fullSegment&&normalizeEvidenceText(fullSegment)===block?fullSegment:quote;
+    const source={title:document.title,location,quote:text,url:document.source_url||null};
+    out.push({text,source,source_verified:true,is_excerpt:normalizeEvidenceText(text)!==block});
   }
   return out.slice(0,30);
 }
@@ -1479,6 +1483,8 @@ function validateAiEvidenceList(items, kind, documents) {
 function classifyContractParagraph(value) {
   const text=String(value||'').replace(/[\u00a0\u202f]/gu,' ').replace(/\s+/gu,' ').trim();
   if(!text||/санкц|країн.{0,20}походжен|бенефіціар/iu.test(text))return [];
+  // A price-adjustment clause can mention fuel grades without setting a fuel specification.
+  if(/(?:збільшення|зменшення|зміни|коливання)\s+ціни\s+за\s+одиниц[юі]\s+товар/iu.test(text))return [];
   // Definition clauses describe vocabulary; they do not set operating terms.
   if(/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Погашен.{0,30}Талон|Дійсн.{0,30}Талон|Паливо\s*\(Товар\))[^\n]{0,120}\s[-–—]\s/iu.test(text))return [];
   const categories=[];
@@ -1526,8 +1532,9 @@ export function directDocumentHighlights(documents) {
     if(body.length<20)continue;
     const categories=classifyContractParagraph(body);
     if(!categories.length)continue;
-    const quote=body.slice(0,700).trim();
-    if(!quote||!body.includes(quote))continue;
+    // Never present a cut-off paragraph as a complete literal clause.
+    if(body.length>3000)continue;
+    const quote=body;
     candidates.push({index,score:categories.length*10+Math.min(5,Math.floor(body.length/250)),item:{text:quote,category:categories.join(' · '),source:{title:p.doc.title,location:p.location,quote,url:p.doc.source_url||null},source_verified:true}});
   }
   if(!candidates.length)return [];
@@ -1567,15 +1574,17 @@ export function coreDocumentClauses(documents) {
     if(!doc.segments||typeof doc.segments[Symbol.iterator]!=='function')continue;
     for(const segment of doc.segments){
       const body=String(segment.body||'').trim();
-      if(body.length<20||!segment.location)continue;
+      if(body.length<20||body.length>3000||!segment.location)continue;
       const normalized=body.toLowerCase().replaceAll('\u00a0',' ').replaceAll('\u202f',' ').replaceAll('’',"'");
       if(normalized.includes('санкц')||normalized.includes('країною походження')||normalized.includes('бенефіціар'))continue;
+      if(/(?:збільшення|зменшення|зміни|коливання)\s+ціни\s+за\s+одиниц[юі]\s+товар/iu.test(normalized))continue;
       let category='';
       if(payment.some(term=>normalized.includes(term)))category='Оплата та розрахунки';
       else if(supply.some(term=>normalized.includes(term)))category='Постачання та відпуск';
       else if(technical.some(term=>normalized.includes(term)))category='Технічні вимоги до пального';
       if(!category)continue;
-      const quote=body.slice(0,700).trim();
+      if(body.length>3000)continue;
+      const quote=body;
       out.push({text:quote,category,source:{title:doc.title,location:segment.location,quote,url:doc.source_url||null},source_verified:true});
     }
   }
@@ -1597,6 +1606,7 @@ export function directDocumentConditionEvidence(documents) {
     if (!['read','truncated'].includes(doc.status) || !Array.isArray(doc.segments)) continue;
     for (const segment of doc.segments) {
       const body = String(segment.body || '').trim();
+      if(body.length>3000)continue;
       for (const [field, re, label] of rules) {
         const match = body.match(re);
         if (!match) continue;
