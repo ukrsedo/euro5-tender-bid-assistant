@@ -44745,6 +44745,37 @@ function extractDeliveryTerms(data) {
 }
 function structuredTenderEvidence(data) {
   const evidence = [];
+  const deliveryGroups = /* @__PURE__ */ new Map();
+  for (const [index, item] of (Array.isArray(data?.items) ? data.items : []).entries()) {
+    const address = item?.deliveryAddress;
+    const addressParts = ["streetAddress", "locality", "region", "postalCode", "countryName"].map((key2) => String(address?.[key2] || "").trim()).filter(Boolean);
+    const endDate = String(item?.deliveryDate?.endDate || "");
+    const date = /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(endDate) ? endDate.slice(0, 10) : "";
+    if (!addressParts.length && !date) continue;
+    const key = JSON.stringify([addressParts, date]);
+    if (!deliveryGroups.has(key)) deliveryGroups.set(key, { addressParts, date, items: [] });
+    deliveryGroups.get(key).items.push({ index, title: String(item?.description || "").trim() });
+  }
+  for (const group of deliveryGroups.values()) {
+    const itemNames = group.items.map(({ title, index }) => title || `\u041F\u043E\u0437\u0438\u0446\u0456\u044F ${index + 1}`);
+    const terms = [];
+    if (group.addressParts.length) terms.push(`\u041C\u0456\u0441\u0446\u0435 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F: ${group.addressParts.join(", ")}`);
+    if (group.date) terms.push(`\u041A\u0456\u043D\u0446\u0435\u0432\u0430 \u0434\u0430\u0442\u0430 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F: ${group.date.slice(8, 10)}.${group.date.slice(5, 7)}.${group.date.slice(0, 4)}`);
+    const fields = group.items.flatMap(({ index }) => [
+      ...group.addressParts.length ? [`items[${index}].deliveryAddress`] : [],
+      ...group.date ? [`items[${index}].deliveryDate.endDate`] : []
+    ]);
+    evidence.push({
+      text: `${itemNames.join("; ")} \u2014 ${terms.join("; ")}.`,
+      category: "\u041C\u0456\u0441\u0446\u0435 \u0439 \u0434\u0430\u0442\u0430 \u043F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F",
+      source: {
+        title: "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u043E\u0432\u0430\u043D\u0456 \u0434\u0430\u043D\u0456 Prozorro",
+        location: fields.join("; "),
+        url: /^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z]$/i.test(String(data?.tenderID || "")) ? `https://prozorro.gov.ua/tender/${data.tenderID}` : null
+      },
+      source_verified: true
+    });
+  }
   for (const [index, milestone] of (Array.isArray(data?.milestones) ? data.milestones : []).entries()) {
     if (!["financing", "delivery"].includes(milestone?.type)) continue;
     const quote = String(milestone?.description || "").trim();
