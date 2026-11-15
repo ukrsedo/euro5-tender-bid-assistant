@@ -598,6 +598,32 @@ function extractDeliveryTerms(data) {
 
 function structuredTenderEvidence(data) {
   const evidence=[];
+  const deliveryGroups=new Map();
+  for(const [index,item] of (Array.isArray(data?.items)?data.items:[]).entries()) {
+    const address=item?.deliveryAddress;
+    const addressParts=['streetAddress','locality','region','postalCode','countryName']
+      .map(key=>String(address?.[key]||'').trim()).filter(Boolean);
+    const endDate=String(item?.deliveryDate?.endDate||'');
+    const date=/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(endDate)?endDate.slice(0,10):'';
+    if(!addressParts.length&&!date)continue;
+    const key=JSON.stringify([addressParts,date]);
+    if(!deliveryGroups.has(key))deliveryGroups.set(key,{addressParts,date,items:[]});
+    deliveryGroups.get(key).items.push({index,title:String(item?.description||'').trim()});
+  }
+  for(const group of deliveryGroups.values()) {
+    const itemNames=group.items.map(({title,index})=>title||`Позиція ${index+1}`);
+    const terms=[];
+    if(group.addressParts.length)terms.push(`Місце постачання: ${group.addressParts.join(', ')}`);
+    if(group.date)terms.push(`Кінцева дата постачання: ${group.date.slice(8,10)}.${group.date.slice(5,7)}.${group.date.slice(0,4)}`);
+    const fields=group.items.flatMap(({index})=>[
+      ...(group.addressParts.length?[`items[${index}].deliveryAddress`]:[]),
+      ...(group.date?[`items[${index}].deliveryDate.endDate`]:[])
+    ]);
+    evidence.push({text:`${itemNames.join('; ')} — ${terms.join('; ')}.`,category:'Місце й дата постачання',
+      source:{title:'Структуровані дані Prozorro',location:fields.join('; '),
+        url:/^UA-\d{4}-\d{2}-\d{2}-\d{6}-[a-z]$/i.test(String(data?.tenderID||''))
+          ?`https://prozorro.gov.ua/tender/${data.tenderID}`:null},source_verified:true});
+  }
   for(const [index,milestone] of (Array.isArray(data?.milestones)?data.milestones:[]).entries()) {
     if(!['financing','delivery'].includes(milestone?.type))continue;
     const quote=String(milestone?.description||'').trim();
