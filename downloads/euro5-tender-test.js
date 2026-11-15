@@ -45538,20 +45538,25 @@ function validateAiEvidenceList(items, kind, documents) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const sourceId = String(item.source_id || "").trim();
     const location = String(item.source_location || "").trim();
-    const quote = String(item.evidence_quote || "").trim().slice(0, 500);
+    const quote = String(item.evidence_quote || "").trim();
+    if (quote.length > 3e3) continue;
     if (!cleanAiText(quote, kind) || !evidenceTopicAllowed(kind, quote) || !sourceId) continue;
     const document2 = documents.find((d5) => d5.source_id === sourceId && ["read", "truncated"].includes(d5.status) && d5.text);
     if (!document2) continue;
     const block = citationBlock(document2, location), normalizedQuote = normalizeEvidenceText(quote);
     if (!block || normalizedQuote.length < 2 || !block.includes(normalizedQuote)) continue;
-    const source = { title: document2.title, location, quote, url: document2.source_url || null };
-    out.push({ text: quote, source, source_verified: true });
+    const fullSegment = document2.segments?.find((segment) => segment.location === location)?.body?.trim();
+    if (fullSegment && fullSegment.length > 3e3) continue;
+    const text = fullSegment && normalizeEvidenceText(fullSegment) === block ? fullSegment : quote;
+    const source = { title: document2.title, location, quote: text, url: document2.source_url || null };
+    out.push({ text, source, source_verified: true, is_excerpt: normalizeEvidenceText(text) !== block });
   }
   return out.slice(0, 30);
 }
 function classifyContractParagraph(value) {
   const text = String(value || "").replace(/[\u00a0\u202f]/gu, " ").replace(/\s+/gu, " ").trim();
   if (!text || /санкц|країн.{0,20}походжен|бенефіціар/iu.test(text)) return [];
+  if (/(?:збільшення|зменшення|зміни|коливання)\s+ціни\s+за\s+одиниц[юі]\s+товар/iu.test(text)) return [];
   if (/^\s*\d+(?:\.\d+)*\.?\s+(?:АЗС|Талон|скретч.?карт|Пред.?явник|Погашен.{0,30}Талон|Дійсн.{0,30}Талон|Паливо\s*\(Товар\))[^\n]{0,120}\s[-–—]\s/iu.test(text)) return [];
   const categories = [];
   const payment = /(?:оплата|розрахунк|платіж)[\s\S]{0,220}(?:безготівк|перерахуван|рахунок|(?:протягом|впродовж|в строк|у строк)\s+\d|відстроч|лише за фактично|після фактично|авансу?\s+\d)|(?:безготівк|перерахуван|відстроч)[\s\S]{0,160}(?:оплата|розрахунк|платіж)/iu.test(text);
@@ -45592,8 +45597,8 @@ function directDocumentHighlights(documents) {
     if (body.length < 20) continue;
     const categories = classifyContractParagraph(body);
     if (!categories.length) continue;
-    const quote = body.slice(0, 700).trim();
-    if (!quote || !body.includes(quote)) continue;
+    if (body.length > 3e3) continue;
+    const quote = body;
     candidates.push({ index, score: categories.length * 10 + Math.min(5, Math.floor(body.length / 250)), item: { text: quote, category: categories.join(" \xB7 "), source: { title: p4.doc.title, location: p4.location, quote, url: p4.doc.source_url || null }, source_verified: true } });
   }
   if (!candidates.length) return [];
@@ -45628,15 +45633,17 @@ function coreDocumentClauses(documents) {
     if (!doc.segments || typeof doc.segments[Symbol.iterator] !== "function") continue;
     for (const segment of doc.segments) {
       const body = String(segment.body || "").trim();
-      if (body.length < 20 || !segment.location) continue;
+      if (body.length < 20 || body.length > 3e3 || !segment.location) continue;
       const normalized = body.toLowerCase().replaceAll("\xA0", " ").replaceAll("\u202F", " ").replaceAll("\u2019", "'");
       if (normalized.includes("\u0441\u0430\u043D\u043A\u0446") || normalized.includes("\u043A\u0440\u0430\u0457\u043D\u043E\u044E \u043F\u043E\u0445\u043E\u0434\u0436\u0435\u043D\u043D\u044F") || normalized.includes("\u0431\u0435\u043D\u0435\u0444\u0456\u0446\u0456\u0430\u0440")) continue;
+      if (/(?:збільшення|зменшення|зміни|коливання)\s+ціни\s+за\s+одиниц[юі]\s+товар/iu.test(normalized)) continue;
       let category = "";
       if (payment.some((term) => normalized.includes(term))) category = "\u041E\u043F\u043B\u0430\u0442\u0430 \u0442\u0430 \u0440\u043E\u0437\u0440\u0430\u0445\u0443\u043D\u043A\u0438";
       else if (supply.some((term) => normalized.includes(term))) category = "\u041F\u043E\u0441\u0442\u0430\u0447\u0430\u043D\u043D\u044F \u0442\u0430 \u0432\u0456\u0434\u043F\u0443\u0441\u043A";
       else if (technical.some((term) => normalized.includes(term))) category = "\u0422\u0435\u0445\u043D\u0456\u0447\u043D\u0456 \u0432\u0438\u043C\u043E\u0433\u0438 \u0434\u043E \u043F\u0430\u043B\u044C\u043D\u043E\u0433\u043E";
       if (!category) continue;
-      const quote = body.slice(0, 700).trim();
+      if (body.length > 3e3) continue;
+      const quote = body;
       out.push({ text: quote, category, source: { title: doc.title, location: segment.location, quote, url: doc.source_url || null }, source_verified: true });
     }
   }
@@ -45655,6 +45662,7 @@ function directDocumentConditionEvidence(documents) {
     if (!["read", "truncated"].includes(doc.status) || !Array.isArray(doc.segments)) continue;
     for (const segment of doc.segments) {
       const body = String(segment.body || "").trim();
+      if (body.length > 3e3) continue;
       for (const [field, re2, label] of rules) {
         const match = body.match(re2);
         if (!match) continue;
