@@ -309,7 +309,13 @@ function benchmarkDescription(format,gasFormat,dieselFormat){
     const source=lastExtraction?.market_retail_source||'Minfin';
     return `Роздрібний орієнтир: ${source}${d?` (${d})`:''}.`;
   }
-  if(format==='split') return 'Для кожної позиції використовується орієнтир відповідно до її підтвердженого формату постачання.';
+  if(format==='split'){
+    const formats=[...new Set([gasFormat,dieselFormat])];
+    const sources=[];
+    if(formats.includes('retail'))sources.push(`${lastExtraction?.market_retail_source||'Minfin'}${lastExtraction?.market_retail_reference_date?' ('+lastExtraction.market_retail_reference_date+')':''}`);
+    if(formats.includes('bulk'))sources.push(`Enkorr${lastExtraction?.market_wholesale_reference_date?' ('+lastExtraction.market_wholesale_reference_date+')':''}`);
+    return `Орієнтир за форматом кожної позиції${sources.length?': '+sources.join('; '):''}.`;
+  }
   return '';
 }
 function invalidateCalculation(){
@@ -463,6 +469,7 @@ function renderReviewMarket(){
     v.product_selection_confirmed=true;
   }
   const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,v);
+  setMarketScoreStatus('marketComparisonStatus',cmp);
   if(!cmp){
     box.classList.remove('hidden');
     document.getElementById('marketComparisonReviewValue').textContent='—';
@@ -484,6 +491,15 @@ function renderReviewMarket(){
       link.textContent='Джерело цін Enkorr';sourceBox.append(document.createTextNode(' '),link);
     }
   }catch(_){}
+}
+
+function setMarketScoreStatus(id,comparison){
+  const badge=document.getElementById(id);
+  if(!badge)return;
+  const state=!comparison?'unavailable':comparison.indicative?'indicative':'scored';
+  badge.className=`market-status ${state}`;
+  badge.textContent=state==='scored'?'Враховано в рейтингу':
+    state==='indicative'?'Орієнтовно · не враховано в рейтингу':'Немає порівняння · нейтральний бал';
 }
 
 
@@ -648,8 +664,53 @@ function renderReview(data){
   renderRequirements(reviewItems,data.document_read_summary?.read||0);
   document.getElementById('sourceScope').textContent=data.source_scope || '';
   document.getElementById('reviewValidation').textContent='';
+  renderReviewChecklist();
   renderReviewMarket();
   renderCompetitionForecast(data);
+}
+
+function renderReviewChecklist(){
+  const box=document.getElementById('reviewChecklist');
+  if(!box||!lastExtraction)return;
+  const v=reviewValues(),required=[],products=[];
+  const add=(list,id,label)=>list.push({id,label});
+  if(!v.fuelType)add(required,'reviewFuelType','тип пального');
+  if(v.supplyFormat==='unknown')add(required,'reviewSupplyFormat','формат постачання');
+  if(v.supplyFormat==='split'){
+    if(v.fuelType!=='diesel'&&v.gasolineSupplyFormat==='unknown')add(required,'reviewGasolineSupplyFormat','формат бензину');
+    if(v.fuelType!=='gasoline'&&v.dieselSupplyFormat==='unknown')add(required,'reviewDieselSupplyFormat','формат дизеля');
+  }
+  if(!(v.expectedValue>=1000000))add(required,'reviewExpectedValue','очікувану вартість');
+  if(['gasoline','mixed'].includes(v.fuelType)&&!(v.gasolineVolume>0))add(required,'reviewGasolineVolume','обсяг бензину');
+  if(['diesel','mixed'].includes(v.fuelType)&&!(v.dieselVolume>0))add(required,'reviewDieselVolume','обсяг дизеля');
+  if(['gasoline','mixed'].includes(v.fuelType)&&v.gasoline_product==='unknown')add(products,'reviewGasolineProduct','марку бензину');
+  if(['diesel','mixed'].includes(v.fuelType)&&v.diesel_product==='unknown')add(products,'reviewDieselProduct','різновид дизеля');
+  const conditions=[v.advance_payment_pct,v.payment_days,v.bid_security_pct,v.performance_security_pct,
+    v.delivery_days,v.min_stations,v.max_radius_km,v.nationwide_coverage,v.advance_payment_guarantee,v.named_network];
+  const missing=conditions.filter(x=>x===null||x===undefined).length;
+  box.replaceChildren();
+  const heading=document.createElement('strong');heading.textContent='Перед переходом до калькулятора';box.appendChild(heading);
+  const list=document.createElement('ul');
+  const row=(prefix,items)=>{
+    if(!items.length)return;
+    const li=document.createElement('li');li.append(document.createTextNode(prefix));
+    items.forEach(({id,label},i)=>{
+      if(i)li.append(document.createTextNode(', '));
+      const link=document.createElement('a');link.href=`#${id}`;link.textContent=label;li.append(link);
+    });
+    li.append(document.createTextNode('.'));list.appendChild(li);
+  };
+  row('Заповніть: ',required);
+  row('Звірте з документацією: ',products);
+  if(!required.length&&!products.length){
+    const li=document.createElement('li');li.textContent='Ключові поля заповнені. Перевірте умови тендера перед підтвердженням.';list.appendChild(li);
+  }
+  if(missing){
+    const li=document.createElement('li');
+    li.append(document.createTextNode(`Без визначеного значення: ${missing} із ${conditions.length} полів умов. Це не означає, що відповідних вимог немає. `));
+    const link=document.createElement('a');link.href='#reviewTerms';link.textContent='Перевірити умови';li.append(link);list.appendChild(li);
+  }
+  box.appendChild(list);
 }
 
 function renderDocumentReadSummary(data){
@@ -687,7 +748,7 @@ function renderDocumentReadSummary(data){
 function renderRequirements(items,readCount=0){
   const ul=document.getElementById('requirementsList');
   if(!ul)return;
-  ul.innerHTML='';
+  ul.replaceChildren();
   const rows=uniqueRequirementItems(items);
   if(!rows.length){
     const li=document.createElement('li');
@@ -695,30 +756,58 @@ function renderRequirements(items,readCount=0){
     ul.appendChild(li);
     return;
   }
-  for(const item of rows){
-    const li=document.createElement('li');
-    const body=document.createElement('div');
-    const label=document.createElement('strong');
-    label.textContent=(item.type||'Підтверджений фрагмент')+': ';
-    body.append(label,document.createTextNode(item.text));
-    if(item.is_excerpt)body.append(document.createTextNode(' [Фрагмент; повний пункт у документі]'));
-    li.appendChild(body);
-    const citation=document.createElement('small');
-    citation.className='requirement-source';
-    citation.appendChild(document.createTextNode(`Джерело: ${item.source.title}${item.source.location?`, ${item.source.location}`:''}`));
-    const sourceUrl=safeDocumentCitationUrl(item.source.url);
-    if(sourceUrl){
-      citation.appendChild(document.createTextNode(' · '));
-      const link=document.createElement('a');
-      link.href=sourceUrl;
-      link.target='_blank';
-      link.rel='noopener noreferrer';
-      link.textContent='Відкрити документ';
-      citation.appendChild(link);
+  const groups=new Map([
+    ['Оплата та розрахунки',[]],['Постачання та відпуск',[]],
+    ['Технічні вимоги до пального',[]],['Інші підтверджені відомості',[]]
+  ]);
+  rows.forEach(item=>groups.get(requirementGroup(item)).push(item));
+  for(const [name,groupItems] of groups){
+    if(!groupItems.length)continue;
+    const groupLi=document.createElement('li');
+    const group=document.createElement('details');group.className='requirement-group';group.open=true;
+    const heading=document.createElement('summary');heading.textContent=`${name} (${groupItems.length})`;group.append(heading);
+    const list=document.createElement('ul');
+    for(const item of groupItems){
+      const li=document.createElement('li');li.className='requirement-item';
+      const label=document.createElement('strong');label.textContent=(item.type||'Підтверджений фрагмент')+': ';
+      const text=item.text.trim();
+      if(text.length>240){
+        const detail=document.createElement('details');detail.className='requirement-quote';
+        const preview=document.createElement('summary');
+        const before=text.slice(0,200),cut=before.lastIndexOf(' ');
+        preview.append(label,document.createTextNode((cut>120?before.slice(0,cut):before)+'… Показати повний пункт'));
+        const full=document.createElement('div');full.className='requirement-full';full.textContent=text;
+        detail.append(preview,full);li.append(detail);
+      }else{
+        const body=document.createElement('div');body.append(label,document.createTextNode(text));li.append(body);
+      }
+      if(item.is_excerpt){
+        const note=document.createElement('small');note.className='excerpt-note';
+        note.textContent='Це фрагмент; повний пункт доступний у документі.';li.append(note);
+      }
+      const citation=document.createElement('small');citation.className='requirement-source';
+      citation.appendChild(document.createTextNode(`Джерело: ${item.source.title}${item.source.location?`, ${item.source.location}`:''}`));
+      const sourceUrl=safeDocumentCitationUrl(item.source.url);
+      if(sourceUrl){
+        citation.appendChild(document.createTextNode(' · '));
+        const link=document.createElement('a');link.href=sourceUrl;link.target='_blank';link.rel='noopener noreferrer';
+        link.textContent='Відкрити документ';citation.appendChild(link);
+      }
+      li.append(citation);list.append(li);
     }
-    li.appendChild(citation);
-    ul.appendChild(li);
+    group.append(list);groupLi.append(group);ul.append(groupLi);
   }
+}
+
+function requirementGroup(item){
+  const kind=String(item.type||'').toLowerCase();
+  const text=String(item.text||'').toLowerCase();
+  if(/технічн|параметр пального/.test(kind))return 'Технічні вимоги до пального';
+  if(/оплат|розрахунк|передоплат|післяплат/.test(kind))return 'Оплата та розрахунки';
+  if(/постач|поставк|відпуск|місце й дата/.test(kind))return 'Постачання та відпуск';
+  if(/оплат|розрахунк|передоплат|післяплат/.test(text))return 'Оплата та розрахунки';
+  if(/постач|поставк|відпуск/.test(text))return 'Постачання та відпуск';
+  return 'Інші підтверджені відомості';
 }
 
 function uniqueRequirementItems(items){
@@ -866,8 +955,9 @@ acceptBtn.addEventListener('click',()=>{
   document.getElementById('minBid').textContent='—';
   // Step 3 must use the accepted product selection, not the pre-confirmation form snapshot.
   const cmp=displayMarketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,confirmedData);
+  setMarketScoreStatus('marketScoreStatus',marketComparison(v.expectedValue,v.gasolineVolume,v.dieselVolume,v.fuelType,confirmedData));
   document.getElementById('budgetVsMarket').textContent=cmp?`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`:'—';
-  document.getElementById('marketComparisonNote').textContent=cmp?(cmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext)+' '+(cmp.referenceContext==='current'?cmp.source:''):'Ринкове порівняння недоступне.';
+  document.getElementById('marketComparisonNote').textContent=cmp?marketGapText(cmp.gap,cmp.referenceContext)+(cmp.source?' '+cmp.source:''):'Ринкове порівняння недоступне.';
   document.getElementById('calculateStatus').textContent='Додайте внутрішні параметри ЄВРО5 і натисніть «Розрахувати».';
 
   recommendationCard.classList.add('hidden');
@@ -1112,12 +1202,14 @@ function recalc(){
   document.getElementById('minBid').textContent=complete&&Number.isFinite(minBid)?`${money.format(minBid)} грн`:'—';
 
   const cmp=displayMarketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
+  const scoredCmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
+  setMarketScoreStatus('marketScoreStatus',scoredCmp);
   const budgetMarket=document.getElementById('budgetVsMarket');
   const marketNote=document.getElementById('marketComparisonNote');
   if(cmp){
     budgetMarket.textContent=`${cmp.indicative?'≈ ':''}${cmp.gap>=0?'+':''}${num.format(cmp.gap)}%`;
     budgetMarket.className=cmp.indicative?'':(cmp.gap>=0?'market-positive':'market-negative');
-    marketNote.textContent=(cmp.indicative?'Орієнтовна оцінка за звичайним пальним; у рейтингу не враховується. ':'')+marketGapText(cmp.gap,cmp.referenceContext) + (cmp.source ? ` ${cmp.source}` : '');
+    marketNote.textContent=marketGapText(cmp.gap,cmp.referenceContext) + (cmp.source ? ` ${cmp.source}` : '');
   }else{
     budgetMarket.textContent='—';
     budgetMarket.className='';
@@ -1145,7 +1237,6 @@ function recalc(){
   }
 
   const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
-  const scoredCmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
   const rating=buildParticipationRating({expected,full,complete,cfg,cmp:scoredCmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
   renderRecommendation(rating,scoredCmp,expected,value('minMargin'));
   window.Euro5MemoryUI?.observe({
@@ -1305,6 +1396,8 @@ window.addEventListener('afterprint',()=>document.body.classList.remove('printin
 
 ['reviewExpectedValue','reviewGasolineVolume','reviewDieselVolume','reviewFuelType']
   .forEach(id=>document.getElementById(id).addEventListener('input',renderReviewMarket));
+reviewSection.addEventListener('input',renderReviewChecklist);
+reviewSection.addEventListener('change',renderReviewChecklist);
 ['reviewSupplyFormat','reviewGasolineSupplyFormat','reviewDieselSupplyFormat']
   .forEach(id=>document.getElementById(id).addEventListener('change',()=>{syncSplitSupplyVisibility();renderReviewMarket();}));
 
