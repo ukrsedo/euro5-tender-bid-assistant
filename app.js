@@ -364,7 +364,7 @@ function displayMarketComparison(expectedValue,gasolineVolume,dieselVolume,fuelT
     ?`${lastExtraction.market_benchmark_label}${lastExtraction.market_reference_date?` (${lastExtraction.market_reference_date})`:''}.`:'';
   const referenceDate=lastExtraction?.market_reference_date;
   const referenceContext=referenceDate&&referenceDate!==lastExtraction?.tender_announcement_date?'prior':'announcement';
-  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,gasPrice:Number(lastExtraction?.market_wholesale_gasoline_price_uah_l_without_vat)||null,dieselPrice:Number(lastExtraction?.market_wholesale_diesel_price_uah_l_without_vat)||null,indicative:false,referenceDate,referenceContext,source};
+  return {gap,marketValue,format,gasFormat:format,dieselFormat:format,gasPrice:Number(lastExtraction?.market_wholesale_gasoline_price_uah_l_without_vat)||null,dieselPrice:Number(lastExtraction?.market_wholesale_diesel_price_uah_l_without_vat)||null,indicative:true,referenceDate,referenceContext,source};
 }
 
 // A conditional illustration is useful when the API omits product details.
@@ -582,7 +582,7 @@ function renderReview(data){
   document.getElementById('reviewDieselProduct').value='unknown';
   const products=data.fuel_products;
   document.getElementById('fuelProductEvidence').textContent=products?['gasoline','diesel'].flatMap(f=>(products[f]?.items||[]).map(p=>p.source_text)).join('; '):'Сервер не передав підтверджений профіль продукту. Потрібне оновлення сервера; стандартні ціни не застосовуються.';
-  document.getElementById('fuelPriceVerification').textContent=['gasoline','diesel'].map(f=>data.market_reference_candidates?.[f]?.check?.reason).filter(Boolean).join(' ');
+  document.getElementById('fuelPriceVerification').textContent=[...new Set(['gasoline','diesel'].map(f=>data.market_reference_candidates?.[f]?.check?.reason).filter(Boolean))].join(' ');
   reviewSection.classList.remove('hidden');
   document.getElementById('reviewState').textContent='ПОТРІБНЕ ПІДТВЕРДЖЕННЯ';
   document.getElementById('reviewState').classList.remove('accepted');
@@ -688,7 +688,7 @@ function renderRequirements(items,readCount=0){
   const ul=document.getElementById('requirementsList');
   if(!ul)return;
   ul.innerHTML='';
-  const rows=items.filter(x=>x?.source_verified===true&&x?.source?.title&&typeof x.text==='string'&&x.text.trim());
+  const rows=uniqueRequirementItems(items);
   if(!rows.length){
     const li=document.createElement('li');
     li.textContent=readCount?'Із прочитаних документів не отримано пунктів із перевіреною дослівною цитатою. Перегляньте файли вище.':'Умови не витягнуто, бо документи не прочитано. Причини показано вище.';
@@ -701,6 +701,7 @@ function renderRequirements(items,readCount=0){
     const label=document.createElement('strong');
     label.textContent=(item.type||'Підтверджений фрагмент')+': ';
     body.append(label,document.createTextNode(item.text));
+    if(item.is_excerpt)body.append(document.createTextNode(' [Фрагмент; повний пункт у документі]'));
     li.appendChild(body);
     const citation=document.createElement('small');
     citation.className='requirement-source';
@@ -718,6 +719,21 @@ function renderRequirements(items,readCount=0){
     li.appendChild(citation);
     ul.appendChild(li);
   }
+}
+
+function uniqueRequirementItems(items){
+  const rows=new Map();
+  for(const item of Array.isArray(items)?items:[]){
+    if(item?.source_verified!==true||!item?.source?.title||typeof item.text!=='string'||!item.text.trim())continue;
+    const canonical=item.text.replace(/^(?:Строк оплати|Строк постачання):\s*/iu,'').replace(/[\u00a0\u202f\s]+/gu,' ').trim().toLowerCase();
+    const existing=rows.get(canonical);
+    const documentSource=Boolean(item.source.url&&String(item.source.url).includes('/tender-document?'));
+    const existingDocument=Boolean(existing?.source?.url&&String(existing.source.url).includes('/tender-document?'));
+    const explicitQuote=!/^(?:Строк оплати|Строк постачання):\s*/iu.test(item.text);
+    const existingQuote=existing&&!/^(?:Строк оплати|Строк постачання):\s*/iu.test(existing.text);
+    if(!existing||(documentSource&&!existingDocument)||(documentSource===existingDocument&&explicitQuote&&!existingQuote))rows.set(canonical,item);
+  }
+  return [...rows.values()];
 }
 
 function safeDocumentCitationUrl(value){
@@ -989,7 +1005,7 @@ function buildParticipationRating({expected,full,complete,cfg,cmp,minMargin,fuel
   const marginDelta=margin50-minMargin;
   const marginScore=marginRatingScore(margin50,minMargin);
 
-  const budgetScore=budgetAssessment(cmp?.gap);
+  const budgetScore=budgetAssessment(cmp?.indicative?null:cmp?.gap);
   const sizeScore=tenderSizeScore(expected);
 
   const conditions=conditionAdjustment(activeTenderData());
@@ -1129,8 +1145,9 @@ function recalc(){
   }
 
   const cfg=activeStatisticalModel()[el.competitionMode.value][el.fuelType.value];
-  const rating=buildParticipationRating({expected,full,complete,cfg,cmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
-  renderRecommendation(rating,cmp,expected,value('minMargin'));
+  const scoredCmp=marketComparison(expected,gasVol,dieVol,el.fuelType.value,activeTenderData());
+  const rating=buildParticipationRating({expected,full,complete,cfg,cmp:scoredCmp,minMargin:value('minMargin'),fuelCost,gasCostAmount:gasVol*gasCost});
+  renderRecommendation(rating,scoredCmp,expected,value('minMargin'));
   window.Euro5MemoryUI?.observe({
     tenderId:lastExtraction?.tender_id,buyerCode:lastExtraction?.buyer_code,
     fuelType:el.fuelType.value,supplyFormat:activeTenderData()?.supply_format,
@@ -1176,12 +1193,12 @@ function escapeHtml(value){
 }
 
 function evidenceListHtml(items,fallback){
-  const arr=Array.isArray(items)?items.filter(x=>x?.source_verified&&x?.source?.title&&x?.text):[];
+  const arr=uniqueRequirementItems(items);
   if(!arr.length)return `<p>${escapeHtml(fallback)}</p>`;
   return `<ul>${arr.map(x=>{
     const url=safeDocumentCitationUrl(x.source.url);
     const citation=`Джерело: ${escapeHtml(x.source.title)}${x.source.location?', '+escapeHtml(x.source.location):''}`;
-    return `<li>${escapeHtml(x.text)}<br><small>${citation}${url?` · <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Відкрити документ</a>`:''}</small></li>`;
+    return `<li>${escapeHtml(x.text)}${x.is_excerpt?' [Фрагмент; повний пункт у документі]':''}<br><small>${citation}${url?` · <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Відкрити документ</a>`:''}</small></li>`;
   }).join('')}</ul>`;
 }
 
@@ -1256,7 +1273,7 @@ function buildPdfReport(){
     ${displayCmp?`<p class="pdf-market">${displayCmp.indicative?'Орієнтовна оцінка, у рейтингу не враховується. ':''}${escapeHtml(marketGapText(displayCmp.gap,displayCmp.referenceContext))} ${escapeHtml(displayCmp.source||'')}</p>`:`<p class="pdf-market">${escapeHtml(lastExtraction?.market_comparison_note||'Ринкове порівняння недоступне.')}</p>`}
     <h3>Умови, на які варто звернути увагу</h3>
     <p>Документи Prozorro: прочитано ${money.format(lastExtraction?.document_read_summary?.read??0)} із ${money.format(lastExtraction?.document_read_summary?.supported_before_cutoff??0)} відібраних PDF/DOC/DOCX.</p>
-    <div class="pdf-two"><div><h4>Умови та технічні параметри</h4>${evidenceListHtml([...(lastExtraction?.conditions||[]),...(lastExtraction?.fuel_requirements||[])],'Пунктів із перевіреною цитатою не отримано.')}</div><div><h4>Дослівні витяги з документів</h4>${evidenceListHtml(lastExtraction?.document_highlights,'Підтверджених витягів не отримано.')}</div></div>
+    <div><h4>Підтверджені умови та структуровані дані Prozorro</h4>${evidenceListHtml([...(lastExtraction?.conditions||[]),...(lastExtraction?.fuel_requirements||[]),...(lastExtraction?.actions||[]),...(lastExtraction?.document_highlights||[]),...(lastExtraction?.structured_evidence||[])],'Підтверджених умов не отримано.')}</div>
     <h3>Економіка ЄВРО5</h3>
     <div class="pdf-grid">
       <div><span>Вартість пального</span><strong>${money.format(fuelCost)} грн</strong></div>
