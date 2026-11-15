@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="euro5-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20261112-supplier-scenario-prices" />
+  <link rel="stylesheet" href="styles.css?v=20261115-review-ux-v27" />
 </head>
 <body>
   <aside id="sessionBar" class="card hidden" aria-live="polite"><span id="sessionName">Перевіряю сесію…</span> <form action="/logout" method="post"><button class="btn secondary-btn" type="submit">Вийти</button></form></aside>
@@ -72,6 +72,8 @@
         <span id="reviewNormalization">—</span>
       </div>
       <div id="proposalDeadlineNotice" class="notice hidden" role="status"></div>
+
+      <div id="reviewChecklist" class="review-checklist" aria-live="polite"></div>
 
       <article id="buyerHistoryCard" class="buyer-history-card hidden" aria-live="polite"></article>
       <div class="review-grid">
@@ -148,6 +150,7 @@
       <div id="marketComparisonReview" class="market-comparison hidden">
         <span>Бюджет замовника до ринку</span>
         <strong id="marketComparisonReviewValue">—</strong>
+        <span id="marketComparisonStatus" class="market-status"></span>
         <div id="marketComparisonReviewText" class="market-comparison-text"></div>
         <div id="marketBenchmarkSource" class="market-comparison-source"></div>
       </div>
@@ -185,7 +188,7 @@
       </div>
 
 
-      <div class="review-terms">
+      <div class="review-terms" id="reviewTerms">
         <h3>Комерційні та операційні умови</h3>
         <p class="muted terms-intro">Ці показники витягнуті автоматично. Виправте їх, якщо документація або ваша перевірка дають інше значення. Підтверджені значення будуть використані в рейтингу участі.</p>
         <div class="review-grid terms-grid">
@@ -288,7 +291,7 @@
             <div class="metric"><span>Вартість пального</span><strong id="fuelCostTotal">—</strong></div>
             <div class="metric"><span>Резерв на ризики</span><strong id="riskAmount">—</strong></div>
             <div class="metric"><span>Логістика</span><strong id="logisticsAmount">—</strong></div>
-            <div class="metric market-metric"><span>Бюджет замовника до ринку</span><strong id="budgetVsMarket">—</strong></div>
+            <div class="metric market-metric"><span>Бюджет замовника до ринку <small id="marketScoreStatus" class="market-status"></small></span><strong id="budgetVsMarket">—</strong></div>
             <div id="marketComparisonNote" class="market-note">Порівняння з ринковою вартістю такого самого обсягу на дату оголошення тендера. Якщо історичного гуртового орієнтира немає, окремо показується поточна оцінка з датою; вона не впливає на рейтинг.</div>
             <div class="metric primary"><span>Повна собівартість</span><strong id="fullCost">—</strong></div>
             <div class="metric"><span>Мін. пропозиція для маржі</span><strong id="minBid">—</strong></div>
@@ -399,7 +402,7 @@
   <script src="buyer-competition.js?v=20261112-history-schema-v5"></script>
   <script src="buyer-card.js?v=20261112-august-history-v2"></script>
   <script src="memory.js?v=20261111-hide-public-memory-signin"></script>
-  <script src="app.js?v=20261115-qa-v26"></script>
+  <script src="app.js?v=20261115-review-ux-v27"></script>
 </body>
 </html>
 
