@@ -1,17 +1,11 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-11-17T17:37:20.015Z",
+  "updated_at": "2026-11-18T17:14:39.417Z",
   "sources": {
     "fuel": "https://index.minfin.com.ua/ua/markets/fuel/",
     "usd": "https://charts.finance.ua/ua/currency/official/-/1/usd"
   },
   "records": [
-    {
-      "date": "2025-10-13",
-      "a95": 58.78,
-      "dt": 55.93,
-      "usd": 41.6027
-    },
     {
       "date": "2025-10-14",
       "a95": 58.77,
@@ -1685,6 +1679,12 @@
       "a95": 87.92,
       "dt": 101.42,
       "usd": 45.3918
+    },
+    {
+      "date": "2026-11-18",
+      "a95": 87.9,
+      "dt": 101,
+      "usd": 45.3436
     }
   ]
 }
